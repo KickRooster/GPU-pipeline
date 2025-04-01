@@ -2,6 +2,7 @@
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include "../base/Base.h"
+#include "../base/DesignPatterns.h"
 #include "imgui.h"
 #include "backends/imgui_impl_dx12.h"
 
@@ -58,8 +59,14 @@ namespace dev
         UINT64                      FenceValue;
     };
     
-    class PipelineInterface
+    class PipelineInterface : public Singleton<PipelineInterface>
     {
+    private:
+        friend class Singleton<PipelineInterface>;
+        PipelineInterface() = default; 
+        ~PipelineInterface() = default;
+
+        //  TODO:   make it non static
         static const int APP_NUM_BACK_BUFFERS = 2;
         const int APP_SRV_HEAP_SIZE = 64;
         static const int APP_NUM_FRAMES_IN_FLIGHT = 2;

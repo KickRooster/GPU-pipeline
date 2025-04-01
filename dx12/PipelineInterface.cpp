@@ -11,42 +11,28 @@ namespace dev
 #pragma comment(lib, "dxguid.lib")
 #endif
 
-// 删除全局变量
-// static ExampleDescriptorHeapAllocator* g_CurrentDescriptorHeapAllocator = nullptr;
-    
     ErrorCode PipelineInterface::Initialize(HWND hWnd)
     {
-        // Setup swap chain
-        DXGI_SWAP_CHAIN_DESC1 sd;
-        {
-            ZeroMemory(&sd, sizeof(sd));
-            sd.BufferCount = APP_NUM_BACK_BUFFERS;
-            sd.Width = 0;
-            sd.Height = 0;
-            sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-            sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-            sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-            sd.SampleDesc.Count = 1;
-            sd.SampleDesc.Quality = 0;
-            sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-            sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-            sd.Scaling = DXGI_SCALING_STRETCH;
-            sd.Stereo = FALSE;
-        }
-
 #ifdef DX12_ENABLE_DEBUG_LAYER
-        ID3D12Debug* pdx12Debug = nullptr;
-        if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&pdx12Debug))))
-            pdx12Debug->EnableDebugLayer();
+        ID3D12Debug* pDX12Debug = nullptr;
+        if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&pDX12Debug))))
+        {
+            pDX12Debug->EnableDebugLayer();
+        }
+        else
+        {
+            return ErrorCode_DebugInterfaceNotFound;
+        }
 #endif
 
         // Create device
-        D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-        if (D3D12CreateDevice(nullptr, featureLevel, IID_PPV_ARGS(&g_pd3dDevice)) != S_OK)
-            return ErrorCode_Failed;
+        if (D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&g_pd3dDevice)) != S_OK)
+        {
+            return ErrorCode_DeviceCreateFailed;
+        }
 
 #ifdef DX12_ENABLE_DEBUG_LAYER
-        if (pdx12Debug != nullptr)
+        if (pDX12Debug != nullptr)
         {
             ID3D12InfoQueue* pInfoQueue = nullptr;
             g_pd3dDevice->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
@@ -54,19 +40,21 @@ namespace dev
             pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
             pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
             pInfoQueue->Release();
-            pdx12Debug->Release();
+            pDX12Debug->Release();
         }
 #endif
 
         {
-            D3D12_DESCRIPTOR_HEAP_DESC desc = {};
-            desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-            desc.NumDescriptors = APP_NUM_BACK_BUFFERS;
-            desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-            desc.NodeMask = 1;
-            if (g_pd3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&g_pd3dRtvDescHeap)) != S_OK)
-                return ErrorCode_Failed;
-
+            D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
+            DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+            DescriptorHeapDesc.NumDescriptors = APP_NUM_BACK_BUFFERS;
+            DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+            DescriptorHeapDesc.NodeMask = 1;
+            if (g_pd3dDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&g_pd3dRtvDescHeap)) != S_OK)
+            {
+                return ErrorCode_DescriptorHeapCreateFailed;
+            }
+            
             SIZE_T rtvDescriptorSize = g_pd3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
             D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = g_pd3dRtvDescHeap->GetCPUDescriptorHandleForHeapStart();
             for (UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++)
@@ -77,49 +65,94 @@ namespace dev
         }
 
         {
-            D3D12_DESCRIPTOR_HEAP_DESC desc = {};
-            desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-            desc.NumDescriptors = APP_SRV_HEAP_SIZE;
-            desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-            if (g_pd3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&g_pd3dSrvDescHeap)) != S_OK)
-                return ErrorCode_Failed;
+            D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
+            DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+            DescriptorHeapDesc.NumDescriptors = APP_SRV_HEAP_SIZE;
+            DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+            if (g_pd3dDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&g_pd3dSrvDescHeap)) != S_OK)
+            {
+                return ErrorCode_DescriptorHeapCreateFailed;
+            }
             
             g_pd3dSrvDescHeapAlloc.Create(g_pd3dDevice, g_pd3dSrvDescHeap);
         }
 
         {
-            D3D12_COMMAND_QUEUE_DESC desc = {};
-            desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-            desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-            desc.NodeMask = 1;
-            if (g_pd3dDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(&g_pd3dCommandQueue)) != S_OK)
+            D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
+            CommandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+            CommandQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+            CommandQueueDesc.NodeMask = 1;
+            if (g_pd3dDevice->CreateCommandQueue(&CommandQueueDesc, IID_PPV_ARGS(&g_pd3dCommandQueue)) != S_OK)
+            {
                 return ErrorCode_Failed;
+            }
         }
 
         for (UINT i = 0; i < APP_NUM_FRAMES_IN_FLIGHT; i++)
+        {
             if (g_pd3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_frameContext[i].CommandAllocator)) != S_OK)
-                return ErrorCode_Failed;
+            {
+                return ErrorCode_CommandAllocatorCreateFailed;
+            }
+        }
+        
+        if (g_pd3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_frameContext[0].CommandAllocator, nullptr, IID_PPV_ARGS(&g_pd3dCommandList)) != S_OK)
+        {
+            return ErrorCode_CommandListCreateFailed;
+        }
 
-        if (g_pd3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_frameContext[0].CommandAllocator, nullptr, IID_PPV_ARGS(&g_pd3dCommandList)) != S_OK ||
-                g_pd3dCommandList->Close() != S_OK)
-                    return ErrorCode_Failed;
-
+        if (g_pd3dCommandList->Close() != S_OK)
+        {
+            return ErrorCode_CommandListCloseFailed;
+        }
+        
         if (g_pd3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_fence)) != S_OK)
-            return ErrorCode_Failed;
-
+        {
+            return ErrorCode_FenceCreateFailed;
+        }
+        
         g_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
         if (g_fenceEvent == nullptr)
-            return ErrorCode_Failed;
-
         {
+            return ErrorCode_FenceEventCreateFailed;
+        }
+        
+        {
+            // Setup swap chain
+            DXGI_SWAP_CHAIN_DESC1 SwapChainDesc;
+            {
+                ZeroMemory(&SwapChainDesc, sizeof(SwapChainDesc));
+                SwapChainDesc.BufferCount = APP_NUM_BACK_BUFFERS;
+                SwapChainDesc.Width = 0;
+                SwapChainDesc.Height = 0;
+                SwapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                SwapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+                SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+                SwapChainDesc.SampleDesc.Count = 1;
+                SwapChainDesc.SampleDesc.Quality = 0;
+                SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+                SwapChainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+                SwapChainDesc.Scaling = DXGI_SCALING_STRETCH;
+                SwapChainDesc.Stereo = FALSE;
+            }
+            
             IDXGIFactory4* dxgiFactory = nullptr;
             IDXGISwapChain1* swapChain1 = nullptr;
             if (CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory)) != S_OK)
-                return ErrorCode_Failed;
-            if (dxgiFactory->CreateSwapChainForHwnd(g_pd3dCommandQueue, hWnd, &sd, nullptr, nullptr, &swapChain1) != S_OK)
-                return ErrorCode_Failed;
+            {
+                return ErrorCode_DXGIFactoryCreateFailed;
+            }
+            
+            if (dxgiFactory->CreateSwapChainForHwnd(g_pd3dCommandQueue, hWnd, &SwapChainDesc, nullptr, nullptr, &swapChain1) != S_OK)
+            {
+                return ErrorCode_SwapChainForHwndCreateFailed;
+            }
+            
             if (swapChain1->QueryInterface(IID_PPV_ARGS(&g_pSwapChain)) != S_OK)
-                return ErrorCode_Failed;
+            {
+                return ErrorCode_QueryIDXGISwapChain3InterfaceFailed;
+            }
+            
             swapChain1->Release();
             dxgiFactory->Release();
             g_pSwapChain->SetMaximumFrameLatency(APP_NUM_BACK_BUFFERS);

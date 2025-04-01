@@ -14,6 +14,7 @@
 #include <tchar.h>
 #include "dx12/PipelineInterface.h"
 
+using namespace dev;
 
 //	XXX:	don't delete
 static UINT64                       g_fenceLastSignaledValue = 0;
@@ -21,8 +22,6 @@ static bool                         g_SwapChainOccluded = false;
 
 // Forward declarations of helper functions
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-static dev::PipelineInterface PipelineInterface;
 
 // Main code
 int main(int, char**)
@@ -33,9 +32,9 @@ int main(int, char**)
 	::RegisterClassExW(&wc);
 	HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"Dear ImGui DirectX12 Example", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance, nullptr);
 	
-	if (PipelineInterface.Initialize(hwnd) != dev::ErrorCode_OK)
+	if (PipelineInterface::GetInstance().Initialize(hwnd) != dev::ErrorCode_OK)
 	{
-		PipelineInterface.CleanUp();
+		PipelineInterface::GetInstance().CleanUp();
 		::UnregisterClassW(wc.lpszClassName, wc.hInstance);
 		return 1;
 	}
@@ -71,7 +70,7 @@ int main(int, char**)
 	ImGui_ImplWin32_Init(hwnd);
 
 	ImGui_ImplDX12_InitInfo init_info = {};
-	PipelineInterface.PackImGuiParameter(init_info);
+	PipelineInterface::GetInstance().PackImGuiParameter(init_info);
 	ImGui_ImplDX12_Init(&init_info);
 
 	// Before 1.91.6: our signature was using a single descriptor. From 1.92, specifying SrvDescriptorAllocFn/SrvDescriptorFreeFn will be required to benefit from new features.
@@ -116,7 +115,7 @@ int main(int, char**)
 			break;
 
 		// Handle window screen locked
-		if (g_SwapChainOccluded && PipelineInterface.Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED)
+		if (g_SwapChainOccluded && PipelineInterface::GetInstance().Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED)
 		{
 			::Sleep(10);
 			continue;
@@ -168,27 +167,27 @@ int main(int, char**)
 		// Rendering
 		ImGui::Render();
 
-		dev::FrameContext* frameCtx = PipelineInterface.WaitForNextFrameResources();
-		UINT backBufferIdx = PipelineInterface.GetCurrentBackBufferIndex();
+		dev::FrameContext* frameCtx = PipelineInterface::GetInstance().WaitForNextFrameResources();
+		UINT backBufferIdx = PipelineInterface::GetInstance().GetCurrentBackBufferIndex();
 		//	TODO:	try to wrap it.
 		frameCtx->CommandAllocator->Reset();
 
 		D3D12_RESOURCE_BARRIER barrier = {};
-		PipelineInterface.InsertRenderTargetBarrier(frameCtx, backBufferIdx, barrier);
+		PipelineInterface::GetInstance().InsertRenderTargetBarrier(frameCtx, backBufferIdx, barrier);
 
 		// Render Dear ImGui graphics
 		const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
-		PipelineInterface.ClearRenderTargetView(PipelineInterface.g_mainRenderTargetDescriptor[backBufferIdx], clear_color_with_alpha, 0, nullptr);
-		PipelineInterface.OMSetRenderTargets(1, &PipelineInterface.g_mainRenderTargetDescriptor[backBufferIdx], FALSE, nullptr);
-		PipelineInterface.SetDescriptorHeaps(1);
+		PipelineInterface::GetInstance().ClearRenderTargetView(PipelineInterface::GetInstance().g_mainRenderTargetDescriptor[backBufferIdx], clear_color_with_alpha, 0, nullptr);
+		PipelineInterface::GetInstance().OMSetRenderTargets(1, &PipelineInterface::GetInstance().g_mainRenderTargetDescriptor[backBufferIdx], FALSE, nullptr);
+		PipelineInterface::GetInstance().SetDescriptorHeaps(1);
 		//	TODO:	hide g_pd3dCommandList
-		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface.g_pd3dCommandList);
+		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().g_pd3dCommandList);
 		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-		PipelineInterface.g_pd3dCommandList->ResourceBarrier(1, &barrier);
-		PipelineInterface.g_pd3dCommandList->Close();
+		PipelineInterface::GetInstance().g_pd3dCommandList->ResourceBarrier(1, &barrier);
+		PipelineInterface::GetInstance().g_pd3dCommandList->Close();
 
-		PipelineInterface.ExecuteCommandLists(1);
+		PipelineInterface::GetInstance().ExecuteCommandLists(1);
 		
 		// Update and Render additional Platform Windows
 		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
@@ -198,24 +197,24 @@ int main(int, char**)
 		}
 
 		// Present
-		HRESULT hr = PipelineInterface.Present(1, 0) ;   // Present with vsync
+		HRESULT hr = PipelineInterface::GetInstance().Present(1, 0) ;   // Present with vsync
 		//HRESULT hr = g_pSwapChain->Present(0, 0); // Present without vsync
 		g_SwapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
 
 		UINT64 fenceValue = g_fenceLastSignaledValue + 1;
-		PipelineInterface.g_pd3dCommandQueue->Signal(PipelineInterface.g_fence, fenceValue);
+		PipelineInterface::GetInstance().g_pd3dCommandQueue->Signal(PipelineInterface::GetInstance().g_fence, fenceValue);
 		g_fenceLastSignaledValue = fenceValue;
 		frameCtx->FenceValue = fenceValue;
 	}
 
-	PipelineInterface.WaitForLastSubmittedFrame();
+	PipelineInterface::GetInstance().WaitForLastSubmittedFrame();
 
 	// Cleanup
 	ImGui_ImplDX12_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
 
-	PipelineInterface.CleanUp();
+	PipelineInterface::GetInstance().CleanUp();
 	::DestroyWindow(hwnd);
 	::UnregisterClassW(wc.lpszClassName, wc.hInstance);
 
@@ -238,14 +237,14 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	switch (msg)
 	{
 	case WM_SIZE:
-		if (PipelineInterface.g_pd3dDevice != nullptr && wParam != SIZE_MINIMIZED)
+		if (PipelineInterface::GetInstance().g_pd3dDevice != nullptr && wParam != SIZE_MINIMIZED)
 		{
 			//	XXX:	WaitForLastSubmittedFrame too many calls?
-			PipelineInterface.WaitForLastSubmittedFrame();
-			PipelineInterface.CleanupRenderTarget();
-			HRESULT result = PipelineInterface.g_pSwapChain->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
+			PipelineInterface::GetInstance().WaitForLastSubmittedFrame();
+			PipelineInterface::GetInstance().CleanupRenderTarget();
+			HRESULT result = PipelineInterface::GetInstance().g_pSwapChain->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
 			assert(SUCCEEDED(result) && "Failed to resize swapchain.");
-			PipelineInterface.CreateRenderTarget();
+			PipelineInterface::GetInstance().CreateRenderTarget();
 		}
 		return 0;
 	case WM_SYSCOMMAND:
