@@ -69,9 +69,9 @@ int main(int, char**)
 	// Setup Platform/Renderer backends
 	ImGui_ImplWin32_Init(hwnd);
 
-	ImGui_ImplDX12_InitInfo init_info = {};
-	PipelineInterface::GetInstance().PackImGuiParameter(init_info);
-	ImGui_ImplDX12_Init(&init_info);
+	ImGui_ImplDX12_InitInfo InitInfo = {};
+	PipelineInterface::GetInstance().PackImGuiInitInfo(InitInfo);
+	ImGui_ImplDX12_Init(&InitInfo);
 
 	// Before 1.91.6: our signature was using a single descriptor. From 1.92, specifying SrvDescriptorAllocFn/SrvDescriptorFreeFn will be required to benefit from new features.
 	//ImGui_ImplDX12_Init(g_pd3dDevice, APP_NUM_FRAMES_IN_FLIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, g_pd3dSrvDescHeap, g_pd3dSrvDescHeap->GetCPUDescriptorHandleForHeapStart(), g_pd3dSrvDescHeap->GetGPUDescriptorHandleForHeapStart());
@@ -177,17 +177,16 @@ int main(int, char**)
 
 		// Render Dear ImGui graphics
 		const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
-		PipelineInterface::GetInstance().ClearRenderTargetView(PipelineInterface::GetInstance().g_mainRenderTargetDescriptor[backBufferIdx], clear_color_with_alpha, 0, nullptr);
+		PipelineInterface::GetInstance().ClearRenderTargetView(backBufferIdx, clear_color_with_alpha, 0, nullptr);
 		PipelineInterface::GetInstance().OMSetRenderTargets(1, &PipelineInterface::GetInstance().g_mainRenderTargetDescriptor[backBufferIdx], FALSE, nullptr);
 		PipelineInterface::GetInstance().SetDescriptorHeaps(1);
 		//	TODO:	hide g_pd3dCommandList
-		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().g_pd3dCommandList);
+		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList());
 		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-		PipelineInterface::GetInstance().g_pd3dCommandList->ResourceBarrier(1, &barrier);
-		PipelineInterface::GetInstance().g_pd3dCommandList->Close();
-
-		PipelineInterface::GetInstance().ExecuteCommandLists(1);
+		PipelineInterface::GetInstance().GetCommandList()->ResourceBarrier(1, &barrier);
+		PipelineInterface::GetInstance().GetCommandList()->Close();
+		PipelineInterface::GetInstance().ExecuteCommandLists();
 		
 		// Update and Render additional Platform Windows
 		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
@@ -202,7 +201,7 @@ int main(int, char**)
 		g_SwapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
 
 		UINT64 fenceValue = g_fenceLastSignaledValue + 1;
-		PipelineInterface::GetInstance().g_pd3dCommandQueue->Signal(PipelineInterface::GetInstance().g_fence, fenceValue);
+		PipelineInterface::GetInstance().GetCommandQueue()->Signal(PipelineInterface::GetInstance().g_fence, fenceValue);
 		g_fenceLastSignaledValue = fenceValue;
 		frameCtx->FenceValue = fenceValue;
 	}

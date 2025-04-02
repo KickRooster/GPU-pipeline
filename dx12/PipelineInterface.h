@@ -101,17 +101,20 @@ namespace dev
     public:
         ErrorCode Initialize(HWND hWnd);
         void CleanUp();
-        void PackImGuiParameter(ImGui_ImplDX12_InitInfo& OutParam);
+        void PackImGuiInitInfo(ImGui_ImplDX12_InitInfo& OutInitInfo);
         FrameContext* WaitForNextFrameResources();
         void WaitForLastSubmittedFrame();
         HRESULT Present(unsigned int SyncInterval, unsigned int Flags) const;
         unsigned int GetCurrentBackBufferIndex() const;
         void InsertRenderTargetBarrier(FrameContext* frameCtx, unsigned int BackbufferIndex, D3D12_RESOURCE_BARRIER& OutBarrier) const;
-        void ClearRenderTargetView(D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetView, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT *pRects) const;
+        void ClearRenderTargetView(unsigned int BackBufferIndex, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT *pRects) const;
         void OMSetRenderTargets(unsigned int NumRenderTargetDescriptors, const D3D12_CPU_DESCRIPTOR_HANDLE *pRenderTargetDescriptors, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE *pDepthStencilDescriptor) const;
+        //  XXX:     Current set for srv only.
         void SetDescriptorHeaps(unsigned int NumDescriptorHeaps) const;
-        void ExecuteCommandLists(unsigned int NumCommandLists);
+        void ExecuteCommandLists();
         void CreateRenderTarget();
         void CleanupRenderTarget();
+        ID3D12GraphicsCommandList* GetCommandList();
+        ID3D12CommandQueue* GetCommandQueue();
     };
 }

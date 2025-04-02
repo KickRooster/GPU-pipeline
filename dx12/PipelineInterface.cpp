@@ -177,31 +177,92 @@ namespace dev
 
         UINT64 fenceValue = frameCtx->FenceValue;
         if (fenceValue == 0)
+        {
             return; // No fence was signaled
-
+        }
+        
         frameCtx->FenceValue = 0;
         if (g_fence->GetCompletedValue() >= fenceValue)
+        {
             return;
-
+        }
+        
         g_fence->SetEventOnCompletion(fenceValue, g_fenceEvent);
         WaitForSingleObject(g_fenceEvent, INFINITE);
 
         //  CleanupRenderTarget
         for (UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++)
-            if (g_mainRenderTargetResource[i]) { g_mainRenderTargetResource[i]->Release(); g_mainRenderTargetResource[i] = nullptr; }
-
+        {
+            if (g_mainRenderTargetResource[i])
+            {
+                g_mainRenderTargetResource[i]->Release();
+                g_mainRenderTargetResource[i] = nullptr;
+            }
+        }
+        
         //  Do clean
-        if (g_pSwapChain) { g_pSwapChain->SetFullscreenState(false, nullptr); g_pSwapChain->Release(); g_pSwapChain = nullptr; }
-        if (g_hSwapChainWaitableObject != nullptr) { CloseHandle(g_hSwapChainWaitableObject); }
+        if (g_pSwapChain)
+        {
+            g_pSwapChain->SetFullscreenState(false, nullptr);
+            g_pSwapChain->Release();
+            g_pSwapChain = nullptr;
+        }
+        
+        if (g_hSwapChainWaitableObject != nullptr)
+        {
+            CloseHandle(g_hSwapChainWaitableObject);
+        }
+        
         for (UINT i = 0; i < APP_NUM_FRAMES_IN_FLIGHT; i++)
-            if (g_frameContext[i].CommandAllocator) { g_frameContext[i].CommandAllocator->Release(); g_frameContext[i].CommandAllocator = nullptr; }
-        if (g_pd3dCommandQueue) { g_pd3dCommandQueue->Release(); g_pd3dCommandQueue = nullptr; }
-        if (g_pd3dCommandList) { g_pd3dCommandList->Release(); g_pd3dCommandList = nullptr; }
-        if (g_pd3dRtvDescHeap) { g_pd3dRtvDescHeap->Release(); g_pd3dRtvDescHeap = nullptr; }
-        if (g_pd3dSrvDescHeap) { g_pd3dSrvDescHeap->Release(); g_pd3dSrvDescHeap = nullptr; }
-        if (g_fence) { g_fence->Release(); g_fence = nullptr; }
-        if (g_fenceEvent) { CloseHandle(g_fenceEvent); g_fenceEvent = nullptr; }
-        if (g_pd3dDevice) { g_pd3dDevice->Release(); g_pd3dDevice = nullptr; }
+        {
+            if (g_frameContext[i].CommandAllocator)
+            {
+                g_frameContext[i].CommandAllocator->Release();
+                g_frameContext[i].CommandAllocator = nullptr;
+            }
+        }
+        
+        if (g_pd3dCommandQueue)
+        {
+            g_pd3dCommandQueue->Release();
+            g_pd3dCommandQueue = nullptr;
+        }
+        
+        if (g_pd3dCommandList)
+        {
+            g_pd3dCommandList->Release();
+            g_pd3dCommandList = nullptr;
+        }
+        
+        if (g_pd3dRtvDescHeap)
+        {
+            g_pd3dRtvDescHeap->Release();
+            g_pd3dRtvDescHeap = nullptr;
+        }
+        
+        if (g_pd3dSrvDescHeap)
+        {
+            g_pd3dSrvDescHeap->Release();
+            g_pd3dSrvDescHeap = nullptr;
+        }
+        
+        if (g_fence)
+        {
+            g_fence->Release();
+            g_fence = nullptr;
+        }
+        
+        if (g_fenceEvent)
+        {
+            CloseHandle(g_fenceEvent);
+            g_fenceEvent = nullptr;
+        }
+        
+        if (g_pd3dDevice)
+        {
+            g_pd3dDevice->Release();
+            g_pd3dDevice = nullptr;
+        }
 
 #ifdef DX12_ENABLE_DEBUG_LAYER
         IDXGIDebug1* pDebug = nullptr;
@@ -213,27 +274,27 @@ namespace dev
 #endif
     }
 
-    void PipelineInterface::PackImGuiParameter(ImGui_ImplDX12_InitInfo& OutParam)
+    void PipelineInterface::PackImGuiInitInfo(ImGui_ImplDX12_InitInfo& OutInitInfo)
     {
-        OutParam.Device = g_pd3dDevice;
-        OutParam.CommandQueue = g_pd3dCommandQueue;
-        OutParam.NumFramesInFlight = APP_NUM_FRAMES_IN_FLIGHT;
-        OutParam.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-        OutParam.DSVFormat = DXGI_FORMAT_UNKNOWN;
+        OutInitInfo.Device = g_pd3dDevice;
+        OutInitInfo.CommandQueue = g_pd3dCommandQueue;
+        OutInitInfo.NumFramesInFlight = APP_NUM_FRAMES_IN_FLIGHT;
+        OutInitInfo.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+        OutInitInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
         // Allocating SRV descriptors (for textures) is up to the application, so we provide callbacks.
         // (current version of the backend will only allocate one descriptor, future versions will need to allocate more)
-        OutParam.SrvDescriptorHeap = g_pd3dSrvDescHeap;
+        OutInitInfo.SrvDescriptorHeap = g_pd3dSrvDescHeap;
         
         // 使用UserData字段传递this指针
-        OutParam.UserData = this;
+        OutInitInfo.UserData = this;
         
         // 使用没有捕获的lambda，通过UserData访问实例
-        OutParam.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_handle) { 
+        OutInitInfo.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_handle) { 
             PipelineInterface* Instance = static_cast<PipelineInterface*>(info->UserData);
             return Instance->g_pd3dSrvDescHeapAlloc.Alloc(out_cpu_handle, out_gpu_handle); 
         };
         
-        OutParam.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle) { 
+        OutInitInfo.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle) { 
             PipelineInterface* Instance = static_cast<PipelineInterface*>(info->UserData);
             return Instance->g_pd3dSrvDescHeapAlloc.Free(cpu_handle, gpu_handle); 
         };
@@ -250,12 +311,12 @@ namespace dev
         FrameContext* frameCtx = &g_frameContext[nextFrameIndex % APP_NUM_FRAMES_IN_FLIGHT];
         UINT64 fenceValue = frameCtx->FenceValue;
         if (fenceValue != 0) // means no fence was signaled
-            {
+        {
             frameCtx->FenceValue = 0;
             g_fence->SetEventOnCompletion(fenceValue, g_fenceEvent);
             waitableObjects[1] = g_fenceEvent;
             numWaitableObjects = 2;
-            }
+         }
 
         WaitForMultipleObjects(numWaitableObjects, waitableObjects, TRUE, INFINITE);
 
@@ -300,9 +361,9 @@ namespace dev
         g_pd3dCommandList->ResourceBarrier(1, &OutBarrier);
     }
 
-    void PipelineInterface::ClearRenderTargetView(D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetView, const float ColorRGBA[4], unsigned NumRects, const D3D12_RECT* pRects) const
+    void PipelineInterface::ClearRenderTargetView(unsigned int BackBufferIndex, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT* pRects) const
     {
-        g_pd3dCommandList->ClearRenderTargetView(RenderTargetView, ColorRGBA, NumRects, pRects);
+        g_pd3dCommandList->ClearRenderTargetView(g_mainRenderTargetDescriptor[BackBufferIndex], ColorRGBA, NumRects, pRects);
     }
 
     void PipelineInterface::OMSetRenderTargets(unsigned NumRenderTargetDescriptors, const D3D12_CPU_DESCRIPTOR_HANDLE* pRenderTargetDescriptors, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE* pDepthStencilDescriptor) const
@@ -315,9 +376,9 @@ namespace dev
         g_pd3dCommandList->SetDescriptorHeaps(NumDescriptorHeaps, &g_pd3dSrvDescHeap);
     }
 
-    void PipelineInterface::ExecuteCommandLists(unsigned NumCommandLists)
+    void PipelineInterface::ExecuteCommandLists()
     {
-        g_pd3dCommandQueue->ExecuteCommandLists(NumCommandLists, (ID3D12CommandList* const*)&g_pd3dCommandList);
+        g_pd3dCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&g_pd3dCommandList);
     }
 
     void PipelineInterface::CreateRenderTarget()
@@ -337,5 +398,15 @@ namespace dev
 
         for (UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++)
             if (g_mainRenderTargetResource[i]) { g_mainRenderTargetResource[i]->Release(); g_mainRenderTargetResource[i] = nullptr; }
+    }
+
+    ID3D12GraphicsCommandList* PipelineInterface::GetCommandList()
+    {
+        return g_pd3dCommandList;
+    }
+
+    ID3D12CommandQueue* PipelineInterface::GetCommandQueue()
+    {
+        return g_pd3dCommandQueue;
     }
 }
