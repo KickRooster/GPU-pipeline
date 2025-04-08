@@ -26,6 +26,9 @@
 *.a
 *.lib
 
+# Debug
+*.pdb
+
 # Executables
 *.exe
 *.out
@@ -39,3 +42,4 @@ x64
 
 # Log file
 Log.cpp
+*.pdb
