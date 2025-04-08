@@ -65,40 +65,29 @@ namespace dev
         friend class Singleton<PipelineInterface>;
         PipelineInterface() = default; 
         ~PipelineInterface() = default;
-
-        //  TODO:   make it non static
+        
         static const int APP_NUM_BACK_BUFFERS = 2;
-        const int APP_SRV_HEAP_SIZE = 64;
         static const int APP_NUM_FRAMES_IN_FLIGHT = 2;
-
-        //  TODO:   hide it
-    public:
+        const int APP_SRV_HEAP_SIZE = 64;
+        
         ID3D12Device* g_pd3dDevice = nullptr;
-    private:
         ID3D12DescriptorHeap* g_pd3dRtvDescHeap = nullptr;
-    public:
         D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[APP_NUM_BACK_BUFFERS];
-    private:
         ID3D12DescriptorHeap* g_pd3dSrvDescHeap = nullptr;
         ExampleDescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
-        //  TODO:   hide it
-    public:
         ID3D12CommandQueue* g_pd3dCommandQueue = nullptr;
-    private:
-        FrameContext                 g_frameContext[APP_NUM_FRAMES_IN_FLIGHT] = {};
-    public:
+        FrameContext       g_frameContext[APP_NUM_FRAMES_IN_FLIGHT] = {};
         ID3D12GraphicsCommandList* g_pd3dCommandList = nullptr;
-        ID3D12Fence* g_fence = nullptr;
-    private:
         HANDLE                       g_fenceEvent = nullptr;
-    public:
-        IDXGISwapChain3* g_pSwapChain = nullptr;
+
     private:
+        IDXGISwapChain3* g_pSwapChain = nullptr;
         HANDLE                       g_hSwapChainWaitableObject = nullptr;
         ID3D12Resource* g_mainRenderTargetResource[APP_NUM_BACK_BUFFERS] = {};
         UINT                         g_frameIndex = 0;
         
     public:
+        ID3D12Fence* g_fence = nullptr;
         ErrorCode Initialize(HWND hWnd);
         void CleanUp();
         void PackImGuiInitInfo(ImGui_ImplDX12_InitInfo& OutInitInfo);
@@ -108,7 +97,7 @@ namespace dev
         unsigned int GetCurrentBackBufferIndex() const;
         void InsertRenderTargetBarrier(FrameContext* frameCtx, unsigned int BackbufferIndex, D3D12_RESOURCE_BARRIER& OutBarrier) const;
         void ClearRenderTargetView(unsigned int BackBufferIndex, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT *pRects) const;
-        void OMSetRenderTargets(unsigned int NumRenderTargetDescriptors, const D3D12_CPU_DESCRIPTOR_HANDLE *pRenderTargetDescriptors, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE *pDepthStencilDescriptor) const;
+        void OMSetRenderTargets(unsigned int NumRenderTargetDescriptors, unsigned int BackBufferIndex, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE *pDepthStencilDescriptor) const;
         //  XXX:     Current set for srv only.
         void SetDescriptorHeaps(unsigned int NumDescriptorHeaps) const;
         void ExecuteCommandLists();
@@ -116,5 +105,6 @@ namespace dev
         void CleanupRenderTarget();
         ID3D12GraphicsCommandList* GetCommandList();
         ID3D12CommandQueue* GetCommandQueue();
+        IDXGISwapChain3* GetSwapChain();
     };
 }

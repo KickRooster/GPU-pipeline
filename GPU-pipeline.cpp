@@ -32,7 +32,7 @@ int main(int, char**)
 	::RegisterClassExW(&wc);
 	HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"Dear ImGui DirectX12 Example", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance, nullptr);
 	
-	if (PipelineInterface::GetInstance().Initialize(hwnd) != dev::ErrorCode_OK)
+	if (PipelineInterface::GetInstance().Initialize(hwnd) != dev::ErrorCode::OK)
 	{
 		PipelineInterface::GetInstance().CleanUp();
 		::UnregisterClassW(wc.lpszClassName, wc.hInstance);
@@ -178,7 +178,7 @@ int main(int, char**)
 		// Render Dear ImGui graphics
 		const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
 		PipelineInterface::GetInstance().ClearRenderTargetView(backBufferIdx, clear_color_with_alpha, 0, nullptr);
-		PipelineInterface::GetInstance().OMSetRenderTargets(1, &PipelineInterface::GetInstance().g_mainRenderTargetDescriptor[backBufferIdx], FALSE, nullptr);
+		PipelineInterface::GetInstance().OMSetRenderTargets(1, backBufferIdx, FALSE, nullptr);
 		PipelineInterface::GetInstance().SetDescriptorHeaps(1);
 		//	TODO:	hide g_pd3dCommandList
 		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList());
@@ -201,7 +201,7 @@ int main(int, char**)
 		g_SwapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
 
 		UINT64 fenceValue = g_fenceLastSignaledValue + 1;
-		PipelineInterface::GetInstance().GetCommandQueue()->Signal(PipelineInterface::GetInstance().g_fence, fenceValue);
+		PipelineInterface::GetInstance().GetCommandQueue()->Signal(PipelineInterface::GetInstance().GetFence(), fenceValue);
 		g_fenceLastSignaledValue = fenceValue;
 		frameCtx->FenceValue = fenceValue;
 	}
@@ -236,12 +236,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	switch (msg)
 	{
 	case WM_SIZE:
-		if (PipelineInterface::GetInstance().g_pd3dDevice != nullptr && wParam != SIZE_MINIMIZED)
+		if (/*PipelineInterface::GetInstance().g_pd3dDevice != nullptr &&*/ wParam != SIZE_MINIMIZED)
 		{
-			//	XXX:	WaitForLastSubmittedFrame too many calls?
 			PipelineInterface::GetInstance().WaitForLastSubmittedFrame();
 			PipelineInterface::GetInstance().CleanupRenderTarget();
-			HRESULT result = PipelineInterface::GetInstance().g_pSwapChain->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
+			HRESULT result = PipelineInterface::GetInstance().GetSwapChain()->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
 			assert(SUCCEEDED(result) && "Failed to resize swapchain.");
 			PipelineInterface::GetInstance().CreateRenderTarget();
 		}

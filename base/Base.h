@@ -2,24 +2,24 @@
 
 namespace dev
 {
-    enum ErrorCode
+    enum class ErrorCode
     {
-        ErrorCode_Illegal = -1,
-        ErrorCode_OK,
+        Illegal = -1,
+        OK,
         //  DX12 error code begin.
-        ErrorCode_Failed,
-        ErrorCode_DebugInterfaceNotFound,
-        ErrorCode_DeviceCreateFailed,
-        ErrorCode_DescriptorHeapCreateFailed,
-        ErrorCode_CommandQueueCreateFailed,
-        ErrorCode_CommandAllocatorCreateFailed,
-        ErrorCode_CommandListCreateFailed,
-        ErrorCode_CommandListCloseFailed,
-        ErrorCode_FenceCreateFailed,
-        ErrorCode_FenceEventCreateFailed,
-        ErrorCode_DXGIFactoryCreateFailed,
-        ErrorCode_SwapChainForHwndCreateFailed,
-        ErrorCode_QueryIDXGISwapChain3InterfaceFailed,
+        Failed,
+        DebugInterfaceNotFound,
+        DeviceCreateFailed,
+        DescriptorHeapCreateFailed,
+        CommandQueueCreateFailed,
+        CommandAllocatorCreateFailed,
+        CommandListCreateFailed,
+        CommandListCloseFailed,
+        FenceCreateFailed,
+        FenceEventCreateFailed,
+        DXGIFactoryCreateFailed,
+        SwapChainForHwndCreateFailed,
+        QueryIDXGISwapChain3InterfaceFailed,
         //  xxx begin.
         ErrorCode_Num
     };

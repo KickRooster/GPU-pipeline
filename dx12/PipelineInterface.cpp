@@ -21,21 +21,21 @@ namespace dev
         }
         else
         {
-            return ErrorCode_DebugInterfaceNotFound;
+            return ErrorCode::DebugInterfaceNotFound;
         }
 #endif
 
         // Create device
-        if (D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&g_pd3dDevice)) != S_OK)
+        if (D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&D3DDevice)) != S_OK)
         {
-            return ErrorCode_DeviceCreateFailed;
+            return ErrorCode::DeviceCreateFailed;
         }
 
 #ifdef DX12_ENABLE_DEBUG_LAYER
         if (pDX12Debug != nullptr)
         {
             ID3D12InfoQueue* pInfoQueue = nullptr;
-            g_pd3dDevice->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
+            D3DDevice->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
             pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
             pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
             pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
@@ -47,133 +47,129 @@ namespace dev
         {
             D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
             DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-            DescriptorHeapDesc.NumDescriptors = APP_NUM_BACK_BUFFERS;
+            DescriptorHeapDesc.NumDescriptors = BackBufferCount;
             DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
             DescriptorHeapDesc.NodeMask = 1;
-            if (g_pd3dDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&g_pd3dRtvDescHeap)) != S_OK)
+            if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DRtvDescHeap)) != S_OK)
             {
-                return ErrorCode_DescriptorHeapCreateFailed;
-            }
-            
-            SIZE_T rtvDescriptorSize = g_pd3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-            D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = g_pd3dRtvDescHeap->GetCPUDescriptorHandleForHeapStart();
-            for (UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++)
-            {
-                g_mainRenderTargetDescriptor[i] = rtvHandle;
-                rtvHandle.ptr += rtvDescriptorSize;
+                return ErrorCode::DescriptorHeapCreateFailed;
             }
         }
 
-        {
+        {   
             D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
             DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-            DescriptorHeapDesc.NumDescriptors = APP_SRV_HEAP_SIZE;
+            DescriptorHeapDesc.NumDescriptors = SrvHeapSize;
             DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-            if (g_pd3dDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&g_pd3dSrvDescHeap)) != S_OK)
+            if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DSrvDescHeap)) != S_OK)
             {
-                return ErrorCode_DescriptorHeapCreateFailed;
+                return ErrorCode::DescriptorHeapCreateFailed;
             }
+
+            D3DSrvDescHeapAlloc.Create(D3DDevice, D3DSrvDescHeap);
+        }
             
-            g_pd3dSrvDescHeapAlloc.Create(g_pd3dDevice, g_pd3dSrvDescHeap);
+        SIZE_T rtvDescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = D3DRtvDescHeap->GetCPUDescriptorHandleForHeapStart();
+        for (UINT i = 0; i < BackBufferCount; i++)
+        {
+            MainRenderTargetDescriptors[i] = rtvHandle;
+            rtvHandle.ptr += rtvDescriptorSize;
+        }
+        
+        D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
+        CommandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+        CommandQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+        CommandQueueDesc.NodeMask = 1;
+        if (D3DDevice->CreateCommandQueue(&CommandQueueDesc, IID_PPV_ARGS(&D3DCommandQueue)) != S_OK)
+        {
+            return ErrorCode::Failed;
         }
 
+        for (UINT i = 0; i < FrameNumInFlight; i++)
         {
-            D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
-            CommandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-            CommandQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-            CommandQueueDesc.NodeMask = 1;
-            if (g_pd3dDevice->CreateCommandQueue(&CommandQueueDesc, IID_PPV_ARGS(&g_pd3dCommandQueue)) != S_OK)
+            if (D3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&FrameContexts[i].CommandAllocator)) != S_OK)
             {
-                return ErrorCode_Failed;
-            }
-        }
-
-        for (UINT i = 0; i < APP_NUM_FRAMES_IN_FLIGHT; i++)
-        {
-            if (g_pd3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_frameContext[i].CommandAllocator)) != S_OK)
-            {
-                return ErrorCode_CommandAllocatorCreateFailed;
+                return ErrorCode::CommandAllocatorCreateFailed;
             }
         }
         
-        if (g_pd3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_frameContext[0].CommandAllocator, nullptr, IID_PPV_ARGS(&g_pd3dCommandList)) != S_OK)
+        if (D3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, FrameContexts[0].CommandAllocator, nullptr, IID_PPV_ARGS(&D3DCommandList)) != S_OK)
         {
-            return ErrorCode_CommandListCreateFailed;
+            return ErrorCode::CommandListCreateFailed;
         }
 
-        if (g_pd3dCommandList->Close() != S_OK)
+        if (D3DCommandList->Close() != S_OK)
         {
-            return ErrorCode_CommandListCloseFailed;
+            return ErrorCode::CommandListCloseFailed;
         }
         
-        if (g_pd3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_fence)) != S_OK)
+        if (D3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&Fence)) != S_OK)
         {
-            return ErrorCode_FenceCreateFailed;
+            return ErrorCode::FenceCreateFailed;
         }
         
-        g_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-        if (g_fenceEvent == nullptr)
+        FenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        if (FenceEvent == nullptr)
         {
-            return ErrorCode_FenceEventCreateFailed;
+            return ErrorCode::FenceEventCreateFailed;
         }
         
+        // Setup swap chain
+        DXGI_SWAP_CHAIN_DESC1 SwapChainDesc;
         {
-            // Setup swap chain
-            DXGI_SWAP_CHAIN_DESC1 SwapChainDesc;
-            {
-                ZeroMemory(&SwapChainDesc, sizeof(SwapChainDesc));
-                SwapChainDesc.BufferCount = APP_NUM_BACK_BUFFERS;
-                SwapChainDesc.Width = 0;
-                SwapChainDesc.Height = 0;
-                SwapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-                SwapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-                SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-                SwapChainDesc.SampleDesc.Count = 1;
-                SwapChainDesc.SampleDesc.Quality = 0;
-                SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-                SwapChainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-                SwapChainDesc.Scaling = DXGI_SCALING_STRETCH;
-                SwapChainDesc.Stereo = FALSE;
-            }
-            
-            IDXGIFactory4* dxgiFactory = nullptr;
-            IDXGISwapChain1* swapChain1 = nullptr;
-            if (CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory)) != S_OK)
-            {
-                return ErrorCode_DXGIFactoryCreateFailed;
-            }
-            
-            if (dxgiFactory->CreateSwapChainForHwnd(g_pd3dCommandQueue, hWnd, &SwapChainDesc, nullptr, nullptr, &swapChain1) != S_OK)
-            {
-                return ErrorCode_SwapChainForHwndCreateFailed;
-            }
-            
-            if (swapChain1->QueryInterface(IID_PPV_ARGS(&g_pSwapChain)) != S_OK)
-            {
-                return ErrorCode_QueryIDXGISwapChain3InterfaceFailed;
-            }
-            
-            swapChain1->Release();
-            dxgiFactory->Release();
-            g_pSwapChain->SetMaximumFrameLatency(APP_NUM_BACK_BUFFERS);
-            g_hSwapChainWaitableObject = g_pSwapChain->GetFrameLatencyWaitableObject();
+            ZeroMemory(&SwapChainDesc, sizeof(SwapChainDesc));
+            SwapChainDesc.BufferCount = BackBufferCount;
+            SwapChainDesc.Width = 0;
+            SwapChainDesc.Height = 0;
+            SwapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            SwapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+            SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+            SwapChainDesc.SampleDesc.Count = 1;
+            SwapChainDesc.SampleDesc.Quality = 0;
+            SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+            SwapChainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+            SwapChainDesc.Scaling = DXGI_SCALING_STRETCH;
+            SwapChainDesc.Stereo = FALSE;
         }
+            
+        IDXGIFactory4* dxgiFactory = nullptr;
+        IDXGISwapChain1* swapChain1 = nullptr;
+        if (CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory)) != S_OK)
+        {
+            return ErrorCode::DXGIFactoryCreateFailed;
+        }
+            
+        if (dxgiFactory->CreateSwapChainForHwnd(D3DCommandQueue, hWnd, &SwapChainDesc, nullptr, nullptr, &swapChain1) != S_OK)
+        {
+            return ErrorCode::SwapChainForHwndCreateFailed;
+        }
+            
+        if (swapChain1->QueryInterface(IID_PPV_ARGS(&SwapChain)) != S_OK)
+        {
+            return ErrorCode::QueryIDXGISwapChain3InterfaceFailed;
+        }
+            
+        swapChain1->Release();
+        dxgiFactory->Release();
+        SwapChain->SetMaximumFrameLatency(BackBufferCount);
+        SwapChainWaitableObject = SwapChain->GetFrameLatencyWaitableObject();
 
-        for (UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++)
+        for (UINT i = 0; i < BackBufferCount; i++)
         {
             ID3D12Resource* pBackBuffer = nullptr;
-            g_pSwapChain->GetBuffer(i, IID_PPV_ARGS(&pBackBuffer));
-            g_pd3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, g_mainRenderTargetDescriptor[i]);
-            g_mainRenderTargetResource[i] = pBackBuffer;
+            SwapChain->GetBuffer(i, IID_PPV_ARGS(&pBackBuffer));
+            D3DDevice->CreateRenderTargetView(pBackBuffer, nullptr, MainRenderTargetDescriptors[i]);
+            MainRenderTargetResources[i] = pBackBuffer;
         }
         
-        return ErrorCode_OK;
+        return ErrorCode::OK;
     }
 
     void PipelineInterface::CleanUp()
     {
         //  WaitForLastSubmittedFrame
-        FrameContext* frameCtx = &g_frameContext[g_frameIndex % APP_NUM_FRAMES_IN_FLIGHT];
+        FrameContext* frameCtx = &FrameContexts[FrameIndex % FrameNumInFlight];
 
         UINT64 fenceValue = frameCtx->FenceValue;
         if (fenceValue == 0)
@@ -182,86 +178,86 @@ namespace dev
         }
         
         frameCtx->FenceValue = 0;
-        if (g_fence->GetCompletedValue() >= fenceValue)
+        if (Fence->GetCompletedValue() >= fenceValue)
         {
             return;
         }
         
-        g_fence->SetEventOnCompletion(fenceValue, g_fenceEvent);
-        WaitForSingleObject(g_fenceEvent, INFINITE);
+        Fence->SetEventOnCompletion(fenceValue, FenceEvent);
+        WaitForSingleObject(FenceEvent, INFINITE);
 
         //  CleanupRenderTarget
-        for (UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++)
+        for (UINT i = 0; i < BackBufferCount; i++)
         {
-            if (g_mainRenderTargetResource[i])
+            if (MainRenderTargetResources[i])
             {
-                g_mainRenderTargetResource[i]->Release();
-                g_mainRenderTargetResource[i] = nullptr;
+                MainRenderTargetResources[i]->Release();
+                MainRenderTargetResources[i] = nullptr;
             }
         }
         
         //  Do clean
-        if (g_pSwapChain)
+        if (SwapChain)
         {
-            g_pSwapChain->SetFullscreenState(false, nullptr);
-            g_pSwapChain->Release();
-            g_pSwapChain = nullptr;
+            SwapChain->SetFullscreenState(false, nullptr);
+            SwapChain->Release();
+            SwapChain = nullptr;
         }
         
-        if (g_hSwapChainWaitableObject != nullptr)
+        if (SwapChainWaitableObject != nullptr)
         {
-            CloseHandle(g_hSwapChainWaitableObject);
+            CloseHandle(SwapChainWaitableObject);
         }
         
-        for (UINT i = 0; i < APP_NUM_FRAMES_IN_FLIGHT; i++)
+        for (UINT i = 0; i < FrameNumInFlight; i++)
         {
-            if (g_frameContext[i].CommandAllocator)
+            if (FrameContexts[i].CommandAllocator)
             {
-                g_frameContext[i].CommandAllocator->Release();
-                g_frameContext[i].CommandAllocator = nullptr;
+                FrameContexts[i].CommandAllocator->Release();
+                FrameContexts[i].CommandAllocator = nullptr;
             }
         }
         
-        if (g_pd3dCommandQueue)
+        if (D3DCommandQueue)
         {
-            g_pd3dCommandQueue->Release();
-            g_pd3dCommandQueue = nullptr;
+            D3DCommandQueue->Release();
+            D3DCommandQueue = nullptr;
         }
         
-        if (g_pd3dCommandList)
+        if (D3DCommandList)
         {
-            g_pd3dCommandList->Release();
-            g_pd3dCommandList = nullptr;
+            D3DCommandList->Release();
+            D3DCommandList = nullptr;
         }
         
-        if (g_pd3dRtvDescHeap)
+        if (D3DRtvDescHeap)
         {
-            g_pd3dRtvDescHeap->Release();
-            g_pd3dRtvDescHeap = nullptr;
+            D3DRtvDescHeap->Release();
+            D3DRtvDescHeap = nullptr;
         }
         
-        if (g_pd3dSrvDescHeap)
+        if (D3DSrvDescHeap)
         {
-            g_pd3dSrvDescHeap->Release();
-            g_pd3dSrvDescHeap = nullptr;
+            D3DSrvDescHeap->Release();
+            D3DSrvDescHeap = nullptr;
         }
         
-        if (g_fence)
+        if (Fence)
         {
-            g_fence->Release();
-            g_fence = nullptr;
+            Fence->Release();
+            Fence = nullptr;
         }
         
-        if (g_fenceEvent)
+        if (FenceEvent)
         {
-            CloseHandle(g_fenceEvent);
-            g_fenceEvent = nullptr;
+            CloseHandle(FenceEvent);
+            FenceEvent = nullptr;
         }
         
-        if (g_pd3dDevice)
+        if (D3DDevice)
         {
-            g_pd3dDevice->Release();
-            g_pd3dDevice = nullptr;
+            D3DDevice->Release();
+            D3DDevice = nullptr;
         }
 
 #ifdef DX12_ENABLE_DEBUG_LAYER
@@ -276,14 +272,14 @@ namespace dev
 
     void PipelineInterface::PackImGuiInitInfo(ImGui_ImplDX12_InitInfo& OutInitInfo)
     {
-        OutInitInfo.Device = g_pd3dDevice;
-        OutInitInfo.CommandQueue = g_pd3dCommandQueue;
-        OutInitInfo.NumFramesInFlight = APP_NUM_FRAMES_IN_FLIGHT;
+        OutInitInfo.Device = D3DDevice;
+        OutInitInfo.CommandQueue = D3DCommandQueue;
+        OutInitInfo.NumFramesInFlight = FrameNumInFlight;
         OutInitInfo.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
         OutInitInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
         // Allocating SRV descriptors (for textures) is up to the application, so we provide callbacks.
         // (current version of the backend will only allocate one descriptor, future versions will need to allocate more)
-        OutInitInfo.SrvDescriptorHeap = g_pd3dSrvDescHeap;
+        OutInitInfo.SrvDescriptorHeap = D3DSrvDescHeap;
         
         // 使用UserData字段传递this指针
         OutInitInfo.UserData = this;
@@ -291,30 +287,30 @@ namespace dev
         // 使用没有捕获的lambda，通过UserData访问实例
         OutInitInfo.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_handle) { 
             PipelineInterface* Instance = static_cast<PipelineInterface*>(info->UserData);
-            return Instance->g_pd3dSrvDescHeapAlloc.Alloc(out_cpu_handle, out_gpu_handle); 
+            return Instance->D3DSrvDescHeapAlloc.Alloc(out_cpu_handle, out_gpu_handle); 
         };
         
         OutInitInfo.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle) { 
             PipelineInterface* Instance = static_cast<PipelineInterface*>(info->UserData);
-            return Instance->g_pd3dSrvDescHeapAlloc.Free(cpu_handle, gpu_handle); 
+            return Instance->D3DSrvDescHeapAlloc.Free(cpu_handle, gpu_handle); 
         };
     }
     
     FrameContext* PipelineInterface::WaitForNextFrameResources()
     {
-        UINT nextFrameIndex = g_frameIndex + 1;
-        g_frameIndex = nextFrameIndex;
+        UINT nextFrameIndex = FrameIndex + 1;
+        FrameIndex = nextFrameIndex;
 
-        HANDLE waitableObjects[] = { g_hSwapChainWaitableObject, nullptr };
+        HANDLE waitableObjects[] = { SwapChainWaitableObject, nullptr };
         DWORD numWaitableObjects = 1;
 
-        FrameContext* frameCtx = &g_frameContext[nextFrameIndex % APP_NUM_FRAMES_IN_FLIGHT];
+        FrameContext* frameCtx = &FrameContexts[nextFrameIndex % FrameNumInFlight];
         UINT64 fenceValue = frameCtx->FenceValue;
         if (fenceValue != 0) // means no fence was signaled
         {
             frameCtx->FenceValue = 0;
-            g_fence->SetEventOnCompletion(fenceValue, g_fenceEvent);
-            waitableObjects[1] = g_fenceEvent;
+            Fence->SetEventOnCompletion(fenceValue, FenceEvent);
+            waitableObjects[1] = FenceEvent;
             numWaitableObjects = 2;
          }
 
@@ -325,70 +321,70 @@ namespace dev
 
     void PipelineInterface::WaitForLastSubmittedFrame()
     {
-        FrameContext* frameCtx = &g_frameContext[g_frameIndex % APP_NUM_FRAMES_IN_FLIGHT];
+        FrameContext* frameCtx = &FrameContexts[FrameIndex % FrameNumInFlight];
 
         UINT64 fenceValue = frameCtx->FenceValue;
         if (fenceValue == 0)
             return; // No fence was signaled
 
         frameCtx->FenceValue = 0;
-        if (g_fence->GetCompletedValue() >= fenceValue)
+        if (Fence->GetCompletedValue() >= fenceValue)
             return;
 
-        g_fence->SetEventOnCompletion(fenceValue, g_fenceEvent);
-        WaitForSingleObject(g_fenceEvent, INFINITE);
+        Fence->SetEventOnCompletion(fenceValue, FenceEvent);
+        WaitForSingleObject(FenceEvent, INFINITE);
     }
 
     HRESULT PipelineInterface::Present(unsigned SyncInterval, unsigned Flags) const
     {
-        return g_pSwapChain->Present(SyncInterval, Flags);
+        return SwapChain->Present(SyncInterval, Flags);
     }
 
     unsigned PipelineInterface::GetCurrentBackBufferIndex() const
     {
-        return g_pSwapChain->GetCurrentBackBufferIndex();
+        return SwapChain->GetCurrentBackBufferIndex();
     }
 
     void PipelineInterface::InsertRenderTargetBarrier(FrameContext* frameCtx, unsigned BackbufferIndex, D3D12_RESOURCE_BARRIER& OutBarrier) const
     {
         OutBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         OutBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        OutBarrier.Transition.pResource = g_mainRenderTargetResource[BackbufferIndex];
+        OutBarrier.Transition.pResource = MainRenderTargetResources[BackbufferIndex];
         OutBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         OutBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
         OutBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        g_pd3dCommandList->Reset(frameCtx->CommandAllocator, nullptr);
-        g_pd3dCommandList->ResourceBarrier(1, &OutBarrier);
+        D3DCommandList->Reset(frameCtx->CommandAllocator, nullptr);
+        D3DCommandList->ResourceBarrier(1, &OutBarrier);
     }
 
     void PipelineInterface::ClearRenderTargetView(unsigned int BackBufferIndex, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT* pRects) const
     {
-        g_pd3dCommandList->ClearRenderTargetView(g_mainRenderTargetDescriptor[BackBufferIndex], ColorRGBA, NumRects, pRects);
+        D3DCommandList->ClearRenderTargetView(MainRenderTargetDescriptors[BackBufferIndex], ColorRGBA, NumRects, pRects);
     }
 
-    void PipelineInterface::OMSetRenderTargets(unsigned NumRenderTargetDescriptors, const D3D12_CPU_DESCRIPTOR_HANDLE* pRenderTargetDescriptors, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE* pDepthStencilDescriptor) const
+    void PipelineInterface::OMSetRenderTargets(unsigned NumRenderTargetDescriptors, unsigned int BackBufferIndex, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE* pDepthStencilDescriptor) const
     {
-        g_pd3dCommandList->OMSetRenderTargets(NumRenderTargetDescriptors, pRenderTargetDescriptors, RTsSingleHandleToDescriptorRange, pDepthStencilDescriptor);
+        D3DCommandList->OMSetRenderTargets(NumRenderTargetDescriptors, MainRenderTargetDescriptors + BackBufferIndex, RTsSingleHandleToDescriptorRange, pDepthStencilDescriptor);
     }
 
     void PipelineInterface::SetDescriptorHeaps(unsigned NumDescriptorHeaps) const
     {
-        g_pd3dCommandList->SetDescriptorHeaps(NumDescriptorHeaps, &g_pd3dSrvDescHeap);
+        D3DCommandList->SetDescriptorHeaps(NumDescriptorHeaps, &D3DSrvDescHeap);
     }
 
     void PipelineInterface::ExecuteCommandLists()
     {
-        g_pd3dCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&g_pd3dCommandList);
+        D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&D3DCommandList);
     }
 
     void PipelineInterface::CreateRenderTarget()
     {
-        for (UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++)
+        for (UINT i = 0; i < BackBufferCount; i++)
         {
             ID3D12Resource* pBackBuffer = nullptr;
-            g_pSwapChain->GetBuffer(i, IID_PPV_ARGS(&pBackBuffer));
-            g_pd3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, g_mainRenderTargetDescriptor[i]);
-            g_mainRenderTargetResource[i] = pBackBuffer;
+            SwapChain->GetBuffer(i, IID_PPV_ARGS(&pBackBuffer));
+            D3DDevice->CreateRenderTargetView(pBackBuffer, nullptr, MainRenderTargetDescriptors[i]);
+            MainRenderTargetResources[i] = pBackBuffer;
         }
     }
 
@@ -396,17 +392,33 @@ namespace dev
     {
         WaitForLastSubmittedFrame();
 
-        for (UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++)
-            if (g_mainRenderTargetResource[i]) { g_mainRenderTargetResource[i]->Release(); g_mainRenderTargetResource[i] = nullptr; }
+        for (UINT i = 0; i < BackBufferCount; i++)
+        {
+            if (MainRenderTargetResources[i])
+            {
+                MainRenderTargetResources[i]->Release();
+                MainRenderTargetResources[i] = nullptr;
+            }
+        }
     }
 
     ID3D12GraphicsCommandList* PipelineInterface::GetCommandList()
     {
-        return g_pd3dCommandList;
+        return D3DCommandList;
     }
 
     ID3D12CommandQueue* PipelineInterface::GetCommandQueue()
     {
-        return g_pd3dCommandQueue;
+        return D3DCommandQueue;
+    }
+
+    IDXGISwapChain3* PipelineInterface::GetSwapChain()
+    {
+        return SwapChain;   
+    }
+
+    ID3D12Fence* PipelineInterface::GetFence()
+    {
+        return Fence;
     }
 }
