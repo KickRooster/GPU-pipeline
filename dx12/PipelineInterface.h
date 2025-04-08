@@ -9,7 +9,7 @@
 namespace dev
 {
     // Simple free list based allocator
-    struct ExampleDescriptorHeapAllocator
+    struct ImGUIDescriptorHeapAllocator
     {
         ID3D12DescriptorHeap* Heap = nullptr;
         D3D12_DESCRIPTOR_HEAP_TYPE  HeapType = D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES;
@@ -18,38 +18,40 @@ namespace dev
         UINT                        HeapHandleIncrement;
         ImVector<int>               FreeIndices;
 
-        void Create(ID3D12Device* device, ID3D12DescriptorHeap* heap)
+        void Create(ID3D12Device* Device, ID3D12DescriptorHeap* Heap)
         {
-            IM_ASSERT(Heap == nullptr && FreeIndices.empty());
-            Heap = heap;
-            D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
-            HeapType = desc.Type;
+            IM_ASSERT(this->Heap == nullptr && FreeIndices.empty());
+            this->Heap = Heap;
+            D3D12_DESCRIPTOR_HEAP_DESC Desc = Heap->GetDesc();
+            HeapType = Desc.Type;
             HeapStartCpu = Heap->GetCPUDescriptorHandleForHeapStart();
             HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
-            HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
-            FreeIndices.reserve((int)desc.NumDescriptors);
-            for (int n = desc.NumDescriptors; n > 0; n--)
-                FreeIndices.push_back(n - 1);
+            HeapHandleIncrement = Device->GetDescriptorHandleIncrementSize(HeapType);
+            FreeIndices.reserve((int)Desc.NumDescriptors);
+            for (int N = Desc.NumDescriptors; N > 0; --N)
+                FreeIndices.push_back(N - 1);
         }
         void Destroy()
         {
             Heap = nullptr;
             FreeIndices.clear();
         }
-        void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle)
+        
+        void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* OutCPUDescHandle, D3D12_GPU_DESCRIPTOR_HANDLE* OutGPUDescHandle)
         {
             IM_ASSERT(FreeIndices.Size > 0);
-            int idx = FreeIndices.back();
+            unsigned long long Index = FreeIndices.back();
             FreeIndices.pop_back();
-            out_cpu_desc_handle->ptr = HeapStartCpu.ptr + (idx * HeapHandleIncrement);
-            out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
+            OutCPUDescHandle->ptr = HeapStartCpu.ptr + (Index * HeapHandleIncrement);
+            OutGPUDescHandle->ptr = HeapStartGpu.ptr + (Index * HeapHandleIncrement);
         }
-        void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle)
+        
+        void Free(D3D12_CPU_DESCRIPTOR_HANDLE CPUDescHandle, D3D12_GPU_DESCRIPTOR_HANDLE GPUDescHandle)
         {
-            int cpu_idx = (int)((out_cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
-            int gpu_idx = (int)((out_gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
-            IM_ASSERT(cpu_idx == gpu_idx);
-            FreeIndices.push_back(cpu_idx);
+            int CpuIndex = (int)((CPUDescHandle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
+            int GpuIndex = (int)((GPUDescHandle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
+            IM_ASSERT(CpuIndex == GpuIndex);
+            FreeIndices.push_back(CpuIndex);
         }
     };
 
@@ -61,33 +63,30 @@ namespace dev
     
     class PipelineInterface : public Singleton<PipelineInterface>
     {
-    private:
         friend class Singleton<PipelineInterface>;
         PipelineInterface() = default; 
         ~PipelineInterface() = default;
         
-        static const int APP_NUM_BACK_BUFFERS = 2;
-        static const int APP_NUM_FRAMES_IN_FLIGHT = 2;
-        const int APP_SRV_HEAP_SIZE = 64;
+        static const int BackBufferCount = 2;
+        static const int FrameNumInFlight = 2;
+        const int SrvHeapSize = 64;
         
-        ID3D12Device* g_pd3dDevice = nullptr;
-        ID3D12DescriptorHeap* g_pd3dRtvDescHeap = nullptr;
-        D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[APP_NUM_BACK_BUFFERS];
-        ID3D12DescriptorHeap* g_pd3dSrvDescHeap = nullptr;
-        ExampleDescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
-        ID3D12CommandQueue* g_pd3dCommandQueue = nullptr;
-        FrameContext       g_frameContext[APP_NUM_FRAMES_IN_FLIGHT] = {};
-        ID3D12GraphicsCommandList* g_pd3dCommandList = nullptr;
-        HANDLE                       g_fenceEvent = nullptr;
-
-    private:
-        IDXGISwapChain3* g_pSwapChain = nullptr;
-        HANDLE                       g_hSwapChainWaitableObject = nullptr;
-        ID3D12Resource* g_mainRenderTargetResource[APP_NUM_BACK_BUFFERS] = {};
-        UINT                         g_frameIndex = 0;
+        ID3D12Device* D3DDevice = nullptr;
+        ID3D12DescriptorHeap* D3DRtvDescHeap = nullptr;
+        ID3D12DescriptorHeap* D3DSrvDescHeap = nullptr;
+        D3D12_CPU_DESCRIPTOR_HANDLE MainRenderTargetDescriptors[BackBufferCount];
+        ImGUIDescriptorHeapAllocator D3DSrvDescHeapAlloc;
+        ID3D12CommandQueue* D3DCommandQueue = nullptr;
+        FrameContext FrameContexts[FrameNumInFlight] = {};
+        ID3D12GraphicsCommandList* D3DCommandList = nullptr;
+        HANDLE FenceEvent = nullptr;
+        IDXGISwapChain3* SwapChain = nullptr;
+        HANDLE SwapChainWaitableObject = nullptr;
+        ID3D12Resource* MainRenderTargetResources[BackBufferCount] = {};
+        UINT FrameIndex = 0;
+        ID3D12Fence* Fence = nullptr;
         
     public:
-        ID3D12Fence* g_fence = nullptr;
         ErrorCode Initialize(HWND hWnd);
         void CleanUp();
         void PackImGuiInitInfo(ImGui_ImplDX12_InitInfo& OutInitInfo);
@@ -106,5 +105,6 @@ namespace dev
         ID3D12GraphicsCommandList* GetCommandList();
         ID3D12CommandQueue* GetCommandQueue();
         IDXGISwapChain3* GetSwapChain();
+        ID3D12Fence* GetFence();
     };
 }
