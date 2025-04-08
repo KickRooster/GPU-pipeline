@@ -72,8 +72,8 @@ namespace dev
         const int SrvHeapSize = 64;
         
         ID3D12Device* D3DDevice = nullptr;
-        ID3D12DescriptorHeap* D3DRtvDescHeap = nullptr;
-        ID3D12DescriptorHeap* D3DSrvDescHeap = nullptr;
+        ID3D12DescriptorHeap* D3DRTVDescHeap = nullptr;
+        ID3D12DescriptorHeap* D3DSRVDescHeap = nullptr;
         D3D12_CPU_DESCRIPTOR_HANDLE MainRenderTargetDescriptors[BackBufferCount];
         ImGUIDescriptorHeapAllocator D3DSrvDescHeapAlloc;
         ID3D12CommandQueue* D3DCommandQueue = nullptr;
@@ -97,7 +97,7 @@ namespace dev
         void InsertRenderTargetBarrier(FrameContext* frameCtx, unsigned int BackbufferIndex, D3D12_RESOURCE_BARRIER& OutBarrier) const;
         void ClearRenderTargetView(unsigned int BackBufferIndex, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT *pRects) const;
         void OMSetRenderTargets(unsigned int NumRenderTargetDescriptors, unsigned int BackBufferIndex, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE *pDepthStencilDescriptor) const;
-        //  XXX:     Current set for srv only.
+        //  XXX:     Current set for SRV only.
         void SetDescriptorHeaps(unsigned int NumDescriptorHeaps) const;
         void ExecuteCommandLists();
         void CreateRenderTarget();

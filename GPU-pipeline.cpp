@@ -16,9 +16,8 @@
 
 using namespace dev;
 
-//	XXX:	don't delete
-static UINT64                       g_fenceLastSignaledValue = 0;
-static bool                         g_SwapChainOccluded = false;
+static UINT64                       FenceLastSignaledValue = 0;
+static bool                         SwapChainOccluded = false;
 
 // Forward declarations of helper functions
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -28,14 +27,14 @@ int main(int, char**)
 {
 	// Create application window
 	//ImGui_ImplWin32_EnableDpiAwareness();
-	WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"ImGui Example", nullptr };
-	::RegisterClassExW(&wc);
-	HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"Dear ImGui DirectX12 Example", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance, nullptr);
+	WNDCLASSEXW WC = { sizeof(WC), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"ImGui Example", nullptr };
+	::RegisterClassExW(&WC);
+	HWND hwnd = ::CreateWindowW(WC.lpszClassName, L"GPU pipeline", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, WC.hInstance, nullptr);
 	
 	if (PipelineInterface::GetInstance().Initialize(hwnd) != dev::ErrorCode::OK)
 	{
 		PipelineInterface::GetInstance().CleanUp();
-		::UnregisterClassW(wc.lpszClassName, wc.hInstance);
+		::UnregisterClassW(WC.lpszClassName, WC.hInstance);
 		return 1;
 	}
 	
@@ -115,12 +114,12 @@ int main(int, char**)
 			break;
 
 		// Handle window screen locked
-		if (g_SwapChainOccluded && PipelineInterface::GetInstance().Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED)
+		if (SwapChainOccluded && PipelineInterface::GetInstance().Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED)
 		{
 			::Sleep(10);
 			continue;
 		}
-		g_SwapChainOccluded = false;
+		SwapChainOccluded = false;
 
 		// Start the Dear ImGui frame
 		ImGui_ImplDX12_NewFrame();
@@ -167,24 +166,24 @@ int main(int, char**)
 		// Rendering
 		ImGui::Render();
 
-		dev::FrameContext* frameCtx = PipelineInterface::GetInstance().WaitForNextFrameResources();
-		UINT backBufferIdx = PipelineInterface::GetInstance().GetCurrentBackBufferIndex();
+		dev::FrameContext* FrameContext = PipelineInterface::GetInstance().WaitForNextFrameResources();
+		UINT BackBufferIndex = PipelineInterface::GetInstance().GetCurrentBackBufferIndex();
 		//	TODO:	try to wrap it.
-		frameCtx->CommandAllocator->Reset();
+		FrameContext->CommandAllocator->Reset();
 
-		D3D12_RESOURCE_BARRIER barrier = {};
-		PipelineInterface::GetInstance().InsertRenderTargetBarrier(frameCtx, backBufferIdx, barrier);
+		D3D12_RESOURCE_BARRIER Barrier = {};
+		PipelineInterface::GetInstance().InsertRenderTargetBarrier(FrameContext, BackBufferIndex, Barrier);
 
 		// Render Dear ImGui graphics
 		const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
-		PipelineInterface::GetInstance().ClearRenderTargetView(backBufferIdx, clear_color_with_alpha, 0, nullptr);
-		PipelineInterface::GetInstance().OMSetRenderTargets(1, backBufferIdx, FALSE, nullptr);
+		PipelineInterface::GetInstance().ClearRenderTargetView(BackBufferIndex, clear_color_with_alpha, 0, nullptr);
+		PipelineInterface::GetInstance().OMSetRenderTargets(1, BackBufferIndex, FALSE, nullptr);
 		PipelineInterface::GetInstance().SetDescriptorHeaps(1);
-		//	TODO:	hide g_pd3dCommandList
+	
 		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList());
-		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-		PipelineInterface::GetInstance().GetCommandList()->ResourceBarrier(1, &barrier);
+		Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+		PipelineInterface::GetInstance().GetCommandList()->ResourceBarrier(1, &Barrier);
 		PipelineInterface::GetInstance().GetCommandList()->Close();
 		PipelineInterface::GetInstance().ExecuteCommandLists();
 		
@@ -196,14 +195,14 @@ int main(int, char**)
 		}
 
 		// Present
-		HRESULT hr = PipelineInterface::GetInstance().Present(1, 0) ;   // Present with vsync
+		HRESULT HR = PipelineInterface::GetInstance().Present(1, 0) ;   // Present with vsync
 		//HRESULT hr = g_pSwapChain->Present(0, 0); // Present without vsync
-		g_SwapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
+		SwapChainOccluded = (HR == DXGI_STATUS_OCCLUDED);
 
-		UINT64 fenceValue = g_fenceLastSignaledValue + 1;
-		PipelineInterface::GetInstance().GetCommandQueue()->Signal(PipelineInterface::GetInstance().GetFence(), fenceValue);
-		g_fenceLastSignaledValue = fenceValue;
-		frameCtx->FenceValue = fenceValue;
+		UINT64 FenceValue = FenceLastSignaledValue + 1;
+		PipelineInterface::GetInstance().GetCommandQueue()->Signal(PipelineInterface::GetInstance().GetFence(), FenceValue);
+		FenceLastSignaledValue = FenceValue;
+		FrameContext->FenceValue = FenceValue;
 	}
 
 	PipelineInterface::GetInstance().WaitForLastSubmittedFrame();
@@ -215,7 +214,7 @@ int main(int, char**)
 
 	PipelineInterface::GetInstance().CleanUp();
 	::DestroyWindow(hwnd);
-	::UnregisterClassW(wc.lpszClassName, wc.hInstance);
+	::UnregisterClassW(WC.lpszClassName, WC.hInstance);
 
 	return 0;
 }
@@ -240,8 +239,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		{
 			PipelineInterface::GetInstance().WaitForLastSubmittedFrame();
 			PipelineInterface::GetInstance().CleanupRenderTarget();
-			HRESULT result = PipelineInterface::GetInstance().GetSwapChain()->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
-			assert(SUCCEEDED(result) && "Failed to resize swapchain.");
+			HRESULT Result = PipelineInterface::GetInstance().GetSwapChain()->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
+			assert(SUCCEEDED(Result) && "Failed to resize swapchain.");
 			PipelineInterface::GetInstance().CreateRenderTarget();
 		}
 		return 0;

@@ -14,10 +14,10 @@ namespace dev
     ErrorCode PipelineInterface::Initialize(HWND hWnd)
     {
 #ifdef DX12_ENABLE_DEBUG_LAYER
-        ID3D12Debug* pDX12Debug = nullptr;
-        if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&pDX12Debug))))
+        ID3D12Debug* DX12Debug = nullptr;
+        if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&DX12Debug))))
         {
-            pDX12Debug->EnableDebugLayer();
+            DX12Debug->EnableDebugLayer();
         }
         else
         {
@@ -32,15 +32,15 @@ namespace dev
         }
 
 #ifdef DX12_ENABLE_DEBUG_LAYER
-        if (pDX12Debug != nullptr)
+        if (DX12Debug != nullptr)
         {
-            ID3D12InfoQueue* pInfoQueue = nullptr;
-            D3DDevice->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
-            pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
-            pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
-            pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
-            pInfoQueue->Release();
-            pDX12Debug->Release();
+            ID3D12InfoQueue* InfoQueue = nullptr;
+            D3DDevice->QueryInterface(IID_PPV_ARGS(&InfoQueue));
+            InfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+            InfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
+            InfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+            InfoQueue->Release();
+            DX12Debug->Release();
         }
 #endif
 
@@ -50,31 +50,31 @@ namespace dev
             DescriptorHeapDesc.NumDescriptors = BackBufferCount;
             DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
             DescriptorHeapDesc.NodeMask = 1;
-            if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DRtvDescHeap)) != S_OK)
+            if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DRTVDescHeap)) != S_OK)
             {
                 return ErrorCode::DescriptorHeapCreateFailed;
             }
         }
 
-        {   
-            D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
-            DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-            DescriptorHeapDesc.NumDescriptors = SrvHeapSize;
-            DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-            if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DSrvDescHeap)) != S_OK)
-            {
-                return ErrorCode::DescriptorHeapCreateFailed;
-            }
+{   
+    D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
+    DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    DescriptorHeapDesc.NumDescriptors = SrvHeapSize;
+    DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DSRVDescHeap)) != S_OK)
+    {
+        return ErrorCode::DescriptorHeapCreateFailed;
+    }
 
-            D3DSrvDescHeapAlloc.Create(D3DDevice, D3DSrvDescHeap);
-        }
+    D3DSrvDescHeapAlloc.Create(D3DDevice, D3DSRVDescHeap);
+}
             
-        SIZE_T rtvDescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = D3DRtvDescHeap->GetCPUDescriptorHandleForHeapStart();
-        for (UINT i = 0; i < BackBufferCount; i++)
+        SIZE_T RTVDescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        D3D12_CPU_DESCRIPTOR_HANDLE RTVHandle = D3DRTVDescHeap->GetCPUDescriptorHandleForHeapStart();
+        for (int I = 0; I < BackBufferCount; ++I)
         {
-            MainRenderTargetDescriptors[i] = rtvHandle;
-            rtvHandle.ptr += rtvDescriptorSize;
+            MainRenderTargetDescriptors[I] = RTVHandle;
+            RTVHandle.ptr += RTVDescriptorSize;
         }
         
         D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
@@ -86,9 +86,9 @@ namespace dev
             return ErrorCode::Failed;
         }
 
-        for (UINT i = 0; i < FrameNumInFlight; i++)
+        for (int I = 0; I < FrameNumInFlight; ++I)
         {
-            if (D3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&FrameContexts[i].CommandAllocator)) != S_OK)
+            if (D3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&FrameContexts[I].CommandAllocator)) != S_OK)
             {
                 return ErrorCode::CommandAllocatorCreateFailed;
             }
@@ -117,50 +117,48 @@ namespace dev
         
         // Setup swap chain
         DXGI_SWAP_CHAIN_DESC1 SwapChainDesc;
-        {
-            ZeroMemory(&SwapChainDesc, sizeof(SwapChainDesc));
-            SwapChainDesc.BufferCount = BackBufferCount;
-            SwapChainDesc.Width = 0;
-            SwapChainDesc.Height = 0;
-            SwapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-            SwapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-            SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-            SwapChainDesc.SampleDesc.Count = 1;
-            SwapChainDesc.SampleDesc.Quality = 0;
-            SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-            SwapChainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-            SwapChainDesc.Scaling = DXGI_SCALING_STRETCH;
-            SwapChainDesc.Stereo = FALSE;
-        }
+        ZeroMemory(&SwapChainDesc, sizeof(SwapChainDesc));
+        SwapChainDesc.BufferCount = BackBufferCount;
+        SwapChainDesc.Width = 0;
+        SwapChainDesc.Height = 0;
+        SwapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        SwapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+        SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        SwapChainDesc.SampleDesc.Count = 1;
+        SwapChainDesc.SampleDesc.Quality = 0;
+        SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        SwapChainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+        SwapChainDesc.Scaling = DXGI_SCALING_STRETCH;
+        SwapChainDesc.Stereo = FALSE;
             
-        IDXGIFactory4* dxgiFactory = nullptr;
-        IDXGISwapChain1* swapChain1 = nullptr;
-        if (CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory)) != S_OK)
+        IDXGIFactory4* DxgiFactory = nullptr;
+        IDXGISwapChain1* SwapChain1 = nullptr;
+        if (CreateDXGIFactory1(IID_PPV_ARGS(&DxgiFactory)) != S_OK)
         {
             return ErrorCode::DXGIFactoryCreateFailed;
         }
             
-        if (dxgiFactory->CreateSwapChainForHwnd(D3DCommandQueue, hWnd, &SwapChainDesc, nullptr, nullptr, &swapChain1) != S_OK)
+        if (DxgiFactory->CreateSwapChainForHwnd(D3DCommandQueue, hWnd, &SwapChainDesc, nullptr, nullptr, &SwapChain1) != S_OK)
         {
             return ErrorCode::SwapChainForHwndCreateFailed;
         }
             
-        if (swapChain1->QueryInterface(IID_PPV_ARGS(&SwapChain)) != S_OK)
+        if (SwapChain1->QueryInterface(IID_PPV_ARGS(&SwapChain)) != S_OK)
         {
             return ErrorCode::QueryIDXGISwapChain3InterfaceFailed;
         }
             
-        swapChain1->Release();
-        dxgiFactory->Release();
+        SwapChain1->Release();
+        DxgiFactory->Release();
         SwapChain->SetMaximumFrameLatency(BackBufferCount);
         SwapChainWaitableObject = SwapChain->GetFrameLatencyWaitableObject();
 
-        for (UINT i = 0; i < BackBufferCount; i++)
+        for (int I = 0; I < BackBufferCount; ++I)
         {
-            ID3D12Resource* pBackBuffer = nullptr;
-            SwapChain->GetBuffer(i, IID_PPV_ARGS(&pBackBuffer));
-            D3DDevice->CreateRenderTargetView(pBackBuffer, nullptr, MainRenderTargetDescriptors[i]);
-            MainRenderTargetResources[i] = pBackBuffer;
+            ID3D12Resource* BackBuffer = nullptr;
+            SwapChain->GetBuffer(I, IID_PPV_ARGS(&BackBuffer));
+            D3DDevice->CreateRenderTargetView(BackBuffer, nullptr, MainRenderTargetDescriptors[I]);
+            MainRenderTargetResources[I] = BackBuffer;
         }
         
         return ErrorCode::OK;
@@ -169,30 +167,30 @@ namespace dev
     void PipelineInterface::CleanUp()
     {
         //  WaitForLastSubmittedFrame
-        FrameContext* frameCtx = &FrameContexts[FrameIndex % FrameNumInFlight];
+        FrameContext* FrameContext = &FrameContexts[FrameIndex % FrameNumInFlight];
 
-        UINT64 fenceValue = frameCtx->FenceValue;
-        if (fenceValue == 0)
+        UINT64 FenceValue = FrameContext->FenceValue;
+        if (FenceValue == 0)
         {
             return; // No fence was signaled
         }
         
-        frameCtx->FenceValue = 0;
-        if (Fence->GetCompletedValue() >= fenceValue)
+        FrameContext->FenceValue = 0;
+        if (Fence->GetCompletedValue() >= FenceValue)
         {
             return;
         }
         
-        Fence->SetEventOnCompletion(fenceValue, FenceEvent);
+        Fence->SetEventOnCompletion(FenceValue, FenceEvent);
         WaitForSingleObject(FenceEvent, INFINITE);
 
         //  CleanupRenderTarget
-        for (UINT i = 0; i < BackBufferCount; i++)
+        for (int I = 0; I < BackBufferCount; ++I)
         {
-            if (MainRenderTargetResources[i])
+            if (MainRenderTargetResources[I])
             {
-                MainRenderTargetResources[i]->Release();
-                MainRenderTargetResources[i] = nullptr;
+                MainRenderTargetResources[I]->Release();
+                MainRenderTargetResources[I] = nullptr;
             }
         }
         
@@ -209,12 +207,12 @@ namespace dev
             CloseHandle(SwapChainWaitableObject);
         }
         
-        for (UINT i = 0; i < FrameNumInFlight; i++)
+        for (int I = 0; I < FrameNumInFlight; ++I)
         {
-            if (FrameContexts[i].CommandAllocator)
+            if (FrameContexts[I].CommandAllocator)
             {
-                FrameContexts[i].CommandAllocator->Release();
-                FrameContexts[i].CommandAllocator = nullptr;
+                FrameContexts[I].CommandAllocator->Release();
+                FrameContexts[I].CommandAllocator = nullptr;
             }
         }
         
@@ -230,16 +228,16 @@ namespace dev
             D3DCommandList = nullptr;
         }
         
-        if (D3DRtvDescHeap)
+        if (D3DRTVDescHeap)
         {
-            D3DRtvDescHeap->Release();
-            D3DRtvDescHeap = nullptr;
+            D3DRTVDescHeap->Release();
+            D3DRTVDescHeap = nullptr;
         }
         
-        if (D3DSrvDescHeap)
+        if (D3DSRVDescHeap)
         {
-            D3DSrvDescHeap->Release();
-            D3DSrvDescHeap = nullptr;
+            D3DSRVDescHeap->Release();
+            D3DSRVDescHeap = nullptr;
         }
         
         if (Fence)
@@ -261,11 +259,11 @@ namespace dev
         }
 
 #ifdef DX12_ENABLE_DEBUG_LAYER
-        IDXGIDebug1* pDebug = nullptr;
-        if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&pDebug))))
+        IDXGIDebug1* Debug = nullptr;
+        if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&Debug))))
         {
-            pDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_SUMMARY);
-            pDebug->Release();
+            Debug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_SUMMARY);
+            Debug->Release();
         }
 #endif
     }
@@ -279,12 +277,11 @@ namespace dev
         OutInitInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
         // Allocating SRV descriptors (for textures) is up to the application, so we provide callbacks.
         // (current version of the backend will only allocate one descriptor, future versions will need to allocate more)
-        OutInitInfo.SrvDescriptorHeap = D3DSrvDescHeap;
+        OutInitInfo.SrvDescriptorHeap = D3DSRVDescHeap;
         
-        // 使用UserData字段传递this指针
+        // Use UserData to pass this pointer
         OutInitInfo.UserData = this;
         
-        // 使用没有捕获的lambda，通过UserData访问实例
         OutInitInfo.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_handle) { 
             PipelineInterface* Instance = static_cast<PipelineInterface*>(info->UserData);
             return Instance->D3DSrvDescHeapAlloc.Alloc(out_cpu_handle, out_gpu_handle); 
@@ -298,40 +295,40 @@ namespace dev
     
     FrameContext* PipelineInterface::WaitForNextFrameResources()
     {
-        UINT nextFrameIndex = FrameIndex + 1;
-        FrameIndex = nextFrameIndex;
+        UINT NextFrameIndex = FrameIndex + 1;
+        FrameIndex = NextFrameIndex;
 
         HANDLE waitableObjects[] = { SwapChainWaitableObject, nullptr };
         DWORD numWaitableObjects = 1;
 
-        FrameContext* frameCtx = &FrameContexts[nextFrameIndex % FrameNumInFlight];
-        UINT64 fenceValue = frameCtx->FenceValue;
-        if (fenceValue != 0) // means no fence was signaled
+        FrameContext* FrameContext = &FrameContexts[NextFrameIndex % FrameNumInFlight];
+        UINT64 FenceValue = FrameContext->FenceValue;
+        if (FenceValue != 0) // means no fence was signaled
         {
-            frameCtx->FenceValue = 0;
-            Fence->SetEventOnCompletion(fenceValue, FenceEvent);
+            FrameContext->FenceValue = 0;
+            Fence->SetEventOnCompletion(FenceValue, FenceEvent);
             waitableObjects[1] = FenceEvent;
             numWaitableObjects = 2;
          }
 
         WaitForMultipleObjects(numWaitableObjects, waitableObjects, TRUE, INFINITE);
 
-        return frameCtx;
+        return FrameContext;
     }
 
     void PipelineInterface::WaitForLastSubmittedFrame()
     {
-        FrameContext* frameCtx = &FrameContexts[FrameIndex % FrameNumInFlight];
+        FrameContext* FrameContext = &FrameContexts[FrameIndex % FrameNumInFlight];
 
-        UINT64 fenceValue = frameCtx->FenceValue;
-        if (fenceValue == 0)
+        UINT64 FenceValue = FrameContext->FenceValue;
+        if (FenceValue == 0)
             return; // No fence was signaled
 
-        frameCtx->FenceValue = 0;
-        if (Fence->GetCompletedValue() >= fenceValue)
+        FrameContext->FenceValue = 0;
+        if (Fence->GetCompletedValue() >= FenceValue)
             return;
 
-        Fence->SetEventOnCompletion(fenceValue, FenceEvent);
+        Fence->SetEventOnCompletion(FenceValue, FenceEvent);
         WaitForSingleObject(FenceEvent, INFINITE);
     }
 
@@ -369,7 +366,7 @@ namespace dev
 
     void PipelineInterface::SetDescriptorHeaps(unsigned NumDescriptorHeaps) const
     {
-        D3DCommandList->SetDescriptorHeaps(NumDescriptorHeaps, &D3DSrvDescHeap);
+        D3DCommandList->SetDescriptorHeaps(NumDescriptorHeaps, &D3DSRVDescHeap);
     }
 
     void PipelineInterface::ExecuteCommandLists()
@@ -379,12 +376,12 @@ namespace dev
 
     void PipelineInterface::CreateRenderTarget()
     {
-        for (UINT i = 0; i < BackBufferCount; i++)
+        for (int I = 0; I < BackBufferCount; ++I)
         {
             ID3D12Resource* pBackBuffer = nullptr;
-            SwapChain->GetBuffer(i, IID_PPV_ARGS(&pBackBuffer));
-            D3DDevice->CreateRenderTargetView(pBackBuffer, nullptr, MainRenderTargetDescriptors[i]);
-            MainRenderTargetResources[i] = pBackBuffer;
+            SwapChain->GetBuffer(I, IID_PPV_ARGS(&pBackBuffer));
+            D3DDevice->CreateRenderTargetView(pBackBuffer, nullptr, MainRenderTargetDescriptors[I]);
+            MainRenderTargetResources[I] = pBackBuffer;
         }
     }
 
@@ -392,12 +389,12 @@ namespace dev
     {
         WaitForLastSubmittedFrame();
 
-        for (UINT i = 0; i < BackBufferCount; i++)
+        for (int I = 0; I < BackBufferCount; ++I)
         {
-            if (MainRenderTargetResources[i])
+            if (MainRenderTargetResources[I])
             {
-                MainRenderTargetResources[i]->Release();
-                MainRenderTargetResources[i] = nullptr;
+                MainRenderTargetResources[I]->Release();
+                MainRenderTargetResources[I] = nullptr;
             }
         }
     }
