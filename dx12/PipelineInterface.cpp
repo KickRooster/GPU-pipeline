@@ -13,19 +13,25 @@ namespace dev
 
     ErrorCode PipelineInterface::Initialize(HWND hWnd)
     {
+        UINT DxgiFactoryFlags = 0;
+
 #ifdef DX12_ENABLE_DEBUG_LAYER
         ID3D12Debug* DX12Debug = nullptr;
         if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&DX12Debug))))
         {
             DX12Debug->EnableDebugLayer();
+
+            // Enable additional debug layers.
+            DxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
         }
         else
         {
             return ErrorCode::DebugInterfaceNotFound;
         }
 #endif
-
-        // Create device
+        
+        //  Create device
+        //  Use the default adapter
         if (D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&D3DDevice)) != S_OK)
         {
             return ErrorCode::DeviceCreateFailed;
@@ -56,24 +62,24 @@ namespace dev
             }
         }
 
-{   
-    D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
-    DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    DescriptorHeapDesc.NumDescriptors = SrvHeapSize;
-    DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DSRVDescHeap)) != S_OK)
-    {
-        return ErrorCode::DescriptorHeapCreateFailed;
-    }
+        {   
+            D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
+            DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+            DescriptorHeapDesc.NumDescriptors = SrvHeapSize;
+            DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+            if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DSRVDescHeap)) != S_OK)
+            {
+                return ErrorCode::DescriptorHeapCreateFailed;
+            }
 
-    D3DSrvDescHeapAlloc.Create(D3DDevice, D3DSRVDescHeap);
-}
+            D3DSRVDescriptorHeapAllocator.Create(D3DDevice, D3DSRVDescHeap);
+        }
             
         SIZE_T RTVDescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
         D3D12_CPU_DESCRIPTOR_HANDLE RTVHandle = D3DRTVDescHeap->GetCPUDescriptorHandleForHeapStart();
         for (int I = 0; I < BackBufferCount; ++I)
         {
-            MainRenderTargetDescriptors[I] = RTVHandle;
+            MainRenderTargetDescriptors.emplace(MainRenderTargetDescriptors.begin() + I, RTVHandle);
             RTVHandle.ptr += RTVDescriptorSize;
         }
         
@@ -88,6 +94,7 @@ namespace dev
 
         for (int I = 0; I < FrameNumInFlight; ++I)
         {
+            FrameContexts.emplace(FrameContexts.begin() + I, FrameContext());
             if (D3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&FrameContexts[I].CommandAllocator)) != S_OK)
             {
                 return ErrorCode::CommandAllocatorCreateFailed;
@@ -133,7 +140,7 @@ namespace dev
             
         IDXGIFactory4* DxgiFactory = nullptr;
         IDXGISwapChain1* SwapChain1 = nullptr;
-        if (CreateDXGIFactory1(IID_PPV_ARGS(&DxgiFactory)) != S_OK)
+        if (CreateDXGIFactory2(DxgiFactoryFlags, IID_PPV_ARGS(&DxgiFactory)) != S_OK)
         {
             return ErrorCode::DXGIFactoryCreateFailed;
         }
@@ -142,7 +149,7 @@ namespace dev
         {
             return ErrorCode::SwapChainForHwndCreateFailed;
         }
-            
+        
         if (SwapChain1->QueryInterface(IID_PPV_ARGS(&SwapChain)) != S_OK)
         {
             return ErrorCode::QueryIDXGISwapChain3InterfaceFailed;
@@ -158,7 +165,7 @@ namespace dev
             ID3D12Resource* BackBuffer = nullptr;
             SwapChain->GetBuffer(I, IID_PPV_ARGS(&BackBuffer));
             D3DDevice->CreateRenderTargetView(BackBuffer, nullptr, MainRenderTargetDescriptors[I]);
-            MainRenderTargetResources[I] = BackBuffer;
+            MainRenderTargetResources.emplace(MainRenderTargetResources.begin() + I, BackBuffer);
         }
         
         return ErrorCode::OK;
@@ -193,6 +200,8 @@ namespace dev
                 MainRenderTargetResources[I] = nullptr;
             }
         }
+        MainRenderTargetResources.clear();
+        MainRenderTargetDescriptors.clear();
         
         //  Do clean
         if (SwapChain)
@@ -215,6 +224,7 @@ namespace dev
                 FrameContexts[I].CommandAllocator = nullptr;
             }
         }
+        FrameContexts.clear();
         
         if (D3DCommandQueue)
         {
@@ -284,24 +294,22 @@ namespace dev
         
         OutInitInfo.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_handle) { 
             PipelineInterface* Instance = static_cast<PipelineInterface*>(info->UserData);
-            return Instance->D3DSrvDescHeapAlloc.Alloc(out_cpu_handle, out_gpu_handle); 
+            return Instance->D3DSRVDescriptorHeapAllocator.Alloc(out_cpu_handle, out_gpu_handle); 
         };
         
         OutInitInfo.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle) { 
             PipelineInterface* Instance = static_cast<PipelineInterface*>(info->UserData);
-            return Instance->D3DSrvDescHeapAlloc.Free(cpu_handle, gpu_handle); 
+            return Instance->D3DSRVDescriptorHeapAllocator.Free(cpu_handle, gpu_handle); 
         };
     }
     
     FrameContext* PipelineInterface::WaitForNextFrameResources()
     {
-        UINT NextFrameIndex = FrameIndex + 1;
-        FrameIndex = NextFrameIndex;
-
+        ++FrameIndex;
         HANDLE waitableObjects[] = { SwapChainWaitableObject, nullptr };
         DWORD numWaitableObjects = 1;
 
-        FrameContext* FrameContext = &FrameContexts[NextFrameIndex % FrameNumInFlight];
+        FrameContext* FrameContext = &FrameContexts[FrameIndex % FrameNumInFlight];
         UINT64 FenceValue = FrameContext->FenceValue;
         if (FenceValue != 0) // means no fence was signaled
         {
@@ -337,23 +345,23 @@ namespace dev
         return SwapChain->Present(SyncInterval, Flags);
     }
 
-    unsigned PipelineInterface::GetCurrentBackBufferIndex() const
+    unsigned int PipelineInterface::GetCurrentBackBufferIndex() const
     {
         return SwapChain->GetCurrentBackBufferIndex();
     }
-
-    void PipelineInterface::InsertRenderTargetBarrier(FrameContext* frameCtx, unsigned BackbufferIndex, D3D12_RESOURCE_BARRIER& OutBarrier) const
+    
+    void PipelineInterface::InsertRenderTargetBarrier(unsigned BackbufferIndex, D3D12_RESOURCE_BARRIER_TYPE BarrierType, D3D12_RESOURCE_BARRIER_FLAGS BarrierFlag, D3D12_RESOURCE_STATES StateBefore, D3D12_RESOURCE_STATES StateAfter) const
     {
-        OutBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        OutBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        OutBarrier.Transition.pResource = MainRenderTargetResources[BackbufferIndex];
-        OutBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        OutBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-        OutBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        D3DCommandList->Reset(frameCtx->CommandAllocator, nullptr);
-        D3DCommandList->ResourceBarrier(1, &OutBarrier);
+        D3D12_RESOURCE_BARRIER Barrier;
+        Barrier.Type = BarrierType;
+        Barrier.Flags = BarrierFlag;
+        Barrier.Transition.pResource = MainRenderTargetResources[BackbufferIndex];
+        Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        Barrier.Transition.StateBefore = StateBefore;
+        Barrier.Transition.StateAfter = StateAfter;
+        D3DCommandList->ResourceBarrier(1, &Barrier);
     }
-
+    
     void PipelineInterface::ClearRenderTargetView(unsigned int BackBufferIndex, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT* pRects) const
     {
         D3DCommandList->ClearRenderTargetView(MainRenderTargetDescriptors[BackBufferIndex], ColorRGBA, NumRects, pRects);
@@ -361,7 +369,7 @@ namespace dev
 
     void PipelineInterface::OMSetRenderTargets(unsigned NumRenderTargetDescriptors, unsigned int BackBufferIndex, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE* pDepthStencilDescriptor) const
     {
-        D3DCommandList->OMSetRenderTargets(NumRenderTargetDescriptors, MainRenderTargetDescriptors + BackBufferIndex, RTsSingleHandleToDescriptorRange, pDepthStencilDescriptor);
+        D3DCommandList->OMSetRenderTargets(NumRenderTargetDescriptors, &MainRenderTargetDescriptors[BackBufferIndex], RTsSingleHandleToDescriptorRange, pDepthStencilDescriptor);
     }
 
     void PipelineInterface::SetDescriptorHeaps(unsigned NumDescriptorHeaps) const

@@ -167,23 +167,35 @@ int main(int, char**)
 		ImGui::Render();
 
 		dev::FrameContext* FrameContext = PipelineInterface::GetInstance().WaitForNextFrameResources();
-		UINT BackBufferIndex = PipelineInterface::GetInstance().GetCurrentBackBufferIndex();
+		unsigned int BackBufferIndex = PipelineInterface::GetInstance().GetCurrentBackBufferIndex();
 		//	TODO:	try to wrap it.
+		//	XXX:	Works well if disable this line, I don't know why now.
 		FrameContext->CommandAllocator->Reset();
-
-		D3D12_RESOURCE_BARRIER Barrier = {};
-		PipelineInterface::GetInstance().InsertRenderTargetBarrier(FrameContext, BackBufferIndex, Barrier);
-
-		// Render Dear ImGui graphics
-		const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
-		PipelineInterface::GetInstance().ClearRenderTargetView(BackBufferIndex, clear_color_with_alpha, 0, nullptr);
-		PipelineInterface::GetInstance().OMSetRenderTargets(1, BackBufferIndex, FALSE, nullptr);
-		PipelineInterface::GetInstance().SetDescriptorHeaps(1);
+		
+		PipelineInterface::GetInstance().GetCommandList()->Reset(FrameContext->CommandAllocator, nullptr);
+		{
+			PipelineInterface::GetInstance().InsertRenderTargetBarrier(
+				BackBufferIndex,
+				D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+				D3D12_RESOURCE_BARRIER_FLAG_NONE,
+				D3D12_RESOURCE_STATE_PRESENT,
+				D3D12_RESOURCE_STATE_RENDER_TARGET);
+		
+			// Render Dear ImGui graphics
+			const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
+			PipelineInterface::GetInstance().ClearRenderTargetView(BackBufferIndex, clear_color_with_alpha, 0, nullptr);
+			PipelineInterface::GetInstance().OMSetRenderTargets(1, BackBufferIndex, FALSE, nullptr);
+			PipelineInterface::GetInstance().SetDescriptorHeaps(1);
 	
-		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList());
-		Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-		PipelineInterface::GetInstance().GetCommandList()->ResourceBarrier(1, &Barrier);
+			ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList());
+		
+			PipelineInterface::GetInstance().InsertRenderTargetBarrier(
+				BackBufferIndex,
+				D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+				D3D12_RESOURCE_BARRIER_FLAG_NONE,
+				D3D12_RESOURCE_STATE_RENDER_TARGET,
+				D3D12_RESOURCE_STATE_PRESENT);
+		}
 		PipelineInterface::GetInstance().GetCommandList()->Close();
 		PipelineInterface::GetInstance().ExecuteCommandLists();
 		

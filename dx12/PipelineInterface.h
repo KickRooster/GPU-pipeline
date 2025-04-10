@@ -5,6 +5,7 @@
 #include "../base/DesignPatterns.h"
 #include "imgui.h"
 #include "backends/imgui_impl_dx12.h"
+#include <vector>
 
 namespace dev
 {
@@ -29,8 +30,11 @@ namespace dev
             HeapHandleIncrement = Device->GetDescriptorHandleIncrementSize(HeapType);
             FreeIndices.reserve((int)Desc.NumDescriptors);
             for (int N = Desc.NumDescriptors; N > 0; --N)
+            {
                 FreeIndices.push_back(N - 1);
+            }
         }
+        
         void Destroy()
         {
             Heap = nullptr;
@@ -67,24 +71,24 @@ namespace dev
         PipelineInterface() = default; 
         ~PipelineInterface() = default;
         
-        static const int BackBufferCount = 2;
-        static const int FrameNumInFlight = 2;
+        const int BackBufferCount = 2;
+        const int FrameNumInFlight = 2;
         const int SrvHeapSize = 64;
         
         ID3D12Device* D3DDevice = nullptr;
-        ID3D12DescriptorHeap* D3DRTVDescHeap = nullptr;
-        ID3D12DescriptorHeap* D3DSRVDescHeap = nullptr;
-        D3D12_CPU_DESCRIPTOR_HANDLE MainRenderTargetDescriptors[BackBufferCount];
-        ImGUIDescriptorHeapAllocator D3DSrvDescHeapAlloc;
         ID3D12CommandQueue* D3DCommandQueue = nullptr;
-        FrameContext FrameContexts[FrameNumInFlight] = {};
         ID3D12GraphicsCommandList* D3DCommandList = nullptr;
-        HANDLE FenceEvent = nullptr;
         IDXGISwapChain3* SwapChain = nullptr;
         HANDLE SwapChainWaitableObject = nullptr;
-        ID3D12Resource* MainRenderTargetResources[BackBufferCount] = {};
-        UINT FrameIndex = 0;
+        ID3D12DescriptorHeap* D3DRTVDescHeap = nullptr;
+        ID3D12DescriptorHeap* D3DSRVDescHeap = nullptr;
+        std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> MainRenderTargetDescriptors;   //  BackBufferCount
+        std::vector<ID3D12Resource*> MainRenderTargetResources;                 //  BackBufferCount
+        std::vector<FrameContext> FrameContexts;                                //  FrameNumInFlight
+        ImGUIDescriptorHeapAllocator D3DSRVDescriptorHeapAllocator;
+        HANDLE FenceEvent = nullptr;
         ID3D12Fence* Fence = nullptr;
+        UINT FrameIndex = 0;
         
     public:
         ErrorCode Initialize(HWND hWnd);
@@ -94,7 +98,7 @@ namespace dev
         void WaitForLastSubmittedFrame();
         HRESULT Present(unsigned int SyncInterval, unsigned int Flags) const;
         unsigned int GetCurrentBackBufferIndex() const;
-        void InsertRenderTargetBarrier(FrameContext* frameCtx, unsigned int BackbufferIndex, D3D12_RESOURCE_BARRIER& OutBarrier) const;
+        void InsertRenderTargetBarrier(unsigned int BackbufferIndex, D3D12_RESOURCE_BARRIER_TYPE BarrierType, D3D12_RESOURCE_BARRIER_FLAGS BarrierFlag, D3D12_RESOURCE_STATES StateBefore, D3D12_RESOURCE_STATES StateAfter) const;
         void ClearRenderTargetView(unsigned int BackBufferIndex, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT *pRects) const;
         void OMSetRenderTargets(unsigned int NumRenderTargetDescriptors, unsigned int BackBufferIndex, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE *pDepthStencilDescriptor) const;
         //  XXX:     Current set for SRV only.
@@ -106,5 +110,8 @@ namespace dev
         ID3D12CommandQueue* GetCommandQueue();
         IDXGISwapChain3* GetSwapChain();
         ID3D12Fence* GetFence();
+
+        //  Interface for render GPU pipeline only
+        
     };
 }
