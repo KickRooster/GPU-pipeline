@@ -1,11 +1,14 @@
 ﻿#pragma once
 #include <d3d12.h>
+#include <d3dx12.h>
 #include <dxgi1_4.h>
 #include "../base/Base.h"
 #include "../base/DesignPatterns.h"
 #include "imgui.h"
 #include "backends/imgui_impl_dx12.h"
 #include <vector>
+
+using namespace Microsoft::WRL;
 
 namespace dev
 {
@@ -19,7 +22,7 @@ namespace dev
         UINT                        HeapHandleIncrement;
         ImVector<int>               FreeIndices;
 
-        void Create(ID3D12Device* Device, ID3D12DescriptorHeap* Heap)
+        void Create(ID3D12Device* Device, ID3D12DescriptorHeap* Heap, UINT StartOffset = 0)
         {
             IM_ASSERT(this->Heap == nullptr && FreeIndices.empty());
             this->Heap = Heap;
@@ -28,8 +31,13 @@ namespace dev
             HeapStartCpu = Heap->GetCPUDescriptorHandleForHeapStart();
             HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
             HeapHandleIncrement = Device->GetDescriptorHandleIncrementSize(HeapType);
-            FreeIndices.reserve((int)Desc.NumDescriptors);
-            for (int N = Desc.NumDescriptors; N > 0; --N)
+            
+            SIZE_T ReservedSize = StartOffset * HeapHandleIncrement;
+            HeapStartCpu.ptr += ReservedSize;
+            HeapStartGpu.ptr += ReservedSize;
+            
+            FreeIndices.reserve((int)(Desc.NumDescriptors - StartOffset));
+            for (int N = Desc.NumDescriptors - StartOffset; N > 0; --N)
             {
                 FreeIndices.push_back(N - 1);
             }
@@ -73,24 +81,34 @@ namespace dev
         
         const int BackBufferCount = 2;
         const int FrameNumInFlight = 2;
-        const int SrvHeapSize = 64;
+        const int SRVHeapSize = 64;
         
-        ID3D12Device* D3DDevice = nullptr;
+        ComPtr<ID3D12Device> D3DDevice = nullptr;
         ID3D12CommandQueue* D3DCommandQueue = nullptr;
         ID3D12GraphicsCommandList* D3DCommandList = nullptr;
         IDXGISwapChain3* SwapChain = nullptr;
         HANDLE SwapChainWaitableObject = nullptr;
-        ID3D12DescriptorHeap* D3DRTVDescHeap = nullptr;
-        ID3D12DescriptorHeap* D3DSRVDescHeap = nullptr;
-        std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> MainRenderTargetDescriptors;   //  BackBufferCount
-        std::vector<ID3D12Resource*> MainRenderTargetResources;                 //  BackBufferCount
-        std::vector<FrameContext> FrameContexts;                                //  FrameNumInFlight
+        ComPtr<ID3D12DescriptorHeap> D3DRTVDescHeap = nullptr;
+        ComPtr<ID3D12DescriptorHeap> D3DSRVDescHeap = nullptr;
+        std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> IMGUIRenderTargetDescriptors;   //  BackBufferCount
+        D3D12_CPU_DESCRIPTOR_HANDLE LevelRenderTargetDescriptor;
+        std::vector<ID3D12Resource*> IMGUIRenderTargetResources;                 //  BackBufferCount
+        ComPtr<ID3D12Resource> LevelRenderTargetResource;                 
+        std::vector<FrameContext> FrameContexts;                                 //  FrameNumInFlight
         ImGUIDescriptorHeapAllocator D3DSRVDescriptorHeapAllocator;
         HANDLE FenceEvent = nullptr;
         ID3D12Fence* Fence = nullptr;
         UINT FrameIndex = 0;
-        
+
+        ComPtr<ID3D12Resource> RenderTarget = nullptr;
+        ComPtr<ID3D12RootSignature> RootSignature;
+        ComPtr<ID3D12PipelineState> PipelineState;
+        ComPtr<ID3D12Resource> VertexBuffer;
+        D3D12_VERTEX_BUFFER_VIEW VertexBufferView;
+    
     public:
+        D3D12_GPU_DESCRIPTOR_HANDLE LevelSRVGPUHandle;
+        
         ErrorCode Initialize(HWND hWnd);
         void CleanUp();
         void PackImGuiInitInfo(ImGui_ImplDX12_InitInfo& OutInitInfo);
@@ -98,20 +116,20 @@ namespace dev
         void WaitForLastSubmittedFrame();
         HRESULT Present(unsigned int SyncInterval, unsigned int Flags) const;
         unsigned int GetCurrentBackBufferIndex() const;
-        void InsertRenderTargetBarrier(unsigned int BackbufferIndex, D3D12_RESOURCE_BARRIER_TYPE BarrierType, D3D12_RESOURCE_BARRIER_FLAGS BarrierFlag, D3D12_RESOURCE_STATES StateBefore, D3D12_RESOURCE_STATES StateAfter) const;
-        void ClearRenderTargetView(unsigned int BackBufferIndex, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT *pRects) const;
-        void OMSetRenderTargets(unsigned int NumRenderTargetDescriptors, unsigned int BackBufferIndex, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE *pDepthStencilDescriptor) const;
+        void InsertIMGUIRenderTargetBarrier(unsigned int BackbufferIndex, D3D12_RESOURCE_STATES StateBefore, D3D12_RESOURCE_STATES StateAfter, D3D12_RESOURCE_BARRIER_TYPE BarrierType = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_FLAGS BarrierFlag = D3D12_RESOURCE_BARRIER_FLAG_NONE) const;
+        void ClearIMGUIRenderTargetView(unsigned int BackBufferIndex, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT *pRects) const;
+        void OMSetIMGUIRenderTargets(unsigned int NumRenderTargetDescriptors, unsigned int BackBufferIndex, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE *pDepthStencilDescriptor) const;
         //  XXX:     Current set for SRV only.
-        void SetDescriptorHeaps(unsigned int NumDescriptorHeaps) const;
+        void SetSRVDescriptorHeaps(unsigned int NumDescriptorHeaps) const;
         void ExecuteCommandLists();
-        void CreateRenderTarget();
-        void CleanupRenderTarget();
+        void CreateIMGUIRenderTarget();
+        void CleanupIMGUIRenderTarget();
         ID3D12GraphicsCommandList* GetCommandList();
         ID3D12CommandQueue* GetCommandQueue();
         IDXGISwapChain3* GetSwapChain();
         ID3D12Fence* GetFence();
 
         //  Interface for render GPU pipeline only
-        
+        void RenderLevel(unsigned int BackBufferIndex);
     };
 }

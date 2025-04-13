@@ -16,7 +16,7 @@
 
 using namespace dev;
 
-static UINT64                       FenceLastSignaledValue = 0;
+static unsigned long                FenceLastSignaledValue = 0;
 static bool                         SwapChainOccluded = false;
 
 // Forward declarations of helper functions
@@ -121,10 +121,30 @@ int main(int, char**)
 		}
 		SwapChainOccluded = false;
 
+		//	First, we render the level.
+		dev::FrameContext* FrameContext = PipelineInterface::GetInstance().WaitForNextFrameResources();
+		
+		//	After we have submitted the rendering commands for a complete frame to the
+		//	GPU, we would like to reuse the memory in the command allocator for the next
+		//	frame. The ID3D12CommandAllocator::Reset method may be used for this:
+		FrameContext->CommandAllocator->Reset();
+		HRESULT Result = PipelineInterface::GetInstance().GetCommandList()->Reset(FrameContext->CommandAllocator, nullptr);
+		if (FAILED(Result))
+		{
+			return 0;
+		}
+		unsigned int BackBufferIndex = PipelineInterface::GetInstance().GetCurrentBackBufferIndex();
+		PipelineInterface::GetInstance().RenderLevel(BackBufferIndex);
+		
 		// Start the Dear ImGui frame
 		ImGui_ImplDX12_NewFrame();
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
+
+		ImGui::Begin("Scene View");
+		ImVec2 ViewportSize = ImGui::GetContentRegionAvail();
+		ImGui::Image((ImTextureID)PipelineInterface::GetInstance().LevelSRVGPUHandle.ptr, ViewportSize);
+		ImGui::End();
 
 		// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
 		if (show_demo_window)
@@ -165,37 +185,19 @@ int main(int, char**)
 
 		// Rendering
 		ImGui::Render();
-
-		dev::FrameContext* FrameContext = PipelineInterface::GetInstance().WaitForNextFrameResources();
-		unsigned int BackBufferIndex = PipelineInterface::GetInstance().GetCurrentBackBufferIndex();
-		//	TODO:	try to wrap it.
-		//	XXX:	Works well if disable this line, I don't know why now.
-		FrameContext->CommandAllocator->Reset();
 		
-		PipelineInterface::GetInstance().GetCommandList()->Reset(FrameContext->CommandAllocator, nullptr);
-		{
-			PipelineInterface::GetInstance().InsertRenderTargetBarrier(
-				BackBufferIndex,
-				D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-				D3D12_RESOURCE_BARRIER_FLAG_NONE,
-				D3D12_RESOURCE_STATE_PRESENT,
-				D3D12_RESOURCE_STATE_RENDER_TARGET);
+		PipelineInterface::GetInstance().InsertIMGUIRenderTargetBarrier(BackBufferIndex,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);
 		
-			// Render Dear ImGui graphics
-			const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
-			PipelineInterface::GetInstance().ClearRenderTargetView(BackBufferIndex, clear_color_with_alpha, 0, nullptr);
-			PipelineInterface::GetInstance().OMSetRenderTargets(1, BackBufferIndex, FALSE, nullptr);
-			PipelineInterface::GetInstance().SetDescriptorHeaps(1);
+		// Render Dear ImGui graphics
+		const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
+		PipelineInterface::GetInstance().ClearIMGUIRenderTargetView(BackBufferIndex, clear_color_with_alpha, 0, nullptr);
+		PipelineInterface::GetInstance().OMSetIMGUIRenderTargets(1, BackBufferIndex, false, nullptr);
+		PipelineInterface::GetInstance().SetSRVDescriptorHeaps(1);
 	
-			ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList());
+		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList());
 		
-			PipelineInterface::GetInstance().InsertRenderTargetBarrier(
-				BackBufferIndex,
-				D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-				D3D12_RESOURCE_BARRIER_FLAG_NONE,
-				D3D12_RESOURCE_STATE_RENDER_TARGET,
-				D3D12_RESOURCE_STATE_PRESENT);
-		}
+		PipelineInterface::GetInstance().InsertIMGUIRenderTargetBarrier(BackBufferIndex, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+		
 		PipelineInterface::GetInstance().GetCommandList()->Close();
 		PipelineInterface::GetInstance().ExecuteCommandLists();
 		
@@ -211,7 +213,7 @@ int main(int, char**)
 		//HRESULT hr = g_pSwapChain->Present(0, 0); // Present without vsync
 		SwapChainOccluded = (HR == DXGI_STATUS_OCCLUDED);
 
-		UINT64 FenceValue = FenceLastSignaledValue + 1;
+		unsigned long FenceValue = FenceLastSignaledValue + 1;
 		PipelineInterface::GetInstance().GetCommandQueue()->Signal(PipelineInterface::GetInstance().GetFence(), FenceValue);
 		FenceLastSignaledValue = FenceValue;
 		FrameContext->FenceValue = FenceValue;
@@ -250,12 +252,15 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		if (/*PipelineInterface::GetInstance().g_pd3dDevice != nullptr &&*/ wParam != SIZE_MINIMIZED)
 		{
 			PipelineInterface::GetInstance().WaitForLastSubmittedFrame();
-			PipelineInterface::GetInstance().CleanupRenderTarget();
+			PipelineInterface::GetInstance().CleanupIMGUIRenderTarget();
 			HRESULT Result = PipelineInterface::GetInstance().GetSwapChain()->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
 			assert(SUCCEEDED(Result) && "Failed to resize swapchain.");
-			PipelineInterface::GetInstance().CreateRenderTarget();
+			PipelineInterface::GetInstance().CreateIMGUIRenderTarget();
 		}
 		return 0;
+	case WM_PAINT:
+		
+		break;
 	case WM_SYSCOMMAND:
 		if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
 			return 0;
