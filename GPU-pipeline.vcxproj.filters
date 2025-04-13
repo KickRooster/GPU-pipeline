@@ -45,6 +45,12 @@
     <ClCompile Include="imgui\backends\imgui_impl_win32.cpp">
       <Filter>ImGUISource</Filter>
     </ClCompile>
+    <ClCompile Include="dx12\PipelineInterface.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Log.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">
@@ -62,11 +68,21 @@
     <ClInclude Include="imgui\backends\imgui_impl_win32.h">
       <Filter>ImGUISource</Filter>
     </ClInclude>
+    <ClInclude Include="base\Base.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="base\DesignPatterns.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx12\PipelineInterface.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="imgui\misc\debuggers\imgui.natstepfilter">
       <Filter>ImGUIBase</Filter>
     </None>
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="imgui\misc\debuggers\imgui.natvis">
