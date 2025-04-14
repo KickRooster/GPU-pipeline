@@ -142,7 +142,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="GPU-pipeline.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_dx12.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_win32.cpp" />
     <ClCompile Include="imgui\imgui.cpp" />
@@ -150,18 +149,19 @@
     <ClCompile Include="imgui\imgui_draw.cpp" />
     <ClCompile Include="imgui\imgui_tables.cpp" />
     <ClCompile Include="imgui\imgui_widgets.cpp" />
-    <ClCompile Include="dx12\PipelineInterface.cpp" />
-    <ClCompile Include="Log.cpp" />
+    <ClCompile Include="source\dx12\PipelineInterface.cpp" />
+    <ClCompile Include="source\GPU-pipeline.cpp" />
+    <ClCompile Include="source\Log.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="base\Base.h" />
-    <ClInclude Include="base\DesignPatterns.h" />
     <ClInclude Include="imgui\backends\imgui_impl_dx12.h" />
     <ClInclude Include="imgui\backends\imgui_impl_win32.h" />
     <ClInclude Include="imgui\imconfig.h" />
     <ClInclude Include="imgui\imgui.h" />
     <ClInclude Include="imgui\imgui_internal.h" />
-    <ClInclude Include="dx12\PipelineInterface.h" />
+    <ClInclude Include="source\base\Base.h" />
+    <ClInclude Include="source\base\DesignPatterns.h" />
+    <ClInclude Include="source\dx12\PipelineInterface.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="imgui\misc\debuggers\imgui.natstepfilter" />

@@ -6,9 +6,9 @@
 // - Documentation        https://dearimgui.com/docs (same as your local docs/ folder).
 // - Introduction, links and more at the top of imgui.cpp
 
-#include "imgui/imgui.h"
-#include "imgui/backends/imgui_impl_win32.h"
-#include "imgui/backends/imgui_impl_dx12.h"
+#include "../imgui/imgui.h"
+#include "../imgui/backends/imgui_impl_win32.h"
+#include "../imgui/backends/imgui_impl_dx12.h"
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <tchar.h>
@@ -122,19 +122,19 @@ int main(int, char**)
 		SwapChainOccluded = false;
 
 		//	First, we render the level.
-		dev::FrameContext* FrameContext = PipelineInterface::GetInstance().WaitForNextFrameResources();
+		const unsigned int FrameContextIndex = PipelineInterface::GetInstance().WaitForNextFrameResources();
 		
 		//	After we have submitted the rendering commands for a complete frame to the
 		//	GPU, we would like to reuse the memory in the command allocator for the next
 		//	frame. The ID3D12CommandAllocator::Reset method may be used for this:
-		FrameContext->CommandAllocator->Reset();
-		HRESULT Result = PipelineInterface::GetInstance().GetCommandList()->Reset(FrameContext->CommandAllocator, nullptr);
+		PipelineInterface::GetInstance().ResetCommandAllocator(FrameContextIndex);
+		HRESULT Result = PipelineInterface::GetInstance().ResetCommandList(FrameContextIndex);
 		if (FAILED(Result))
 		{
 			return 0;
 		}
-		unsigned int BackBufferIndex = PipelineInterface::GetInstance().GetCurrentBackBufferIndex();
-		PipelineInterface::GetInstance().RenderLevel(BackBufferIndex);
+		
+		PipelineInterface::GetInstance().RenderLevel(FrameContextIndex);
 		
 		// Start the Dear ImGui frame
 		ImGui_ImplDX12_NewFrame();
@@ -143,7 +143,7 @@ int main(int, char**)
 
 		ImGui::Begin("Scene View");
 		ImVec2 ViewportSize = ImGui::GetContentRegionAvail();
-		ImGui::Image((ImTextureID)PipelineInterface::GetInstance().LevelSRVGPUHandle.ptr, ViewportSize);
+		ImGui::Image((ImTextureID)PipelineInterface::GetInstance().GetLevelRenderTargetGPUHandle().ptr, ViewportSize);
 		ImGui::End();
 
 		// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
@@ -186,20 +186,21 @@ int main(int, char**)
 		// Rendering
 		ImGui::Render();
 		
-		PipelineInterface::GetInstance().InsertIMGUIRenderTargetBarrier(BackBufferIndex,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);
+		unsigned int BackBufferIndex = PipelineInterface::GetInstance().GetCurrentBackBufferIndex();
+		PipelineInterface::GetInstance().InsertIMGUIRenderTargetBarrier(FrameContextIndex, BackBufferIndex,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);
 		
 		// Render Dear ImGui graphics
 		const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
-		PipelineInterface::GetInstance().ClearIMGUIRenderTargetView(BackBufferIndex, clear_color_with_alpha, 0, nullptr);
-		PipelineInterface::GetInstance().OMSetIMGUIRenderTargets(1, BackBufferIndex, false, nullptr);
-		PipelineInterface::GetInstance().SetSRVDescriptorHeaps(1);
+		PipelineInterface::GetInstance().ClearIMGUIRenderTargetView(FrameContextIndex, BackBufferIndex, clear_color_with_alpha, 0, nullptr);
+		PipelineInterface::GetInstance().OMSetIMGUIRenderTargets(FrameContextIndex, 1, BackBufferIndex, false, nullptr);
+		PipelineInterface::GetInstance().SetSRVDescriptorHeaps(FrameContextIndex, 1);
 	
-		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList());
+		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList(FrameContextIndex));
 		
-		PipelineInterface::GetInstance().InsertIMGUIRenderTargetBarrier(BackBufferIndex, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-		
-		PipelineInterface::GetInstance().GetCommandList()->Close();
-		PipelineInterface::GetInstance().ExecuteCommandLists();
+		PipelineInterface::GetInstance().InsertIMGUIRenderTargetBarrier(FrameContextIndex, BackBufferIndex, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+
+		PipelineInterface::GetInstance().GetCommandList(FrameContextIndex)->Close();
+		PipelineInterface::GetInstance().ExecuteCommandLists(FrameContextIndex);
 		
 		// Update and Render additional Platform Windows
 		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
@@ -216,7 +217,7 @@ int main(int, char**)
 		unsigned long FenceValue = FenceLastSignaledValue + 1;
 		PipelineInterface::GetInstance().GetCommandQueue()->Signal(PipelineInterface::GetInstance().GetFence(), FenceValue);
 		FenceLastSignaledValue = FenceValue;
-		FrameContext->FenceValue = FenceValue;
+		PipelineInterface::GetInstance().UpdateFrameContextFenceValue(FrameContextIndex, FenceValue);
 	}
 
 	PipelineInterface::GetInstance().WaitForLastSubmittedFrame();
