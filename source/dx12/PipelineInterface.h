@@ -127,10 +127,9 @@ namespace dev
         void CleanupIMGUIRenderTarget();
         void ResetCommandAllocator(unsigned int FrameContextIndex) const;
         HRESULT ResetCommandList(unsigned int FrameContextIndex) const;
-        ID3D12CommandQueue* GetCommandQueue();
+        void Signal(unsigned long FenceValue) const;
         ID3D12GraphicsCommandList* GetCommandList(unsigned int FrameContextIndex) const;
         IDXGISwapChain3* GetSwapChain();
-        ID3D12Fence* GetFence();
         void UpdateFrameContextFenceValue(unsigned int FrameContextIndex, unsigned long FenceValue);
         D3D12_GPU_DESCRIPTOR_HANDLE GetLevelRenderTargetGPUHandle() const;
         

@@ -215,7 +215,7 @@ int main(int, char**)
 		SwapChainOccluded = (HR == DXGI_STATUS_OCCLUDED);
 
 		unsigned long FenceValue = FenceLastSignaledValue + 1;
-		PipelineInterface::GetInstance().GetCommandQueue()->Signal(PipelineInterface::GetInstance().GetFence(), FenceValue);
+		PipelineInterface::GetInstance().Signal(FenceValue);
 		FenceLastSignaledValue = FenceValue;
 		PipelineInterface::GetInstance().UpdateFrameContextFenceValue(FrameContextIndex, FenceValue);
 	}

@@ -598,11 +598,11 @@ void OutputDebugMessage(ID3D12InfoQueue* infoQueue)
             nullptr);
     }
 
-    ID3D12CommandQueue* PipelineInterface::GetCommandQueue()
+    void PipelineInterface::Signal(unsigned long FenceValue) const
     {
-        return D3DCommandQueue.Get();
+        D3DCommandQueue->Signal(Fence.Get(), FenceValue);
     }
-
+    
     ID3D12GraphicsCommandList* PipelineInterface::GetCommandList(unsigned FrameContextIndex) const
     {
         return FrameContexts[FrameContextIndex].CommandList.Get();
@@ -612,11 +612,6 @@ void OutputDebugMessage(ID3D12InfoQueue* infoQueue)
     IDXGISwapChain3* PipelineInterface::GetSwapChain()
     {
         return SwapChain.Get();   
-    }
-
-    ID3D12Fence* PipelineInterface::GetFence()
-    {
-        return Fence.Get();
     }
 
     void PipelineInterface::UpdateFrameContextFenceValue(unsigned FrameContextIndex, unsigned long FenceValue)
