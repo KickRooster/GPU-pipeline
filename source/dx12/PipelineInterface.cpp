@@ -19,32 +19,6 @@ namespace dev
 #ifdef DX12_ENABLE_DEBUG_LAYER
 #include <dxgidebug.h>
 #pragma comment(lib, "dxguid.lib")
-
-// 添加调试辅助函数
-void OutputDebugMessage(ID3D12InfoQueue* infoQueue)
-{
-    UINT64 messageCount = infoQueue->GetNumStoredMessages();
-    for (UINT64 i = 0; i < messageCount; i++)
-    {
-        SIZE_T messageSize = 0;
-        infoQueue->GetMessage(i, nullptr, &messageSize);
-        
-        D3D12_MESSAGE* message = (D3D12_MESSAGE*)malloc(messageSize);
-        infoQueue->GetMessage(i, message, &messageSize);
-            
-        std::stringstream ss;
-        ss << std::string("D3D12 Debug: ") 
-           << message->pDescription 
-           << " [Severity: " << static_cast<int>(message->Severity) << "]";
-            
-        OutputDebugStringA(ss.str().c_str());
-        std::cerr << ss.str();
-            
-        free(message);
-    }
-    
-    infoQueue->ClearStoredMessages();
-}
 #endif
     
     ErrorCode PipelineInterface::Initialize(HWND hWnd)
@@ -293,7 +267,7 @@ void OutputDebugMessage(ID3D12InfoQueue* infoQueue)
         PSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
         PSODesc.SampleDesc.Count = 1;
         D3DDevice->CreateGraphicsPipelineState(&PSODesc, IID_PPV_ARGS(&PipelineState));
-
+        
         struct Vertex
         {
             DirectX::XMFLOAT3 position;
@@ -308,34 +282,71 @@ void OutputDebugMessage(ID3D12InfoQueue* infoQueue)
         };
 
         const unsigned int VertexBufferSize = sizeof(TriangleVertices);
-
-        // Note: using upload heaps to transfer static data like vert buffers is not 
-        // recommended. Every time the GPU needs it, the upload heap will be marshalled 
-        // over. Please read up on Default Heap usage. An upload heap is used here for 
-        // code simplicity and because there are very few verts to actually transfer.
-        CD3DX12_HEAP_PROPERTIES HeapPropertied(D3D12_HEAP_TYPE_UPLOAD);
+    
+        // 1. Create vertex buffer on default heap
+        CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
         CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(VertexBufferSize);
-        D3DDevice->CreateCommittedResource(&HeapPropertied, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&VertexBuffer));
+        D3DDevice->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&VertexBuffer));
 
-        // Copy the triangle data to the vertex buffer.
-        UINT8* VertexDataBegin;
+        // 2. Create vertex buffer on upload heap
+        CD3DX12_HEAP_PROPERTIES UploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
+        D3DDevice->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&VertexBufferUpload));
+
+        // 3. Copy data to vertex buffer for uploading
+        unsigned int* VertexDataBegin;
         CD3DX12_RANGE ReadRange(0, 0);        // We do not intend to read from this resource on the CPU.
-        VertexBuffer->Map(0, &ReadRange, reinterpret_cast<void**>(&VertexDataBegin));
+        VertexBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&VertexDataBegin));
         memcpy(VertexDataBegin, TriangleVertices, sizeof(TriangleVertices));
-        VertexBuffer->Unmap(0, nullptr);
+        VertexBufferUpload->Unmap(0, nullptr);
 
-        // Initialize the vertex buffer view.
+        FrameContext& FrameContext = FrameContexts[0];
+
+        // 4. Reset command list for initializing resource, any command list is okay
+        FrameContext.CommandAllocator->Reset();
+        FrameContext.CommandList->Reset(FrameContext.CommandAllocator.Get(), nullptr);
+        
+        // 5. Record copy command
+        FrameContext.CommandList->CopyBufferRegion(
+            VertexBuffer.Get(), 0,
+            VertexBufferUpload.Get(), 0,
+            VertexBufferSize);
+
+        // 6. Insert a barrier
+        CD3DX12_RESOURCE_BARRIER BufferBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            VertexBuffer.Get(),
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        FrameContext.CommandList->ResourceBarrier(1, &BufferBarrier);
+        
+        // 7. Close command list
+        FrameContext.CommandList->Close();
+        
+        // 8. Execute command list
+        ID3D12GraphicsCommandList* CommandListPointer = FrameContext.CommandList.Get();
+        D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&CommandListPointer);
+        
+        // 9. Wait for it completion on GPU
+        UINT64 FenceValue = 1;
+        D3DCommandQueue->Signal(Fence.Get(), FenceValue);
+        if (Fence->GetCompletedValue() < FenceValue)
+        {
+            Fence->SetEventOnCompletion(FenceValue, FenceEvent);
+            WaitForSingleObject(FenceEvent, INFINITE);
+        }
+        
+        // 10. Initialize vertex buffer view, we will use it later when using it
         VertexBufferView.BufferLocation = VertexBuffer->GetGPUVirtualAddress();
         VertexBufferView.StrideInBytes = sizeof(Vertex);
         VertexBufferView.SizeInBytes = VertexBufferSize;
-    
+        
         return ErrorCode::OK;
     }
 
     void PipelineInterface::CleanUp()
     {
         //  WaitForLastSubmittedFrame
-        FrameContext* FrameContext = &FrameContexts[FrameIndex % FrameNumInFlight];
+        unsigned int FrameContextIndex = FrameIndex % FrameNumInFlight;
+        FrameContext* FrameContext = &FrameContexts[FrameContextIndex];
 
         UINT64 FenceValue = FrameContext->FenceValue;
         if (FenceValue == 0)
@@ -366,6 +377,20 @@ void OutputDebugMessage(ID3D12InfoQueue* infoQueue)
         {
             LevelRenderTargetResource->Release();
             LevelRenderTargetResource = nullptr;
+        }
+        
+        // 清理顶点缓冲区资源
+        if (VertexBuffer)
+        {
+            VertexBuffer->Release();
+            VertexBuffer = nullptr;
+        }
+        
+        // 释放上传缓冲区 - 数据已经复制到默认堆，不再需要
+        if (VertexBufferUpload)
+        {
+            VertexBufferUpload->Release();
+            VertexBufferUpload = nullptr;
         }
         
         IMGUIRenderTargetResources.clear();
@@ -486,12 +511,12 @@ void OutputDebugMessage(ID3D12InfoQueue* infoQueue)
         unsigned int FrameContextIndex = FrameIndex % FrameNumInFlight;
         UINT64 FenceValue = FrameContexts[FrameContextIndex].FenceValue;
         if (FenceValue != 0) // means no fence was signaled
-        {
+            {
             FrameContexts[FrameContextIndex].FenceValue = 0;
             Fence->SetEventOnCompletion(FenceValue, FenceEvent);
             WaitableObjects[1] = FenceEvent;
             NumWaitableObjects = 2;
-        }
+            }
 
         WaitForMultipleObjects(NumWaitableObjects, WaitableObjects, TRUE, INFINITE);
 
@@ -502,7 +527,7 @@ void OutputDebugMessage(ID3D12InfoQueue* infoQueue)
     {
         FrameContext* FrameContext = &FrameContexts[FrameIndex % FrameNumInFlight];
 
-        unsigned long FenceValue = FrameContext->FenceValue;
+        unsigned long long FenceValue = FrameContext->FenceValue;
         //  No fence was signaled
         if (FenceValue == 0)
         {

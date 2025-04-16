@@ -107,6 +107,7 @@ namespace dev
         ComPtr<ID3D12RootSignature> RootSignature;
         ComPtr<ID3D12PipelineState> PipelineState;
         ComPtr<ID3D12Resource> VertexBuffer;
+        ComPtr<ID3D12Resource> VertexBufferUpload;
         D3D12_VERTEX_BUFFER_VIEW VertexBufferView;
         D3D12_GPU_DESCRIPTOR_HANDLE LevelSRVGPUHandle;
         
