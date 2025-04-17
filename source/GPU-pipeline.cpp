@@ -14,8 +14,6 @@
 #include <tchar.h>
 #include "dx12/PipelineInterface.h"
 
-using namespace dev;
-
 static unsigned long                FenceLastSignaledValue = 0;
 static bool                         SwapChainOccluded = false;
 
@@ -31,7 +29,7 @@ int main(int, char**)
 	::RegisterClassExW(&WC);
 	HWND hwnd = ::CreateWindowW(WC.lpszClassName, L"GPU pipeline", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, WC.hInstance, nullptr);
 	
-	if (PipelineInterface::GetInstance().Initialize(hwnd) != dev::ErrorCode::OK)
+	if (PipelineInterface::GetInstance().Initialize(hwnd) != ErrorCode::OK)
 	{
 		PipelineInterface::GetInstance().CleanUp();
 		::UnregisterClassW(WC.lpszClassName, WC.hInstance);

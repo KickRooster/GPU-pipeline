@@ -1,25 +1,22 @@
 #pragma once
 
-namespace dev
+template<typename T>
+class Singleton
 {
-    template<typename T>
-    class Singleton
-    {
     public:
-        static T& GetInstance()
-        {
-            static T instance;
-            return instance;
-        }
+    static T& GetInstance()
+    {
+        static T instance;
+        return instance;
+    }
 
-        Singleton(const Singleton&) = delete;
-        Singleton& operator=(const Singleton&) = delete;
+    Singleton(const Singleton&) = delete;
+    Singleton& operator=(const Singleton&) = delete;
 
-        Singleton(Singleton&&) = delete;
-        Singleton& operator=(Singleton&&) = delete;
+    Singleton(Singleton&&) = delete;
+    Singleton& operator=(Singleton&&) = delete;
 
-    protected:
-        Singleton() = default;
-        virtual ~Singleton() = default;
-    };
-}
+protected:
+    Singleton() = default;
+    virtual ~Singleton() = default;
+};
