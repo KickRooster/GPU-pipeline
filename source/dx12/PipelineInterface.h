@@ -7,11 +7,15 @@
 #include "imgui.h"
 #include "backends/imgui_impl_dx12.h"
 #include <vector>
+#include "ShapeProxy.h"
+#include "../level/Level.h"
+#include "../shape/Shape.h"
 
+class CameraActor;
 using namespace Microsoft::WRL;
 using namespace std;
 
-    // Simple free list based allocator
+// Simple free list based allocator
 struct ImGUIDescriptorHeapAllocator
 {
     ID3D12DescriptorHeap* Heap = nullptr;
@@ -75,6 +79,10 @@ struct FrameContext
 
 class PipelineInterface : public Singleton<PipelineInterface>
 {
+public:
+    void Draw(unsigned int FrameContextIndex, const Actor* Actor);
+private:
+    
     friend class Singleton<PipelineInterface>;
     PipelineInterface() = default; 
     ~PipelineInterface() = default;
@@ -90,7 +98,7 @@ class PipelineInterface : public Singleton<PipelineInterface>
     vector<FrameContext> FrameContexts;                                     //  FrameNumInFlight
     
     ComPtr<ID3D12DescriptorHeap> D3DRTVDescHeap = nullptr;
-    ComPtr<ID3D12DescriptorHeap> D3DSRVDescHeap = nullptr;
+    ComPtr<ID3D12DescriptorHeap> D3DSRVCBVDescHeap = nullptr;
     vector<D3D12_CPU_DESCRIPTOR_HANDLE> IMGUIRenderTargetDescriptorHandles; //  BackBufferCount
     D3D12_CPU_DESCRIPTOR_HANDLE LevelRenderTargetDescriptorHandle;
     vector<ComPtr<ID3D12Resource>> IMGUIRenderTargetResources;              //  BackBufferCount
@@ -104,11 +112,13 @@ class PipelineInterface : public Singleton<PipelineInterface>
     ComPtr<ID3D12Resource> RenderTarget = nullptr;
     ComPtr<ID3D12RootSignature> RootSignature;
     ComPtr<ID3D12PipelineState> PipelineState;
-    ComPtr<ID3D12Resource> VertexBuffer;
-    ComPtr<ID3D12Resource> VertexBufferUpload;
-    D3D12_VERTEX_BUFFER_VIEW VertexBufferView;
     D3D12_GPU_DESCRIPTOR_HANDLE LevelSRVGPUHandle;
-       
+    
+    //  Constant buffer data
+    D3D12_CPU_DESCRIPTOR_HANDLE ConstantBufferCPUHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE ConstantBufferGPUHandle;
+    ComPtr<ID3D12Resource> ConstantBuffer_;
+    unsigned int* ConstantBufferDataBegin;
 public:
     ErrorCode Initialize(HWND hWnd);
     void CleanUp();
@@ -131,7 +141,10 @@ public:
     IDXGISwapChain3* GetSwapChain();
     void UpdateFrameContextFenceValue(unsigned int FrameContextIndex, unsigned long FenceValue);
     D3D12_GPU_DESCRIPTOR_HANDLE GetLevelRenderTargetGPUHandle() const;
-       
+    void CreateVertexBuffer(const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance);
+    void CreateShapeProxyBuffer(unsigned int FrameContextIndex, const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance);
+    void CreateConstantBuffer(CameraActor* CameraActorInstance);
+    
     //  Interface for render GPU pipeline only
-    void RenderLevel(unsigned int FrameContextIndex);
+    void RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance);
 };

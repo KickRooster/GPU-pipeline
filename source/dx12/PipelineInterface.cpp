@@ -1,9 +1,12 @@
 ﻿#include "PipelineInterface.h"
+#include "../base/Math.h"
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
 #include <iostream>
 #include <string>
 #include <Windows.h>
+
+#include "d3dUtil.h"
 
 #ifndef _DEBUG
 #define _DEBUG 1
@@ -17,7 +20,60 @@
 #include <dxgidebug.h>
 #pragma comment(lib, "dxguid.lib")
 #endif
+
+void PipelineInterface::Draw(unsigned int FrameContextIndex, const Actor* Actor)
+{
+    D3D12_RESOURCE_BARRIER Barrier = {};
+    Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    Barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    Barrier.Transition.pResource = RenderTarget.Get();
+    Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+    FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &Barrier);
+    FrameContexts[FrameContextIndex].CommandList->OMSetRenderTargets(1, &LevelRenderTargetDescriptorHandle, false, nullptr);
+
+    //  XXX:    Called twice one frame.
+    ID3D12DescriptorHeap* RawHeap = D3DSRVCBVDescHeap.Get();
+    FrameContexts[FrameContextIndex].CommandList->SetDescriptorHeaps(1, &RawHeap);
     
+    const float ClearColor[] = { 0, 0, 0, 1.0f };
+    FrameContexts[FrameContextIndex].CommandList->ClearRenderTargetView(LevelRenderTargetDescriptorHandle, ClearColor, 0, nullptr);
+
+    CD3DX12_VIEWPORT ViewPort = CD3DX12_VIEWPORT(0.f, 0.f, 512, 512);
+    CD3DX12_RECT ScissorRect = CD3DX12_RECT(0, 0, 512, 512);
+    FrameContexts[FrameContextIndex].CommandList->RSSetViewports(1, &ViewPort);
+    FrameContexts[FrameContextIndex].CommandList->RSSetScissorRects(1, &ScissorRect);
+
+    FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootSignature(RootSignature.Get());
+    FrameContexts[FrameContextIndex].CommandList->SetPipelineState(PipelineState.Get());
+
+    D3D12_VERTEX_BUFFER_VIEW View1 = Actor->GetShapeProxyInstance()->VertexBufferView();
+    FrameContexts[FrameContextIndex].CommandList->IASetVertexBuffers(0, 1, &View1);
+    D3D12_INDEX_BUFFER_VIEW View2 = Actor->GetShapeProxyInstance()->IndexBufferView();
+    FrameContexts[FrameContextIndex].CommandList->IASetIndexBuffer(&View2);
+    FrameContexts[FrameContextIndex].CommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    
+    //FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootDescriptorTable(0, D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart());
+    FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootDescriptorTable(0, ConstantBufferGPUHandle);
+    
+    FrameContexts[FrameContextIndex].CommandList->DrawIndexedInstanced(
+        36, 
+        1, 0, 0, 0);
+    
+    // if (Actor* DeawActor = LevelInstance->GetActorFowDrawingDebug())
+    // {
+    //     FrameContexts[FrameContextIndex].CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    //     FrameContexts[FrameContextIndex].CommandList->IASetVertexBuffers(0, 1, &DeawActor->GetShapeProxyInstance()->VertexBufferView);
+    //     FrameContexts[FrameContextIndex].CommandList->DrawInstanced(8, 1, 0, 0);
+    // }
+    
+    Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &Barrier);
+}
+
 ErrorCode PipelineInterface::Initialize(HWND hWnd)
 {
     UINT DxgiFactoryFlags = 0;
@@ -63,7 +119,8 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         //  BackBufferCount(imgui) + 1(render target)
         DescriptorHeapDesc.NumDescriptors = BackBufferCount + 1;
         DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-        DescriptorHeapDesc.NodeMask = 1;
+        //  XXX:    NodeMask?
+        DescriptorHeapDesc.NodeMask = 0;
         if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DRTVDescHeap)) != S_OK)
         {
             return ErrorCode::DescriptorHeapCreateFailed;
@@ -80,25 +137,35 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         RTVHandle.ptr += DescriptorSize;
     }
 
-    //  SRV
+    //  SRV & CBV
     {
         D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
         DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         DescriptorHeapDesc.NumDescriptors = SRVHeapSize;
         DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DSRVDescHeap)) != S_OK)
+        if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DSRVCBVDescHeap)) != S_OK)
         {
             return ErrorCode::DescriptorHeapCreateFailed;
         }
 
         //  First D3D12_CPU_DESCRIPTOR_HANDLE of D3DSRVDescHeap is reserved for level's render target.
-        LevelSRVGPUHandle = D3DSRVDescHeap->GetGPUDescriptorHandleForHeapStart();
-        D3DSRVDescriptorHeapAllocator.Create(D3DDevice.Get(), D3DSRVDescHeap.Get(), 1);
+        LevelSRVGPUHandle = D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart();
+        //  Second D3D12_CPU_DESCRIPTOR_HANDLE of D3DSRVDescHeap is reserved for constant buffer.
+        unsigned int IncrementSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+        ConstantBufferCPUHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
+        ConstantBufferCPUHandle.ptr += IncrementSize;
+
+        ConstantBufferGPUHandle = D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart();
+        ConstantBufferGPUHandle.ptr += IncrementSize;
+
+        D3DSRVDescriptorHeapAllocator.Create(D3DDevice.Get(), D3DSRVCBVDescHeap.Get(), 2);
     }
 
     D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
     CommandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
     CommandQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+    //  XXX: NodeMask?
     CommandQueueDesc.NodeMask = 1;
     if (D3DDevice->CreateCommandQueue(&CommandQueueDesc, IID_PPV_ARGS(&D3DCommandQueue)) != S_OK)
     {
@@ -219,14 +286,34 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
     SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     SRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     SRVDesc.Texture2D.MipLevels = 1;
-    D3DDevice->CreateShaderResourceView(RenderTarget.Get(), &SRVDesc, D3DSRVDescHeap->GetCPUDescriptorHandleForHeapStart());
+    D3DDevice->CreateShaderResourceView(RenderTarget.Get(), &SRVDesc, D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart());
 
-    CD3DX12_ROOT_SIGNATURE_DESC RootSignatureDesc;
-    RootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    D3D12_FEATURE_DATA_ROOT_SIGNATURE FeatureData = {};
+
+    // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
+    FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+    if (FAILED(D3DDevice->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &FeatureData, sizeof(FeatureData))))
+    {
+        FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+    }
+    
+    CD3DX12_DESCRIPTOR_RANGE1 Ranges[1];
+    CD3DX12_ROOT_PARAMETER1 RootParameters[1];
+    Ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+    RootParameters[0].InitAsDescriptorTable(1, &Ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
+    
+    D3D12_ROOT_SIGNATURE_FLAGS RootSignatureFlags =
+                D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+                D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+                D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+                D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+                D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC RootSignatureDesc;
+    RootSignatureDesc.Init_1_1(_countof(RootParameters), RootParameters, 0, nullptr, RootSignatureFlags);
 
     ComPtr<ID3DBlob> Signature;
     ComPtr<ID3DBlob> Error;
-    D3D12SerializeRootSignature(&RootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &Signature, &Error);
+    D3DX12SerializeVersionedRootSignature(&RootSignatureDesc, FeatureData.HighestVersion, &Signature, &Error);
     D3DDevice->CreateRootSignature(0, Signature->GetBufferPointer(), Signature->GetBufferSize(), IID_PPV_ARGS(&RootSignature));
 
     ComPtr<ID3DBlob> VertexShader;
@@ -239,14 +326,25 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
     UINT CompileFlags = 0;
 #endif
 
-    std::wstring ShaderPath = L"D:\\GPU-pipeline\\shaders\\shaders.hlsl";
-    D3DCompileFromFile(ShaderPath.c_str(), nullptr, nullptr, "VSMain", "vs_5_0", CompileFlags, 0, &VertexShader, nullptr);
-    D3DCompileFromFile(ShaderPath.c_str(), nullptr, nullptr, "PSMain", "ps_5_0", CompileFlags, 0, &PixelShader, nullptr);
-
+    std::wstring ShaderPath = L"D:\\GPU-pipeline\\shaders\\color.hlsl";
+    ComPtr<ID3DBlob> Errors;
+    HRESULT Result = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "VS", "vs_5_0", CompileFlags, 0, &VertexShader, &Errors);
+    if (Errors != nullptr)
+    {
+        OutputDebugStringA((char*)Errors->GetBufferPointer());
+    }
+    
+    Result = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PS", "ps_5_0", CompileFlags, 0, &PixelShader, &Errors);
+    if (Errors != nullptr)
+    {
+        OutputDebugStringA((char*)Errors->GetBufferPointer());
+    }
+    
     D3D12_INPUT_ELEMENT_DESC InputElementDescs[] =
     {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        //{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
     };
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC PSODesc = {};
@@ -264,77 +362,6 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
     PSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
     PSODesc.SampleDesc.Count = 1;
     D3DDevice->CreateGraphicsPipelineState(&PSODesc, IID_PPV_ARGS(&PipelineState));
-
-    struct Vertex
-    {
-        DirectX::XMFLOAT3 position;
-        DirectX::XMFLOAT4 color;
-    };
-
-    Vertex TriangleVertices[] =
-    {
-        { { 0.0f, 0.25f * 1, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-        { { 0.25f, -0.25f * 1, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-        { { -0.25f, -0.25f * 1, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
-    };
-
-    const unsigned int VertexBufferSize = sizeof(TriangleVertices);
-
-    // 1. Create vertex buffer on default heap
-    CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
-    CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(VertexBufferSize);
-    D3DDevice->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&VertexBuffer));
-
-    // 2. Create vertex buffer on upload heap
-    CD3DX12_HEAP_PROPERTIES UploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
-    D3DDevice->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&VertexBufferUpload));
-
-    // 3. Copy data to vertex buffer for uploading
-    unsigned int* VertexDataBegin;
-    CD3DX12_RANGE ReadRange(0, 0);        // We do not intend to read from this resource on the CPU.
-    VertexBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&VertexDataBegin));
-    memcpy(VertexDataBegin, TriangleVertices, sizeof(TriangleVertices));
-    VertexBufferUpload->Unmap(0, nullptr);
-
-    FrameContext& FrameContext = FrameContexts[0];
-
-    // 4. Reset command list for initializing resource, any command list is okay
-    FrameContext.CommandAllocator->Reset();
-    FrameContext.CommandList->Reset(FrameContext.CommandAllocator.Get(), nullptr);
-
-    // 5. Record copy command
-    FrameContext.CommandList->CopyBufferRegion(
-        VertexBuffer.Get(), 0,
-        VertexBufferUpload.Get(), 0,
-        VertexBufferSize);
-
-    // 6. Insert a barrier
-    CD3DX12_RESOURCE_BARRIER BufferBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        VertexBuffer.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-    FrameContext.CommandList->ResourceBarrier(1, &BufferBarrier);
-
-    // 7. Close command list
-    FrameContext.CommandList->Close();
-
-    // 8. Execute command list
-    ID3D12GraphicsCommandList* CommandListPointer = FrameContext.CommandList.Get();
-    D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&CommandListPointer);
-
-    // 9. Wait for it completion on GPU
-    UINT64 FenceValue = 1;
-    D3DCommandQueue->Signal(Fence.Get(), FenceValue);
-    if (Fence->GetCompletedValue() < FenceValue)
-    {
-        Fence->SetEventOnCompletion(FenceValue, FenceEvent);
-        WaitForSingleObject(FenceEvent, INFINITE);
-    }
-
-    // 10. Initialize vertex buffer view, we will use it later when using it
-    VertexBufferView.BufferLocation = VertexBuffer->GetGPUVirtualAddress();
-    VertexBufferView.StrideInBytes = sizeof(Vertex);
-    VertexBufferView.SizeInBytes = VertexBufferSize;
 
     return ErrorCode::OK;
 }
@@ -374,20 +401,6 @@ void PipelineInterface::CleanUp()
     {
         LevelRenderTargetResource->Release();
         LevelRenderTargetResource = nullptr;
-    }
-
-    // 清理顶点缓冲区资源
-    if (VertexBuffer)
-    {
-        VertexBuffer->Release();
-        VertexBuffer = nullptr;
-    }
-
-    // 释放上传缓冲区 - 数据已经复制到默认堆，不再需要
-    if (VertexBufferUpload)
-    {
-        VertexBufferUpload->Release();
-        VertexBufferUpload = nullptr;
     }
 
     IMGUIRenderTargetResources.clear();
@@ -434,10 +447,10 @@ void PipelineInterface::CleanUp()
         D3DRTVDescHeap = nullptr;
     }
 
-    if (D3DSRVDescHeap)
+    if (D3DSRVCBVDescHeap)
     {
-        D3DSRVDescHeap->Release();
-        D3DSRVDescHeap = nullptr;
+        D3DSRVCBVDescHeap->Release();
+        D3DSRVCBVDescHeap = nullptr;
     }
 
     if (Fence)
@@ -483,7 +496,7 @@ void PipelineInterface::PackImGuiInitInfo(ImGui_ImplDX12_InitInfo& OutInitInfo)
     OutInitInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
     // Allocating SRV descriptors (for textures) is up to the application, so we provide callbacks.
     // (current version of the backend will only allocate one descriptor, future versions will need to allocate more)
-    OutInitInfo.SrvDescriptorHeap = D3DSRVDescHeap.Get();
+    OutInitInfo.SrvDescriptorHeap = D3DSRVCBVDescHeap.Get();
 
     // Use UserData to pass this pointer
     OutInitInfo.UserData = this;
@@ -573,7 +586,7 @@ void PipelineInterface::OMSetIMGUIRenderTargets(unsigned int FrameContextIndex, 
 
 void PipelineInterface::SetSRVDescriptorHeaps(unsigned int FrameContextIndex, unsigned NumDescriptorHeaps) const
 {
-    ID3D12DescriptorHeap* RawHeap = D3DSRVDescHeap.Get();
+    ID3D12DescriptorHeap* RawHeap = D3DSRVCBVDescHeap.Get();
     FrameContexts[FrameContextIndex].CommandList->SetDescriptorHeaps(NumDescriptorHeaps, &RawHeap);
 }
 
@@ -645,8 +658,131 @@ D3D12_GPU_DESCRIPTOR_HANDLE PipelineInterface::GetLevelRenderTargetGPUHandle() c
 {
     return LevelSRVGPUHandle;
 }
+
+void PipelineInterface::CreateVertexBuffer(const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance)
+{
+    // const unsigned int VertexBufferSize = sizeof(Vertex4) * ShapeInstance->GetVertices().size();
+    //
+    // // 1. Create vertex buffer on default heap
+    // CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
+    // CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(VertexBufferSize);
+    // D3DDevice->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&ShapeProxyInstance->VertexBuffer));
+    //
+    // // 2. Create vertex buffer on upload heap
+    // CD3DX12_HEAP_PROPERTIES UploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
+    // D3DDevice->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&ShapeProxyInstance->VertexBufferUpload));
+    //
+    // // 3. Copy data to vertex buffer for uploading
+    // unsigned int* VertexDataBegin;
+    // CD3DX12_RANGE ReadRange(0, 0);        // We do not intend to read from this resource on the CPU.
+    // ShapeProxyInstance->VertexBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&VertexDataBegin));
+    // memcpy(VertexDataBegin, ShapeInstance->GetVertices().data(), VertexBufferSize);
+    // ShapeProxyInstance->VertexBufferUpload->Unmap(0, nullptr);
+    //
+    // FrameContext& FrameContext = FrameContexts[0];
+    //
+    // // 4. Reset command list for initializing resource, any command list is okay
+    // FrameContext.CommandAllocator->Reset();
+    // FrameContext.CommandList->Reset(FrameContext.CommandAllocator.Get(), nullptr);
+    //
+    // // 5. Record copy command
+    // FrameContext.CommandList->CopyBufferRegion(
+    //     ShapeProxyInstance->VertexBuffer.Get(), 0,
+    //     ShapeProxyInstance->VertexBufferUpload.Get(), 0,
+    //     VertexBufferSize);
+    //
+    // // 6. Insert a barrier
+    // CD3DX12_RESOURCE_BARRIER BufferBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+    //     ShapeProxyInstance->VertexBuffer.Get(),
+    //     D3D12_RESOURCE_STATE_COPY_DEST,
+    //     D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+    // FrameContext.CommandList->ResourceBarrier(1, &BufferBarrier);
+    //
+    // // 7. Close command list
+    // FrameContext.CommandList->Close();
+    //
+    // // 8. Execute command list
+    // ID3D12GraphicsCommandList* CommandListPointer = FrameContext.CommandList.Get();
+    // D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&CommandListPointer);
+    //
+    // // 9. Wait for it completion on GPU
+    // UINT64 FenceValue = 1;
+    // D3DCommandQueue->Signal(Fence.Get(), FenceValue);
+    // if (Fence->GetCompletedValue() < FenceValue)
+    // {
+    //     Fence->SetEventOnCompletion(FenceValue, FenceEvent);
+    //     WaitForSingleObject(FenceEvent, INFINITE);
+    // }
+    //
+    // // 10. Initialize vertex buffer view, we will use it later when using it
+    // ShapeProxyInstance->VertexBufferView.BufferLocation = ShapeProxyInstance->VertexBuffer->GetGPUVirtualAddress();
+    // ShapeProxyInstance->VertexBufferView.StrideInBytes = sizeof(Vertex4);
+    // ShapeProxyInstance->VertexBufferView.SizeInBytes = VertexBufferSize;
+}
+
+void PipelineInterface::CreateShapeProxyBuffer(unsigned int FrameContextIndex, const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance)
+{
+    const unsigned int vbByteSize = (unsigned int)ShapeInstance->vertices.size() * sizeof(Vertex);
+    const unsigned int ibByteSize = (unsigned int)ShapeInstance->indices.size() * sizeof(std::uint16_t);
+
+    D3DCreateBlob(vbByteSize, &ShapeProxyInstance->VertexBufferCPU);
+    CopyMemory(ShapeProxyInstance->VertexBufferCPU->GetBufferPointer(), ShapeInstance->vertices.data(), vbByteSize);
     
-void PipelineInterface::RenderLevel(unsigned int FrameContextIndex)
+    D3DCreateBlob(ibByteSize, &ShapeProxyInstance->IndexBufferCPU);
+    CopyMemory(ShapeProxyInstance->IndexBufferCPU->GetBufferPointer(), ShapeInstance->indices.data(), ibByteSize);
+    
+    ShapeProxyInstance->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(
+        D3DDevice.Get(),
+    		FrameContexts[FrameContextIndex].CommandList.Get(),
+    		ShapeInstance->vertices.data(),
+    		vbByteSize,
+    		ShapeProxyInstance->VertexBufferUploader);
+    
+    ShapeProxyInstance->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(
+        D3DDevice.Get(),
+    		FrameContexts[FrameContextIndex].CommandList.Get(),
+    		ShapeInstance->indices.data(),
+    		ibByteSize,
+    		ShapeProxyInstance->IndexBufferUploader);
+
+    ShapeProxyInstance->VertexByteStride = sizeof(Vertex);
+    ShapeProxyInstance->VertexBufferByteSize = vbByteSize;
+    ShapeProxyInstance->IndexFormat = DXGI_FORMAT_R16_UINT;
+    ShapeProxyInstance->IndexBufferByteSize = ibByteSize;
+}
+
+void PipelineInterface::CreateConstantBuffer(CameraActor* CameraActorInstance)
+{
+    const unsigned int ByteSize = MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(CameraActorInstance->GetConstantBuffer()));
+    ConstantBufferProxy* BufferProxy = CameraActorInstance->GetConstantBufferProxy();
+    BufferProxy->ElementByteSize = ByteSize;
+
+    CD3DX12_HEAP_PROPERTIES HeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(ByteSize);
+    D3DDevice->CreateCommittedResource(
+            &HeapProperties,
+            D3D12_HEAP_FLAG_NONE,
+            &BufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&BufferProxy->UploadBuffer));
+
+    BufferProxy->UploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&BufferProxy->MappedData));
+    
+    D3D12_CONSTANT_BUFFER_VIEW_DESC ConstantBufferViewDesc;
+    ConstantBufferViewDesc.BufferLocation = BufferProxy->UploadBuffer->GetGPUVirtualAddress();
+    ConstantBufferViewDesc.SizeInBytes = ByteSize;
+
+    D3DDevice->CreateConstantBufferView(
+        &ConstantBufferViewDesc,
+        ConstantBufferCPUHandle);
+
+    // CD3DX12_RANGE ReadRange(0, 0);        // We do not intend to read from this resource on the CPU.
+    // ConstantBuffer->Map(0, &ReadRange, reinterpret_cast<void**>(&ConstantBufferDataBegin));
+    // memcpy(ConstantBufferDataBegin, &Buffer, ConstantBufferSize);
+}
+
+void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance)
 {
     D3D12_RESOURCE_BARRIER Barrier = {};
     Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -670,10 +806,14 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex)
     FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootSignature(RootSignature.Get());
     FrameContexts[FrameContextIndex].CommandList->SetPipelineState(PipelineState.Get());
 
-    FrameContexts[FrameContextIndex].CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    FrameContexts[FrameContextIndex].CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
-    FrameContexts[FrameContextIndex].CommandList->DrawInstanced(3, 1, 0, 0);
-
+    if (Actor* DrawingActor = LevelInstance->GetActorFowDrawingDebug())
+    {
+        FrameContexts[FrameContextIndex].CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        D3D12_VERTEX_BUFFER_VIEW View = DrawingActor->GetShapeProxyInstance()->VertexBufferView();
+        FrameContexts[FrameContextIndex].CommandList->IASetVertexBuffers(0, 1, &View);
+        FrameContexts[FrameContextIndex].CommandList->DrawInstanced(8, 1, 0, 0);
+    }
+    
     Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &Barrier);

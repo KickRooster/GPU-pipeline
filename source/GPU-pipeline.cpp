@@ -13,6 +13,8 @@
 #include <dxgi1_4.h>
 #include <tchar.h>
 #include "dx12/PipelineInterface.h"
+#include "level/Level.h"
+#include "shape/Cube.h"
 
 static unsigned long                FenceLastSignaledValue = 0;
 static bool                         SwapChainOccluded = false;
@@ -35,6 +37,10 @@ int main(int, char**)
 		::UnregisterClassW(WC.lpszClassName, WC.hInstance);
 		return 1;
 	}
+
+	//	Initialize the level manually.
+	const Actor* CubeActorInstance = Level::GetInstance().InstantiateCubeActor();
+	CameraActor* CameraActorInstance = static_cast<CameraActor*>(Level::GetInstance().InstantiateCameraActor());
 	
 	// Show the window
 	::ShowWindow(hwnd, SW_SHOWDEFAULT);
@@ -88,7 +94,7 @@ int main(int, char**)
 	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
 	//ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
 	//IM_ASSERT(font != nullptr);
-
+	
 	// Our state
 	bool show_demo_window = true;
 	bool show_another_window = false;
@@ -110,7 +116,7 @@ int main(int, char**)
 		}
 		if (done)
 			break;
-
+		
 		// Handle window screen locked
 		if (SwapChainOccluded && PipelineInterface::GetInstance().Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED)
 		{
@@ -119,7 +125,10 @@ int main(int, char**)
 		}
 		SwapChainOccluded = false;
 
-		//	First, we render the level.
+		//	Update the level.
+		//Level::GetInstance().Update(0);
+		
+		//	Render the level.
 		const unsigned int FrameContextIndex = PipelineInterface::GetInstance().WaitForNextFrameResources();
 		
 		//	After we have submitted the rendering commands for a complete frame to the
@@ -131,8 +140,25 @@ int main(int, char**)
 		{
 			return 0;
 		}
-		
-		PipelineInterface::GetInstance().RenderLevel(FrameContextIndex);
+
+		static bool Ready = false;
+
+		//	We suppose constant buffer was created from any command list is fine.
+		if (!Ready)
+		{
+			PipelineInterface::GetInstance().CreateShapeProxyBuffer(FrameContextIndex, CubeActorInstance->GetShapeInstance(), CubeActorInstance->GetShapeProxyInstance());
+			PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
+	
+			//	Create buffer's command list executing frame.
+			Ready = true;
+		}
+		//	Begin run since next frame.
+		else
+		{
+			CameraActorInstance->Update(0);
+			PipelineInterface::GetInstance().Draw(FrameContextIndex, CubeActorInstance);
+			// PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
+		}
 		
 		// Start the Dear ImGui frame
 		ImGui_ImplDX12_NewFrame();
