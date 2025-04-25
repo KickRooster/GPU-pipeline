@@ -156,8 +156,7 @@ int main(int, char**)
 		else
 		{
 			CameraActorInstance->Update(0);
-			PipelineInterface::GetInstance().Draw(FrameContextIndex, CubeActorInstance);
-			// PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
+			PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
 		}
 		
 		// Start the Dear ImGui frame

@@ -1,15 +1,15 @@
 #pragma once
 #include <memory>
-#include "../base/Base.h"
-#include "../base/Math.h"
+#include "../misc/Base.h"
+#include "../misc/Math.h"
 #include "../dx12/ShapeProxy.h"
 #include "../shape/Shape.h"
 
 class Actor
 {
 protected:
-    std::unique_ptr<Shape> ShapeInstance;
-    std::unique_ptr<ShapeProxy> ShapeProxyInstance;
+    std::unique_ptr<Shape> ShapeInstance = nullptr;
+    std::unique_ptr<ShapeProxy> ShapeProxyInstance = nullptr;
     XMMATRIX TransformationMatrix;
 public:
     Transform Transform;

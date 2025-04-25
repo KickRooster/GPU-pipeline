@@ -4,7 +4,7 @@
 #include "../actor/Actor.h"
 #include "../actor/CameraActor.h"
 #include "../actor/CubeActor.h"
-#include "../base/DesignPatterns.h"
+#include "../misc/DesignPatterns.h"
 
 using namespace std;
 
@@ -17,8 +17,6 @@ public:
     Actor* InstantiateCubeActor();
     Actor* InstantiateCameraActor();
     void Update(float DeletaTime) const;
-    void Render();
-    //  XXX:    For debug only.
-    Actor* GetActorFowDrawingDebug() const;
+    vector<Actor*> GetActors() const;
     ~Level();
 };

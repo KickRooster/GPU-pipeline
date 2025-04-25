@@ -36,7 +36,7 @@ Actor* Level::InstantiateCameraActor()
     Actor->NearPlane = 0.1f;
     Actor->FarPlane = 1000.0f;
     Actor->Transform.Position.x = 0;
-    Actor->Transform.Position.y = 0;
+    Actor->Transform.Position.y = 1.7;
     Actor->Transform.Position.z = -4.0f;
     Actor->LookDirection = XMFLOAT3(0, 0, 1);
     Actor->UpDirection = XMFLOAT3(0, 1, 0);
@@ -53,21 +53,16 @@ void Level::Update(float DeletaTime) const
     }
 }
 
-void Level::Render()
+vector<Actor*> Level::GetActors() const
 {
-}
+    vector<Actor*> Result;
 
-Actor* Level::GetActorFowDrawingDebug() const
-{
-    for (const unique_ptr<Actor>& ActorInstance : Actors)
+    for (int I = 0; I < Actors.size(); ++I)
     {
-        if (dynamic_cast<CubeActor*>(ActorInstance.get()))
-        {
-            return ActorInstance.get();
-        }
+        Result.push_back(Actors[I].get());
     }
-
-    return nullptr;
+    
+    return Result;    
 }
 
 Level::~Level()

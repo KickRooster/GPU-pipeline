@@ -2,8 +2,8 @@
 #include <d3d12.h>
 #include <d3dx12.h>
 #include <dxgi1_4.h>
-#include "../base/Base.h"
-#include "../base/DesignPatterns.h"
+#include "../misc/Base.h"
+#include "../misc/DesignPatterns.h"
 #include "imgui.h"
 #include "backends/imgui_impl_dx12.h"
 #include <vector>
@@ -79,10 +79,6 @@ struct FrameContext
 
 class PipelineInterface : public Singleton<PipelineInterface>
 {
-public:
-    void Draw(unsigned int FrameContextIndex, const Actor* Actor);
-private:
-    
     friend class Singleton<PipelineInterface>;
     PipelineInterface() = default; 
     ~PipelineInterface() = default;
@@ -117,8 +113,7 @@ private:
     //  Constant buffer data
     D3D12_CPU_DESCRIPTOR_HANDLE ConstantBufferCPUHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE ConstantBufferGPUHandle;
-    ComPtr<ID3D12Resource> ConstantBuffer_;
-    unsigned int* ConstantBufferDataBegin;
+
 public:
     ErrorCode Initialize(HWND hWnd);
     void CleanUp();

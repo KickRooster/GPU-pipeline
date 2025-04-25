@@ -7,7 +7,6 @@ class CameraActor : public Actor
 {
 protected:
     XMMATRIX ProjectionMatrix;
-    XMMATRIX ViewProjectionMatrix;
 
 public:
     std::unique_ptr<ConstantBuffer> ConstantBufferInstance;
@@ -22,7 +21,6 @@ public:
 
     CameraActor();
     void Update(float DeltaTime) override;
-    XMMATRIX GetViewProjectionMatrix();
     ConstantBuffer* GetConstantBuffer() const;
     ConstantBufferProxy* GetConstantBufferProxy() const;
     ~CameraActor() override = default;

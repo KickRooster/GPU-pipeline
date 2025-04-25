@@ -1,5 +1,5 @@
 ﻿#include "PipelineInterface.h"
-#include "../base/Math.h"
+#include "../misc/Math.h"
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
 #include <iostream>
@@ -20,59 +20,6 @@
 #include <dxgidebug.h>
 #pragma comment(lib, "dxguid.lib")
 #endif
-
-void PipelineInterface::Draw(unsigned int FrameContextIndex, const Actor* Actor)
-{
-    D3D12_RESOURCE_BARRIER Barrier = {};
-    Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    Barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    Barrier.Transition.pResource = RenderTarget.Get();
-    Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-    FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &Barrier);
-    FrameContexts[FrameContextIndex].CommandList->OMSetRenderTargets(1, &LevelRenderTargetDescriptorHandle, false, nullptr);
-
-    //  XXX:    Called twice one frame.
-    ID3D12DescriptorHeap* RawHeap = D3DSRVCBVDescHeap.Get();
-    FrameContexts[FrameContextIndex].CommandList->SetDescriptorHeaps(1, &RawHeap);
-    
-    const float ClearColor[] = { 0, 0, 0, 1.0f };
-    FrameContexts[FrameContextIndex].CommandList->ClearRenderTargetView(LevelRenderTargetDescriptorHandle, ClearColor, 0, nullptr);
-
-    CD3DX12_VIEWPORT ViewPort = CD3DX12_VIEWPORT(0.f, 0.f, 512, 512);
-    CD3DX12_RECT ScissorRect = CD3DX12_RECT(0, 0, 512, 512);
-    FrameContexts[FrameContextIndex].CommandList->RSSetViewports(1, &ViewPort);
-    FrameContexts[FrameContextIndex].CommandList->RSSetScissorRects(1, &ScissorRect);
-
-    FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootSignature(RootSignature.Get());
-    FrameContexts[FrameContextIndex].CommandList->SetPipelineState(PipelineState.Get());
-
-    D3D12_VERTEX_BUFFER_VIEW View1 = Actor->GetShapeProxyInstance()->VertexBufferView();
-    FrameContexts[FrameContextIndex].CommandList->IASetVertexBuffers(0, 1, &View1);
-    D3D12_INDEX_BUFFER_VIEW View2 = Actor->GetShapeProxyInstance()->IndexBufferView();
-    FrameContexts[FrameContextIndex].CommandList->IASetIndexBuffer(&View2);
-    FrameContexts[FrameContextIndex].CommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    
-    //FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootDescriptorTable(0, D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart());
-    FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootDescriptorTable(0, ConstantBufferGPUHandle);
-    
-    FrameContexts[FrameContextIndex].CommandList->DrawIndexedInstanced(
-        36, 
-        1, 0, 0, 0);
-    
-    // if (Actor* DeawActor = LevelInstance->GetActorFowDrawingDebug())
-    // {
-    //     FrameContexts[FrameContextIndex].CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    //     FrameContexts[FrameContextIndex].CommandList->IASetVertexBuffers(0, 1, &DeawActor->GetShapeProxyInstance()->VertexBufferView);
-    //     FrameContexts[FrameContextIndex].CommandList->DrawInstanced(8, 1, 0, 0);
-    // }
-    
-    Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &Barrier);
-}
 
 ErrorCode PipelineInterface::Initialize(HWND hWnd)
 {
@@ -342,9 +289,8 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
     
     D3D12_INPUT_ELEMENT_DESC InputElementDescs[] =
     {
-        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        //{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
     };
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC PSODesc = {};
@@ -722,32 +668,32 @@ void PipelineInterface::CreateVertexBuffer(const Shape* ShapeInstance, ShapeProx
 
 void PipelineInterface::CreateShapeProxyBuffer(unsigned int FrameContextIndex, const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance)
 {
-    const unsigned int vbByteSize = (unsigned int)ShapeInstance->vertices.size() * sizeof(Vertex);
-    const unsigned int ibByteSize = (unsigned int)ShapeInstance->indices.size() * sizeof(std::uint16_t);
-
+    unsigned int vbByteSize = ShapeInstance->GetVertices().size() * sizeof(Vertex);
+    unsigned int ibByteSize = ShapeInstance->GetIndices().size() * sizeof(unsigned int);
+    
     D3DCreateBlob(vbByteSize, &ShapeProxyInstance->VertexBufferCPU);
-    CopyMemory(ShapeProxyInstance->VertexBufferCPU->GetBufferPointer(), ShapeInstance->vertices.data(), vbByteSize);
+    CopyMemory(ShapeProxyInstance->VertexBufferCPU->GetBufferPointer(), ShapeInstance->GetVertices().data(), vbByteSize);
     
     D3DCreateBlob(ibByteSize, &ShapeProxyInstance->IndexBufferCPU);
-    CopyMemory(ShapeProxyInstance->IndexBufferCPU->GetBufferPointer(), ShapeInstance->indices.data(), ibByteSize);
+    CopyMemory(ShapeProxyInstance->IndexBufferCPU->GetBufferPointer(), ShapeInstance->GetIndices().data(), ibByteSize);
     
     ShapeProxyInstance->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(
         D3DDevice.Get(),
     		FrameContexts[FrameContextIndex].CommandList.Get(),
-    		ShapeInstance->vertices.data(),
+    		ShapeInstance->GetVertices().data(),
     		vbByteSize,
     		ShapeProxyInstance->VertexBufferUploader);
     
     ShapeProxyInstance->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(
         D3DDevice.Get(),
     		FrameContexts[FrameContextIndex].CommandList.Get(),
-    		ShapeInstance->indices.data(),
+    		ShapeInstance->GetIndices().data(),
     		ibByteSize,
     		ShapeProxyInstance->IndexBufferUploader);
 
     ShapeProxyInstance->VertexByteStride = sizeof(Vertex);
     ShapeProxyInstance->VertexBufferByteSize = vbByteSize;
-    ShapeProxyInstance->IndexFormat = DXGI_FORMAT_R16_UINT;
+    ShapeProxyInstance->IndexFormat = DXGI_FORMAT_R32_UINT;
     ShapeProxyInstance->IndexBufferByteSize = ibByteSize;
 }
 
@@ -795,6 +741,10 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
     FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &Barrier);
     FrameContexts[FrameContextIndex].CommandList->OMSetRenderTargets(1, &LevelRenderTargetDescriptorHandle, false, nullptr);
 
+    //  XXX:    Called twice one frame.
+    ID3D12DescriptorHeap* RawHeap = D3DSRVCBVDescHeap.Get();
+    FrameContexts[FrameContextIndex].CommandList->SetDescriptorHeaps(1, &RawHeap);
+    
     const float ClearColor[] = { 0, 0, 0, 1.0f };
     FrameContexts[FrameContextIndex].CommandList->ClearRenderTargetView(LevelRenderTargetDescriptorHandle, ClearColor, 0, nullptr);
 
@@ -806,12 +756,22 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
     FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootSignature(RootSignature.Get());
     FrameContexts[FrameContextIndex].CommandList->SetPipelineState(PipelineState.Get());
 
-    if (Actor* DrawingActor = LevelInstance->GetActorFowDrawingDebug())
+    for (int I = 0; I < LevelInstance->GetActors().size(); ++I)
     {
-        FrameContexts[FrameContextIndex].CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        D3D12_VERTEX_BUFFER_VIEW View = DrawingActor->GetShapeProxyInstance()->VertexBufferView();
-        FrameContexts[FrameContextIndex].CommandList->IASetVertexBuffers(0, 1, &View);
-        FrameContexts[FrameContextIndex].CommandList->DrawInstanced(8, 1, 0, 0);
+        if (LevelInstance->GetActors()[I]->GetShapeInstance())
+        {
+            D3D12_VERTEX_BUFFER_VIEW VertexBufferView = LevelInstance->GetActors()[I]->GetShapeProxyInstance()->VertexBufferView();
+            FrameContexts[FrameContextIndex].CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
+            D3D12_INDEX_BUFFER_VIEW IndexBufferView = LevelInstance->GetActors()[I]->GetShapeProxyInstance()->IndexBufferView();
+            FrameContexts[FrameContextIndex].CommandList->IASetIndexBuffer(&IndexBufferView);
+            FrameContexts[FrameContextIndex].CommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+            FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootDescriptorTable(0, ConstantBufferGPUHandle);
+    
+            FrameContexts[FrameContextIndex].CommandList->DrawIndexedInstanced(
+            LevelInstance->GetActors()[I]->GetShapeInstance()->GetIndices().size(),
+                1, 0, 0, 0);
+        }
     }
     
     Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;

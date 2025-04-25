@@ -170,9 +170,9 @@
     <ClInclude Include="source\actor\Actor.h" />
     <ClInclude Include="source\actor\CubeActor.h" />
     <ClInclude Include="source\actor\TriangleActor.h" />
-    <ClInclude Include="source\base\Base.h" />
-    <ClInclude Include="source\base\DesignPatterns.h" />
-    <ClInclude Include="source\base\Math.h" />
+    <ClInclude Include="source\misc\Base.h" />
+    <ClInclude Include="source\misc\DesignPatterns.h" />
+    <ClInclude Include="source\misc\Math.h" />
     <ClInclude Include="source\dx12\ConstantBuffer.h" />
     <ClInclude Include="source\dx12\ConstantBufferProxy.h" />
     <ClInclude Include="source\dx12\d3dUtil.h" />

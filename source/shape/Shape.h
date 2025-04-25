@@ -1,7 +1,7 @@
 #pragma once
 #include <array>
 
-#include "../base/Math.h"
+#include "../misc/Math.h"
 #include <vector>
 
 using namespace std;
@@ -9,17 +9,13 @@ using namespace std;
 class Shape
 {
 protected:
-    vector<Vertex4> Vertices;
+    vector<Vertex> Vertices;
     vector<unsigned int> Indices;
 
 public:
-    std::array<Vertex, 8> vertices;
-    std::array<uint16_t, 36> indices;
-    
-public:
     Shape() = default;
     
-    const vector<Vertex4>& GetVertices() const
+    const vector<Vertex>& GetVertices() const
     {
         return Vertices;
     }
