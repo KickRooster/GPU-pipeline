@@ -1,12 +1,9 @@
 ﻿#include "PipelineInterface.h"
 #include "../misc/Math.h"
 #include <d3dcompiler.h>
-#include <DirectXMath.h>
 #include <iostream>
 #include <string>
 #include <Windows.h>
-
-#include "d3dUtil.h"
 
 #ifndef _DEBUG
 #define _DEBUG 1
