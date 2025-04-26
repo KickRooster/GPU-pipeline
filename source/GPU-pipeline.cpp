@@ -13,8 +13,8 @@
 #include <dxgi1_4.h>
 #include <tchar.h>
 #include "dx12/PipelineInterface.h"
-
-using namespace dev;
+#include "level/Level.h"
+#include "shape/Cube.h"
 
 static unsigned long                FenceLastSignaledValue = 0;
 static bool                         SwapChainOccluded = false;
@@ -31,12 +31,18 @@ int main(int, char**)
 	::RegisterClassExW(&WC);
 	HWND hwnd = ::CreateWindowW(WC.lpszClassName, L"GPU pipeline", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, WC.hInstance, nullptr);
 	
-	if (PipelineInterface::GetInstance().Initialize(hwnd) != dev::ErrorCode::OK)
+	if (PipelineInterface::GetInstance().Initialize(hwnd) != ErrorCode::OK)
 	{
 		PipelineInterface::GetInstance().CleanUp();
 		::UnregisterClassW(WC.lpszClassName, WC.hInstance);
 		return 1;
 	}
+
+	//	Initialize the level manually.
+	const Actor* CubeActorInstance = Level::GetInstance().InstantiateCubeActor();
+	PipelineInterface::GetInstance().CreateShapeProxyBuffer(CubeActorInstance->GetShapeInstance(), CubeActorInstance->GetShapeProxyInstance());
+	const CameraActor* CameraActorInstance = static_cast<CameraActor*>(Level::GetInstance().InstantiateCameraActor());
+	PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
 	
 	// Show the window
 	::ShowWindow(hwnd, SW_SHOWDEFAULT);
@@ -90,7 +96,7 @@ int main(int, char**)
 	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
 	//ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
 	//IM_ASSERT(font != nullptr);
-
+	
 	// Our state
 	bool show_demo_window = true;
 	bool show_another_window = false;
@@ -112,7 +118,7 @@ int main(int, char**)
 		}
 		if (done)
 			break;
-
+		
 		// Handle window screen locked
 		if (SwapChainOccluded && PipelineInterface::GetInstance().Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED)
 		{
@@ -121,7 +127,10 @@ int main(int, char**)
 		}
 		SwapChainOccluded = false;
 
-		//	First, we render the level.
+		//	Update the level.
+		//Level::GetInstance().Update(0);
+		
+		//	Render the level.
 		const unsigned int FrameContextIndex = PipelineInterface::GetInstance().WaitForNextFrameResources();
 		
 		//	After we have submitted the rendering commands for a complete frame to the
@@ -133,8 +142,9 @@ int main(int, char**)
 		{
 			return 0;
 		}
-		
-		PipelineInterface::GetInstance().RenderLevel(FrameContextIndex);
+
+		Level::GetInstance().Update(0);
+		PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
 		
 		// Start the Dear ImGui frame
 		ImGui_ImplDX12_NewFrame();
@@ -193,7 +203,8 @@ int main(int, char**)
 		const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
 		PipelineInterface::GetInstance().ClearIMGUIRenderTargetView(FrameContextIndex, BackBufferIndex, clear_color_with_alpha, 0, nullptr);
 		PipelineInterface::GetInstance().OMSetIMGUIRenderTargets(FrameContextIndex, 1, BackBufferIndex, false, nullptr);
-		PipelineInterface::GetInstance().SetSRVDescriptorHeaps(FrameContextIndex, 1);
+		//	Has been call during Level:Render()
+		//PipelineInterface::GetInstance().SetSRVDescriptorHeaps(FrameContextIndex, 1);
 	
 		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList(FrameContextIndex));
 		
