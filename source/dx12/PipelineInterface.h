@@ -125,7 +125,6 @@ public:
     void InsertIMGUIRenderTargetBarrier(unsigned int FrameContextIndex, unsigned int BackbufferIndex, D3D12_RESOURCE_STATES StateBefore, D3D12_RESOURCE_STATES StateAfter, D3D12_RESOURCE_BARRIER_TYPE BarrierType = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_FLAGS BarrierFlag = D3D12_RESOURCE_BARRIER_FLAG_NONE) const;
     void ClearIMGUIRenderTargetView(unsigned int FrameContextIndex, unsigned int BackBufferIndex, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT *pRects) const;
     void OMSetIMGUIRenderTargets(unsigned int FrameContextIndex, unsigned int NumRenderTargetDescriptors, unsigned int BackBufferIndex, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE *pDepthStencilDescriptor) const;
-    void SetSRVDescriptorHeaps(unsigned int FrameContextIndex, unsigned int NumDescriptorHeaps) const;
     void ExecuteCommandLists(unsigned int FrameContextIndex) const;
     void CreateIMGUIRenderTarget();
     void CleanupIMGUIRenderTarget();
@@ -136,9 +135,8 @@ public:
     IDXGISwapChain3* GetSwapChain();
     void UpdateFrameContextFenceValue(unsigned int FrameContextIndex, unsigned long FenceValue);
     D3D12_GPU_DESCRIPTOR_HANDLE GetLevelRenderTargetGPUHandle() const;
-    void CreateVertexBuffer(const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance);
-    void CreateShapeProxyBuffer(unsigned int FrameContextIndex, const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance);
-    void CreateConstantBuffer(CameraActor* CameraActorInstance);
+    void CreateShapeProxyBuffer(const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance);
+    void CreateConstantBuffer(const CameraActor* CameraActorInstance);
     
     //  Interface for render GPU pipeline only
     void RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance);

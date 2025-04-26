@@ -530,12 +530,6 @@ void PipelineInterface::OMSetIMGUIRenderTargets(unsigned int FrameContextIndex, 
     FrameContexts[FrameContextIndex].CommandList->OMSetRenderTargets(NumRenderTargetDescriptors, &IMGUIRenderTargetDescriptorHandles[BackBufferIndex], RTsSingleHandleToDescriptorRange, pDepthStencilDescriptor);
 }
 
-void PipelineInterface::SetSRVDescriptorHeaps(unsigned int FrameContextIndex, unsigned NumDescriptorHeaps) const
-{
-    ID3D12DescriptorHeap* RawHeap = D3DSRVCBVDescHeap.Get();
-    FrameContexts[FrameContextIndex].CommandList->SetDescriptorHeaps(NumDescriptorHeaps, &RawHeap);
-}
-
 void PipelineInterface::ExecuteCommandLists(unsigned int FrameContextIndex) const
 {
     ID3D12GraphicsCommandList* RawPointer = FrameContexts[FrameContextIndex].CommandList.Get();
@@ -605,99 +599,163 @@ D3D12_GPU_DESCRIPTOR_HANDLE PipelineInterface::GetLevelRenderTargetGPUHandle() c
     return LevelSRVGPUHandle;
 }
 
-void PipelineInterface::CreateVertexBuffer(const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance)
+//  Deprecated, for reading only.
+// void PipelineInterface::CreateVertexBuffer(const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance)
+// {
+//     const unsigned int VertexBufferSize = sizeof(Vertex) * ShapeInstance->GetVertices().size();
+//     
+//     // 1. Create vertex buffer on default heap
+//     CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
+//     CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(VertexBufferSize);
+//     D3DDevice->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&ShapeProxyInstance->VertexBuffer));
+//     
+//     // 2. Create vertex buffer on upload heap
+//     CD3DX12_HEAP_PROPERTIES UploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
+//     D3DDevice->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&ShapeProxyInstance->VertexBufferUpload));
+//     
+//     // 3. Copy data to vertex buffer for uploading
+//     unsigned int* VertexDataBegin;
+//     CD3DX12_RANGE ReadRange(0, 0);        // We do not intend to read from this resource on the CPU.
+//     ShapeProxyInstance->VertexBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&VertexDataBegin));
+//     memcpy(VertexDataBegin, ShapeInstance->GetVertices().data(), VertexBufferSize);
+//     ShapeProxyInstance->VertexBufferUpload->Unmap(0, nullptr);
+//     
+//     FrameContext& FrameContext = FrameContexts[0];
+//     
+//     // 4. Reset command list for initializing resource, any command list is okay
+//     FrameContext.CommandAllocator->Reset();
+//     FrameContext.CommandList->Reset(FrameContext.CommandAllocator.Get(), nullptr);
+//     
+//     // 5. Record copy command
+//     FrameContext.CommandList->CopyBufferRegion(
+//         ShapeProxyInstance->VertexBuffer.Get(), 0,
+//         ShapeProxyInstance->VertexBufferUpload.Get(), 0,
+//         VertexBufferSize);
+//     
+//     // 6. Insert a barrier
+//     CD3DX12_RESOURCE_BARRIER BufferBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+//         ShapeProxyInstance->VertexBuffer.Get(),
+//         D3D12_RESOURCE_STATE_COPY_DEST,
+//         D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+//     FrameContext.CommandList->ResourceBarrier(1, &BufferBarrier);
+//     
+//     // 7. Close command list
+//     FrameContext.CommandList->Close();
+//     
+//     // 8. Execute command list
+//     ID3D12GraphicsCommandList* CommandListPointer = FrameContext.CommandList.Get();
+//     D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&CommandListPointer);
+//     
+//     // 9. Wait for it completion on GPU
+//     UINT64 FenceValue = 1;
+//     D3DCommandQueue->Signal(Fence.Get(), FenceValue);
+//     if (Fence->GetCompletedValue() < FenceValue)
+//     {
+//         Fence->SetEventOnCompletion(FenceValue, FenceEvent);
+//         WaitForSingleObject(FenceEvent, INFINITE);
+//     }
+//     
+//     // 10. Initialize vertex buffer view, we will use it later when using it
+//     ShapeProxyInstance->VertexBufferView.BufferLocation = ShapeProxyInstance->VertexBuffer->GetGPUVirtualAddress();
+//     ShapeProxyInstance->VertexBufferView.StrideInBytes = sizeof(Vertex);
+//     ShapeProxyInstance->VertexBufferView.SizeInBytes = VertexBufferSize;
+// }
+
+void PipelineInterface::CreateShapeProxyBuffer(const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance)
 {
-    // const unsigned int VertexBufferSize = sizeof(Vertex4) * ShapeInstance->GetVertices().size();
-    //
-    // // 1. Create vertex buffer on default heap
-    // CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
-    // CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(VertexBufferSize);
-    // D3DDevice->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&ShapeProxyInstance->VertexBuffer));
-    //
-    // // 2. Create vertex buffer on upload heap
-    // CD3DX12_HEAP_PROPERTIES UploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
-    // D3DDevice->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&ShapeProxyInstance->VertexBufferUpload));
-    //
-    // // 3. Copy data to vertex buffer for uploading
-    // unsigned int* VertexDataBegin;
-    // CD3DX12_RANGE ReadRange(0, 0);        // We do not intend to read from this resource on the CPU.
-    // ShapeProxyInstance->VertexBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&VertexDataBegin));
-    // memcpy(VertexDataBegin, ShapeInstance->GetVertices().data(), VertexBufferSize);
-    // ShapeProxyInstance->VertexBufferUpload->Unmap(0, nullptr);
-    //
-    // FrameContext& FrameContext = FrameContexts[0];
-    //
-    // // 4. Reset command list for initializing resource, any command list is okay
-    // FrameContext.CommandAllocator->Reset();
-    // FrameContext.CommandList->Reset(FrameContext.CommandAllocator.Get(), nullptr);
-    //
-    // // 5. Record copy command
-    // FrameContext.CommandList->CopyBufferRegion(
-    //     ShapeProxyInstance->VertexBuffer.Get(), 0,
-    //     ShapeProxyInstance->VertexBufferUpload.Get(), 0,
-    //     VertexBufferSize);
-    //
-    // // 6. Insert a barrier
-    // CD3DX12_RESOURCE_BARRIER BufferBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-    //     ShapeProxyInstance->VertexBuffer.Get(),
-    //     D3D12_RESOURCE_STATE_COPY_DEST,
-    //     D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-    // FrameContext.CommandList->ResourceBarrier(1, &BufferBarrier);
-    //
-    // // 7. Close command list
-    // FrameContext.CommandList->Close();
-    //
-    // // 8. Execute command list
-    // ID3D12GraphicsCommandList* CommandListPointer = FrameContext.CommandList.Get();
-    // D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&CommandListPointer);
-    //
-    // // 9. Wait for it completion on GPU
-    // UINT64 FenceValue = 1;
-    // D3DCommandQueue->Signal(Fence.Get(), FenceValue);
-    // if (Fence->GetCompletedValue() < FenceValue)
-    // {
-    //     Fence->SetEventOnCompletion(FenceValue, FenceEvent);
-    //     WaitForSingleObject(FenceEvent, INFINITE);
-    // }
-    //
-    // // 10. Initialize vertex buffer view, we will use it later when using it
-    // ShapeProxyInstance->VertexBufferView.BufferLocation = ShapeProxyInstance->VertexBuffer->GetGPUVirtualAddress();
-    // ShapeProxyInstance->VertexBufferView.StrideInBytes = sizeof(Vertex4);
-    // ShapeProxyInstance->VertexBufferView.SizeInBytes = VertexBufferSize;
+    const unsigned int VertexBufferSize = sizeof(Vertex) * ShapeInstance->GetVertices().size();
+    const unsigned int IndexBufferSize = sizeof(unsigned int) * ShapeInstance->GetIndices().size();
+    
+    //  Create vertex buffer on default heap
+    CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_RESOURCE_DESC VertexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(VertexBufferSize);
+    D3DDevice->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &VertexBufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&ShapeProxyInstance->VertexBuffer));
+
+    //  Create index buffer on default heap
+    CD3DX12_RESOURCE_DESC IndexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(IndexBufferSize);
+    D3DDevice->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &IndexBufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&ShapeProxyInstance->IndexBuffer));
+
+    //  Create vertex buffer on upload heap
+    CD3DX12_HEAP_PROPERTIES UploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
+    D3DDevice->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &VertexBufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&ShapeProxyInstance->VertexBufferUpload));
+
+    //  Create index buffer on upload heap
+    D3DDevice->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &IndexBufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&ShapeProxyInstance->IndexBufferUpload));
+    
+    //  Copy data to vertex buffer for uploading
+    unsigned int* VertexDataBegin;
+    CD3DX12_RANGE VertexReadRange(0, 0);        // We do not intend to read from this resource on the CPU.
+    ShapeProxyInstance->VertexBufferUpload->Map(0, &VertexReadRange, reinterpret_cast<void**>(&VertexDataBegin));
+    memcpy(VertexDataBegin, ShapeInstance->GetVertices().data(), VertexBufferSize);
+    ShapeProxyInstance->VertexBufferUpload->Unmap(0, nullptr);
+
+    //  Copy data to index buffer for uploading
+    unsigned int* IndexDataBegin;
+    CD3DX12_RANGE IndexReadRange = CD3DX12_RANGE(0, 0);        // We do not intend to read from this resource on the CPU.
+    ShapeProxyInstance->IndexBufferUpload->Map(0, &IndexReadRange, reinterpret_cast<void**>(&IndexDataBegin));
+    memcpy(IndexDataBegin, ShapeInstance->GetIndices().data(), IndexBufferSize);
+    ShapeProxyInstance->IndexBufferUpload->Unmap(0, nullptr);
+    
+    FrameContext& FrameContext = FrameContexts[0];
+    
+    //  Reset command list for initializing resource, any command list is okay
+    FrameContext.CommandAllocator->Reset();
+    FrameContext.CommandList->Reset(FrameContext.CommandAllocator.Get(), nullptr);
+    
+    //  Record copy command
+    FrameContext.CommandList->CopyBufferRegion(
+        ShapeProxyInstance->VertexBuffer.Get(), 0,
+        ShapeProxyInstance->VertexBufferUpload.Get(), 0,
+        VertexBufferSize);
+    
+    //  Insert a barrier
+    CD3DX12_RESOURCE_BARRIER BufferBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        ShapeProxyInstance->VertexBuffer.Get(),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+    FrameContext.CommandList->ResourceBarrier(1, &BufferBarrier);
+
+    //  Record copy command
+    FrameContext.CommandList->CopyBufferRegion(
+        ShapeProxyInstance->IndexBuffer.Get(), 0,
+        ShapeProxyInstance->IndexBufferUpload.Get(), 0,
+        IndexBufferSize);
+    
+    //  Insert a barrier
+    BufferBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        ShapeProxyInstance->IndexBuffer.Get(),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_INDEX_BUFFER);
+    FrameContext.CommandList->ResourceBarrier(1, &BufferBarrier);
+    
+    //  Close command list
+    FrameContext.CommandList->Close();
+    
+    //  Execute command list
+    ID3D12GraphicsCommandList* CommandListPointer = FrameContext.CommandList.Get();
+    D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&CommandListPointer);
+    
+    //  Wait for it completion on GPU
+    UINT64 FenceValue = 1;
+    D3DCommandQueue->Signal(Fence.Get(), FenceValue);
+    if (Fence->GetCompletedValue() < FenceValue)
+    {
+        Fence->SetEventOnCompletion(FenceValue, FenceEvent);
+        WaitForSingleObject(FenceEvent, INFINITE);
+    }
+    
+    //  Initialize vertex buffer view, we will use it later when using it
+    ShapeProxyInstance->VertexBufferView.BufferLocation = ShapeProxyInstance->VertexBuffer->GetGPUVirtualAddress();
+    ShapeProxyInstance->VertexBufferView.StrideInBytes = sizeof(Vertex);
+    ShapeProxyInstance->VertexBufferView.SizeInBytes = VertexBufferSize;
+
+    //  Initialize index buffer view, we will use it later when using it
+    ShapeProxyInstance->IndexBufferView.BufferLocation = ShapeProxyInstance->IndexBuffer->GetGPUVirtualAddress();
+    ShapeProxyInstance->IndexBufferView.Format = DXGI_FORMAT_R32_UINT;
+    ShapeProxyInstance->IndexBufferView.SizeInBytes = IndexBufferSize;
 }
 
-void PipelineInterface::CreateShapeProxyBuffer(unsigned int FrameContextIndex, const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance)
-{
-    unsigned int vbByteSize = ShapeInstance->GetVertices().size() * sizeof(Vertex);
-    unsigned int ibByteSize = ShapeInstance->GetIndices().size() * sizeof(unsigned int);
-    
-    D3DCreateBlob(vbByteSize, &ShapeProxyInstance->VertexBufferCPU);
-    CopyMemory(ShapeProxyInstance->VertexBufferCPU->GetBufferPointer(), ShapeInstance->GetVertices().data(), vbByteSize);
-    
-    D3DCreateBlob(ibByteSize, &ShapeProxyInstance->IndexBufferCPU);
-    CopyMemory(ShapeProxyInstance->IndexBufferCPU->GetBufferPointer(), ShapeInstance->GetIndices().data(), ibByteSize);
-    
-    ShapeProxyInstance->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(
-        D3DDevice.Get(),
-    		FrameContexts[FrameContextIndex].CommandList.Get(),
-    		ShapeInstance->GetVertices().data(),
-    		vbByteSize,
-    		ShapeProxyInstance->VertexBufferUploader);
-    
-    ShapeProxyInstance->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(
-        D3DDevice.Get(),
-    		FrameContexts[FrameContextIndex].CommandList.Get(),
-    		ShapeInstance->GetIndices().data(),
-    		ibByteSize,
-    		ShapeProxyInstance->IndexBufferUploader);
-
-    ShapeProxyInstance->VertexByteStride = sizeof(Vertex);
-    ShapeProxyInstance->VertexBufferByteSize = vbByteSize;
-    ShapeProxyInstance->IndexFormat = DXGI_FORMAT_R32_UINT;
-    ShapeProxyInstance->IndexBufferByteSize = ibByteSize;
-}
-
-void PipelineInterface::CreateConstantBuffer(CameraActor* CameraActorInstance)
+void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInstance)
 {
     const unsigned int ByteSize = MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(CameraActorInstance->GetConstantBuffer()));
     ConstantBufferProxy* BufferProxy = CameraActorInstance->GetConstantBufferProxy();
@@ -741,7 +799,6 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
     FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &Barrier);
     FrameContexts[FrameContextIndex].CommandList->OMSetRenderTargets(1, &LevelRenderTargetDescriptorHandle, false, nullptr);
 
-    //  XXX:    Called twice one frame.
     ID3D12DescriptorHeap* RawHeap = D3DSRVCBVDescHeap.Get();
     FrameContexts[FrameContextIndex].CommandList->SetDescriptorHeaps(1, &RawHeap);
     
@@ -760,9 +817,9 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
     {
         if (LevelInstance->GetActors()[I]->GetShapeInstance())
         {
-            D3D12_VERTEX_BUFFER_VIEW VertexBufferView = LevelInstance->GetActors()[I]->GetShapeProxyInstance()->VertexBufferView();
+            D3D12_VERTEX_BUFFER_VIEW VertexBufferView = LevelInstance->GetActors()[I]->GetShapeProxyInstance()->VertexBufferView;//GetVertexBufferView();
             FrameContexts[FrameContextIndex].CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
-            D3D12_INDEX_BUFFER_VIEW IndexBufferView = LevelInstance->GetActors()[I]->GetShapeProxyInstance()->IndexBufferView();
+            D3D12_INDEX_BUFFER_VIEW IndexBufferView = LevelInstance->GetActors()[I]->GetShapeProxyInstance()->IndexBufferView;//GetIndexBufferView();
             FrameContexts[FrameContextIndex].CommandList->IASetIndexBuffer(&IndexBufferView);
             FrameContexts[FrameContextIndex].CommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 

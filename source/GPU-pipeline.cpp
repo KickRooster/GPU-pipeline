@@ -40,7 +40,9 @@ int main(int, char**)
 
 	//	Initialize the level manually.
 	const Actor* CubeActorInstance = Level::GetInstance().InstantiateCubeActor();
-	CameraActor* CameraActorInstance = static_cast<CameraActor*>(Level::GetInstance().InstantiateCameraActor());
+	PipelineInterface::GetInstance().CreateShapeProxyBuffer(CubeActorInstance->GetShapeInstance(), CubeActorInstance->GetShapeProxyInstance());
+	const CameraActor* CameraActorInstance = static_cast<CameraActor*>(Level::GetInstance().InstantiateCameraActor());
+	PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
 	
 	// Show the window
 	::ShowWindow(hwnd, SW_SHOWDEFAULT);
@@ -141,23 +143,8 @@ int main(int, char**)
 			return 0;
 		}
 
-		static bool Ready = false;
-
-		//	We suppose constant buffer was created from any command list is fine.
-		if (!Ready)
-		{
-			PipelineInterface::GetInstance().CreateShapeProxyBuffer(FrameContextIndex, CubeActorInstance->GetShapeInstance(), CubeActorInstance->GetShapeProxyInstance());
-			PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
-	
-			//	Create buffer's command list executing frame.
-			Ready = true;
-		}
-		//	Begin run since next frame.
-		else
-		{
-			CameraActorInstance->Update(0);
-			PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
-		}
+		Level::GetInstance().Update(0);
+		PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
 		
 		// Start the Dear ImGui frame
 		ImGui_ImplDX12_NewFrame();
@@ -216,7 +203,8 @@ int main(int, char**)
 		const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
 		PipelineInterface::GetInstance().ClearIMGUIRenderTargetView(FrameContextIndex, BackBufferIndex, clear_color_with_alpha, 0, nullptr);
 		PipelineInterface::GetInstance().OMSetIMGUIRenderTargets(FrameContextIndex, 1, BackBufferIndex, false, nullptr);
-		PipelineInterface::GetInstance().SetSRVDescriptorHeaps(FrameContextIndex, 1);
+		//	Has been call during Level:Render()
+		//PipelineInterface::GetInstance().SetSRVDescriptorHeaps(FrameContextIndex, 1);
 	
 		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList(FrameContextIndex));
 		

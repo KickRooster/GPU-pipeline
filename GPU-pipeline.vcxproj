@@ -153,7 +153,6 @@
     <ClCompile Include="source\actor\CameraActor.cpp" />
     <ClCompile Include="source\actor\CubeActor.cpp" />
     <ClCompile Include="source\actor\TriangleActor.cpp" />
-    <ClCompile Include="source\dx12\d3dUtil.cpp" />
     <ClCompile Include="source\dx12\PipelineInterface.cpp" />
     <ClCompile Include="source\GPU-pipeline.cpp" />
     <ClCompile Include="source\level\Level.cpp" />
@@ -175,7 +174,6 @@
     <ClInclude Include="source\misc\Math.h" />
     <ClInclude Include="source\dx12\ConstantBuffer.h" />
     <ClInclude Include="source\dx12\ConstantBufferProxy.h" />
-    <ClInclude Include="source\dx12\d3dUtil.h" />
     <ClInclude Include="source\dx12\PipelineInterface.h" />
     <ClInclude Include="source\dx12\ShapeProxy.h" />
     <ClInclude Include="source\level\Level.h" />

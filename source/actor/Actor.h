@@ -11,6 +11,7 @@ protected:
     std::unique_ptr<Shape> ShapeInstance = nullptr;
     std::unique_ptr<ShapeProxy> ShapeProxyInstance = nullptr;
     XMMATRIX TransformationMatrix;
+    
 public:
     Transform Transform;
     Actor() = default;

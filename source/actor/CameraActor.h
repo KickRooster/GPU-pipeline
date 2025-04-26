@@ -7,10 +7,9 @@ class CameraActor : public Actor
 {
 protected:
     XMMATRIX ProjectionMatrix;
-
-public:
     std::unique_ptr<ConstantBuffer> ConstantBufferInstance;
     std::unique_ptr<ConstantBufferProxy> ConstantBufferProxyInstance;
+
 public:
     XMFLOAT3 LookDirection;
     XMFLOAT3 UpDirection;
