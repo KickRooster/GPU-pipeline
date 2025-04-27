@@ -192,46 +192,6 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         IMGUIRenderTargetResources.push_back(BackBuffer);
     }
 
-    D3D12_RESOURCE_DESC RenderTargetDesc = {};
-    RenderTargetDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    RenderTargetDesc.Width = 512;
-    RenderTargetDesc.Height = 512;
-    RenderTargetDesc.DepthOrArraySize = 1;
-    RenderTargetDesc.MipLevels = 1;
-    RenderTargetDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    RenderTargetDesc.SampleDesc.Count = 1;
-    RenderTargetDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-
-    D3D12_HEAP_PROPERTIES HeapProps = {};
-    HeapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
-    HeapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-    HeapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-
-    D3D12_CLEAR_VALUE ClearValue = {};
-    ClearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    ClearValue.Color[0] = 0.0f;
-    ClearValue.Color[1] = 0.0f;
-    ClearValue.Color[2] = 0.0f;
-    ClearValue.Color[3] = 1.0f;
-
-    D3DDevice->CreateCommittedResource(
-        &HeapProps,
-        D3D12_HEAP_FLAG_NONE,
-        &RenderTargetDesc,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-        &ClearValue,
-        IID_PPV_ARGS(&RenderTarget));
-
-    D3DDevice->CreateRenderTargetView(RenderTarget.Get(), nullptr, LevelRenderTargetDescriptorHandle);
-    LevelRenderTargetResource = RenderTarget;
-
-    D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc = {};
-    SRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    SRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    SRVDesc.Texture2D.MipLevels = 1;
-    D3DDevice->CreateShaderResourceView(RenderTarget.Get(), &SRVDesc, D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart());
-
     D3D12_FEATURE_DATA_ROOT_SIGNATURE FeatureData = {};
 
     // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
@@ -783,6 +743,55 @@ void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInsta
     // memcpy(ConstantBufferDataBegin, &Buffer, ConstantBufferSize);
 }
 
+void PipelineInterface::UpdateViewport(ImVec2 NewViewportSize)
+{
+    if (ViewportSize.x != NewViewportSize.x || ViewportSize.y != NewViewportSize.y)
+    {
+        D3D12_RESOURCE_DESC RenderTargetDesc = {};
+        RenderTargetDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        RenderTargetDesc.Width = static_cast<UINT64>(NewViewportSize.x);
+        RenderTargetDesc.Height = static_cast<UINT64>(NewViewportSize.y);
+        RenderTargetDesc.DepthOrArraySize = 1;
+        RenderTargetDesc.MipLevels = 1;
+        RenderTargetDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        RenderTargetDesc.SampleDesc.Count = 1;
+        RenderTargetDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+        D3D12_HEAP_PROPERTIES HeapProps = {};
+        HeapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+        HeapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+        HeapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+        D3D12_CLEAR_VALUE ClearValue = {};
+        ClearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        ClearValue.Color[0] = 0.0f;
+        ClearValue.Color[1] = 0.0f;
+        ClearValue.Color[2] = 0.0f;
+        ClearValue.Color[3] = 1.0f;
+
+        D3DDevice->CreateCommittedResource(
+            &HeapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &RenderTargetDesc,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            &ClearValue,
+            IID_PPV_ARGS(&RenderTarget));
+
+        D3DDevice->CreateRenderTargetView(RenderTarget.Get(), nullptr, LevelRenderTargetDescriptorHandle);
+        LevelRenderTargetResource = RenderTarget;
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc = {};
+        SRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        SRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        SRVDesc.Texture2D.MipLevels = 1;
+        D3DDevice->CreateShaderResourceView(RenderTarget.Get(), &SRVDesc, D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart());
+    }
+    
+    ViewportSize.x = NewViewportSize.x;
+    ViewportSize.y = NewViewportSize.y;
+}
+
 void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance)
 {
     D3D12_RESOURCE_BARRIER Barrier = {};
@@ -802,8 +811,8 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
     const float ClearColor[] = { 0, 0, 0, 1.0f };
     FrameContexts[FrameContextIndex].CommandList->ClearRenderTargetView(LevelRenderTargetDescriptorHandle, ClearColor, 0, nullptr);
 
-    CD3DX12_VIEWPORT ViewPort = CD3DX12_VIEWPORT(0.f, 0.f, 512, 512);
-    CD3DX12_RECT ScissorRect = CD3DX12_RECT(0, 0, 512, 512);
+    CD3DX12_VIEWPORT ViewPort = CD3DX12_VIEWPORT(0.f, 0.f, ViewportSize.x, ViewportSize.y);
+    CD3DX12_RECT ScissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(ViewportSize.x), static_cast<LONG>(ViewportSize.y));
     FrameContexts[FrameContextIndex].CommandList->RSSetViewports(1, &ViewPort);
     FrameContexts[FrameContextIndex].CommandList->RSSetScissorRects(1, &ScissorRect);
 

@@ -41,7 +41,7 @@ int main(int, char**)
 	//	Initialize the level manually.
 	const Actor* CubeActorInstance = Level::GetInstance().InstantiateCubeActor();
 	PipelineInterface::GetInstance().CreateShapeProxyBuffer(CubeActorInstance->GetShapeInstance(), CubeActorInstance->GetShapeProxyInstance());
-	const CameraActor* CameraActorInstance = static_cast<CameraActor*>(Level::GetInstance().InstantiateCameraActor());
+	CameraActor* CameraActorInstance = static_cast<CameraActor*>(Level::GetInstance().InstantiateCameraActor());
 	PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
 	
 	// Show the window
@@ -126,11 +126,12 @@ int main(int, char**)
 			continue;
 		}
 		SwapChainOccluded = false;
-
-		//	Update the level.
-		//Level::GetInstance().Update(0);
 		
-		//	Render the level.
+		// Start the Dear ImGui frame
+		ImGui_ImplDX12_NewFrame();
+		ImGui_ImplWin32_NewFrame();
+		ImGui::NewFrame();
+
 		const unsigned int FrameContextIndex = PipelineInterface::GetInstance().WaitForNextFrameResources();
 		
 		//	After we have submitted the rendering commands for a complete frame to the
@@ -143,17 +144,13 @@ int main(int, char**)
 			return 0;
 		}
 
-		Level::GetInstance().Update(0);
-		PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
-		
-		// Start the Dear ImGui frame
-		ImGui_ImplDX12_NewFrame();
-		ImGui_ImplWin32_NewFrame();
-		ImGui::NewFrame();
-
 		ImGui::Begin("Scene View");
 		ImVec2 ViewportSize = ImGui::GetContentRegionAvail();
-		ImGui::Image((ImTextureID)PipelineInterface::GetInstance().GetLevelRenderTargetGPUHandle().ptr, ViewportSize);
+		PipelineInterface::GetInstance().UpdateViewport(ViewportSize);
+		CameraActorInstance->AspectRatio = ViewportSize.x / ViewportSize.y;
+		Level::GetInstance().Update(0);
+		PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
+		ImGui::Image(static_cast<ImTextureID>(PipelineInterface::GetInstance().GetLevelRenderTargetGPUHandle().ptr), ViewportSize);
 		ImGui::End();
 
 		// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).

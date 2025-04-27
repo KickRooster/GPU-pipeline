@@ -109,6 +109,8 @@ class PipelineInterface : public Singleton<PipelineInterface>
     ComPtr<ID3D12RootSignature> RootSignature;
     ComPtr<ID3D12PipelineState> PipelineState;
     D3D12_GPU_DESCRIPTOR_HANDLE LevelSRVGPUHandle;
+
+    XMFLOAT2 ViewportSize = XMFLOAT2(0, 0);
     
     //  Constant buffer data
     D3D12_CPU_DESCRIPTOR_HANDLE ConstantBufferCPUHandle;
@@ -138,6 +140,6 @@ public:
     void CreateShapeProxyBuffer(const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance);
     void CreateConstantBuffer(const CameraActor* CameraActorInstance);
     
-    //  Interface for render GPU pipeline only
+    void UpdateViewport(ImVec2 NewViewportSize);
     void RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance);
 };
