@@ -6,6 +6,83 @@ CameraActor::CameraActor()
     ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
 }
 
+void CameraActor::ResponseToUI(const UIState* State)
+{
+    {
+        XMVECTOR Look = XMLoadFloat3(&LookDirection);
+        XMVECTOR Up = XMLoadFloat3(&UpDirection);
+    
+        Look = XMVector3Normalize(Look);
+        Up = XMVector3Normalize(Up);
+    
+        XMStoreFloat3(&LookDirection, Look);
+        XMStoreFloat3(&UpDirection, Up);
+
+        XMVECTOR Position = XMLoadFloat3(&Transform.Position);
+        XMVECTOR Right = XMVector3Cross(Up, Look);
+
+        if (State->WPressed)
+        {
+            Position = XMVectorAdd(Position, XMVectorScale(Look, State->MoveSpeed));
+        }
+        if (State->SPressed)
+        {
+            Position = XMVectorSubtract(Position, XMVectorScale(Look, State->MoveSpeed));
+        }
+    
+        if (State->APressed)
+        {
+            Position = XMVectorSubtract(Position, XMVectorScale(Right, State->MoveSpeed));
+        }
+        if (State->DPressed)
+        {
+            Position = XMVectorAdd(Position, XMVectorScale(Right, State->MoveSpeed));
+        }
+    
+        if (State->QPressed)
+        {
+            Position = XMVectorSubtract(Position, XMVectorScale(Up, State->MoveSpeed));
+        }
+        if (State->EPressed)
+        {
+            Position = XMVectorAdd(Position, XMVectorScale(Up, State->MoveSpeed));
+        }
+    
+        XMStoreFloat3(&Transform.Position, Position);
+    }
+    
+    if (State->RightButtonDown)
+    {
+        if (State->DeltaX != 0.0f)
+        {
+            XMMATRIX RotY = XMMatrixRotationY(State->DeltaX * State->RotateSpeed);
+        
+            XMVECTOR Look = XMLoadFloat3(&LookDirection);
+            Look = XMVector3TransformNormal(Look, RotY);
+            XMStoreFloat3(&LookDirection, Look);
+        
+            XMVECTOR Up = XMLoadFloat3(&UpDirection);
+            Up = XMVector3TransformNormal(Up, RotY);
+            XMStoreFloat3(&UpDirection, Up);
+        }
+
+        if (State->DeltaY != 0.0f)
+        {
+            XMVECTOR Look = XMLoadFloat3(&LookDirection);
+            XMVECTOR Up = XMLoadFloat3(&UpDirection);
+            XMVECTOR Right = XMVector3Cross(Up, Look);
+        
+            XMMATRIX RotX = XMMatrixRotationAxis(Right, State->DeltaY * State->RotateSpeed);
+        
+            Look = XMVector3TransformNormal(Look, RotX);
+            XMStoreFloat3(&LookDirection, Look);
+        
+            Up = XMVector3TransformNormal(Up, RotX);
+            XMStoreFloat3(&UpDirection, Up);
+        }
+    }
+}
+
 void CameraActor::Update(float DeltaTime)
 {
     TransformationMatrix = XMMatrixLookToLH(
@@ -19,9 +96,9 @@ void CameraActor::Update(float DeltaTime)
     //     XMLoadFloat3(&UpDirection));
 
     ProjectionMatrix = XMMatrixPerspectiveFovLH(FovY * XM_PI / 180.f, AspectRatio, NearPlane, FarPlane);
-    XMMATRIX worldViewProj = TransformationMatrix * ProjectionMatrix;
+    XMMATRIX WorldViewProj = TransformationMatrix * ProjectionMatrix;
 
-    XMStoreFloat4x4(&ConstantBufferInstance->WorldViewProj, XMMatrixTranspose(worldViewProj));
+    XMStoreFloat4x4(&ConstantBufferInstance->WorldViewProj, XMMatrixTranspose(WorldViewProj));
     memcpy(
         &ConstantBufferProxyInstance->MappedData[0 * ConstantBufferProxyInstance->ElementByteSize],
         &ConstantBufferInstance.get()->WorldViewProj,

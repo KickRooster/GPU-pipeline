@@ -19,6 +19,7 @@ public:
     float FarPlane;
 
     CameraActor();
+    void ResponseToUI(const UIState* State);
     void Update(float DeltaTime) override;
     ConstantBuffer* GetConstantBuffer() const;
     ConstantBufferProxy* GetConstantBufferProxy() const;

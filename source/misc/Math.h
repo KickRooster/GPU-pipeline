@@ -12,7 +12,7 @@ struct Vertex
 
 struct Transform
 {
-    XMFLOAT4 Roation;
+    XMFLOAT4 Rotation;
     XMFLOAT3 Position;
     XMFLOAT3 Scale;
 };
