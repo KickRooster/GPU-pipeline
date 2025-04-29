@@ -20,9 +20,9 @@ Actor* Level::InstantiateCubeActor()
     Actor->Transform.Scale.x = 1.0f;
     Actor->Transform.Scale.y = 1.0f;
     Actor->Transform.Scale.z = 1.0f;
-    Actor->Transform.Roation.x = 0;
-    Actor->Transform.Roation.y = 0;
-    Actor->Transform.Roation.z = 0;
+    Actor->Transform.Rotation.x = 0;
+    Actor->Transform.Rotation.y = 0;
+    Actor->Transform.Rotation.z = 0;
     Actors.push_back(std::move(Actor));
     
     return Actors.back().get();
@@ -36,8 +36,8 @@ Actor* Level::InstantiateCameraActor()
     Actor->NearPlane = 0.1f;
     Actor->FarPlane = 1000.0f;
     Actor->Transform.Position.x = 0;
-    Actor->Transform.Position.y = 1.7;
-    Actor->Transform.Position.z = -4.0f;
+    Actor->Transform.Position.y = 0;
+    Actor->Transform.Position.z = -5.f;
     Actor->LookDirection = XMFLOAT3(0, 0, 1);
     Actor->UpDirection = XMFLOAT3(0, 1, 0);
     Actors.push_back(std::move(Actor));
