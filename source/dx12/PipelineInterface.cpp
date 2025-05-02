@@ -56,66 +56,6 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
     }
 #endif
 
-    //  RTV(imgui & level rendering)
-    {
-        D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
-        DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        //  BackBufferCount(imgui) + 1(render target)
-        DescriptorHeapDesc.NumDescriptors = BackBufferCount + 1;
-        DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-        //  XXX:    NodeMask?
-        DescriptorHeapDesc.NodeMask = 0;
-        if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DRTVDescHeap)) != S_OK)
-        {
-            return ErrorCode::DescriptorHeapCreateFailed;
-        }
-
-        SIZE_T DescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-        D3D12_CPU_DESCRIPTOR_HANDLE RTVHandle = D3DRTVDescHeap->GetCPUDescriptorHandleForHeapStart();
-        for (int I = 0; I < BackBufferCount; ++I)
-        {
-            IMGUIRenderTargetDescriptorHandles.push_back(RTVHandle);
-            RTVHandle.ptr += DescriptorSize;
-        }
-        LevelRenderTargetDescriptorHandle = RTVHandle;
-        RTVHandle.ptr += DescriptorSize;
-    }
-
-    //  SRV & CBV
-    {
-        D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
-        DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        DescriptorHeapDesc.NumDescriptors = SRVHeapSize;
-        DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DSRVCBVDescHeap)) != S_OK)
-        {
-            return ErrorCode::DescriptorHeapCreateFailed;
-        }
-
-        //  First D3D12_CPU_DESCRIPTOR_HANDLE of D3DSRVDescHeap is reserved for level's render target.
-        LevelSRVGPUHandle = D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart();
-        //  Second D3D12_CPU_DESCRIPTOR_HANDLE of D3DSRVDescHeap is reserved for constant buffer.
-        unsigned int IncrementSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-        ConstantBufferCPUHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
-        ConstantBufferCPUHandle.ptr += IncrementSize;
-
-        ConstantBufferGPUHandle = D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart();
-        ConstantBufferGPUHandle.ptr += IncrementSize;
-
-        D3DSRVDescriptorHeapAllocator.Create(D3DDevice.Get(), D3DSRVCBVDescHeap.Get(), 2);
-    }
-
-    D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
-    CommandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    CommandQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-    //  XXX: NodeMask?
-    CommandQueueDesc.NodeMask = 1;
-    if (D3DDevice->CreateCommandQueue(&CommandQueueDesc, IID_PPV_ARGS(&D3DCommandQueue)) != S_OK)
-    {
-        return ErrorCode::Failed;
-    }
-
     for (int I = 0; I < FrameNumInFlight; ++I)
     {
         FrameContexts.push_back(FrameContext());
@@ -135,6 +75,100 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         }
     }
 
+    //  RTV(imgui & level rendering)
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
+        DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        //  BackBufferCount(imgui) + FrameNumInFlight(render target)
+        DescriptorHeapDesc.NumDescriptors = BackBufferCount + FrameNumInFlight;
+        DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        //  XXX:    NodeMask?
+        DescriptorHeapDesc.NodeMask = 0;
+        if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DRTVDescHeap)) != S_OK)
+        {
+            return ErrorCode::DescriptorHeapCreateFailed;
+        }
+
+        SIZE_T DescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        D3D12_CPU_DESCRIPTOR_HANDLE RTVHandle = D3DRTVDescHeap->GetCPUDescriptorHandleForHeapStart();
+        for (int I = 0; I < BackBufferCount; ++I)
+        {
+            IMGUIRenderTargetDescriptorHandles.push_back(RTVHandle);
+            RTVHandle.ptr += DescriptorSize;
+        }
+
+        for (int I = 0; I < FrameNumInFlight; ++I)
+        {
+            FrameContexts[I].RenderTargetCPUDescriptorHandle = RTVHandle;
+            RTVHandle.ptr += DescriptorSize;
+        }
+    }
+
+    //  DSV
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc;
+        DescriptorHeapDesc.NumDescriptors = FrameNumInFlight;
+        DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+        DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        DescriptorHeapDesc.NodeMask = 0;
+        
+        if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DDSDescHeap)) != S_OK)
+        {
+            return ErrorCode::DescriptorHeapCreateFailed;
+        }
+
+        SIZE_T DescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+        D3D12_CPU_DESCRIPTOR_HANDLE DSVHandle = D3DDSDescHeap->GetCPUDescriptorHandleForHeapStart();
+
+        for (int I = 0; I < FrameNumInFlight; ++I)
+        {
+            FrameContexts[I].DepthStencilCPUDescriptorHandle = DSVHandle;
+            DSVHandle.ptr += DescriptorSize;
+        }
+    }
+
+    //  SRV & CBV
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
+        DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        DescriptorHeapDesc.NumDescriptors = SRVHeapSize;
+        DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DSRVCBVDescHeap)) != S_OK)
+        {
+            return ErrorCode::DescriptorHeapCreateFailed;
+        }
+
+        D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
+        D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle = D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart();
+        unsigned int IncrementSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        //  First FrameNumInFlight D3D12_CPU_DESCRIPTOR_HANDLE of D3DSRVDescHeap is reserved for level's render target.
+        for (int I = 0; I < FrameNumInFlight; ++I)
+        {
+            FrameContexts[I].RenderTargetSRVCPUDescriptorHandle = CPUHandle;
+            FrameContexts[I].RenderTargetSRVGPUDescriptorHandle = GPUHandle;
+            CPUHandle.ptr += IncrementSize;
+            GPUHandle.ptr += IncrementSize;
+        }
+        //  Then D3D12_CPU_DESCRIPTOR_HANDLE of D3DSRVDescHeap is reserved for constant buffer.
+        ConstantBufferCPUHandle = CPUHandle;
+        CPUHandle.ptr += IncrementSize;
+
+        ConstantBufferGPUHandle = GPUHandle;
+        GPUHandle.ptr += IncrementSize;
+
+        D3DSRVDescriptorHeapAllocator.Create(D3DDevice.Get(), D3DSRVCBVDescHeap.Get(), FrameNumInFlight + 1);
+    }
+
+    D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
+    CommandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    CommandQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+    //  XXX: NodeMask?
+    CommandQueueDesc.NodeMask = 1;
+    if (D3DDevice->CreateCommandQueue(&CommandQueueDesc, IID_PPV_ARGS(&D3DCommandQueue)) != S_OK)
+    {
+        return ErrorCode::Failed;
+    }
+    
     if (D3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&Fence)) != S_OK)
     {
         return ErrorCode::FenceCreateFailed;
@@ -299,13 +333,7 @@ void PipelineInterface::CleanUp()
             IMGUIRenderTargetResources[I] = nullptr;
         }
     }
-
-    if (LevelRenderTargetResource)
-    {
-        LevelRenderTargetResource->Release();
-        LevelRenderTargetResource = nullptr;
-    }
-
+    
     IMGUIRenderTargetResources.clear();
     IMGUIRenderTargetDescriptorHandles.clear();
 
@@ -551,9 +579,9 @@ void PipelineInterface::UpdateFrameContextFenceValue(unsigned FrameContextIndex,
     FrameContexts[FrameContextIndex].FenceValue = FenceValue;
 }
 
-D3D12_GPU_DESCRIPTOR_HANDLE PipelineInterface::GetLevelRenderTargetGPUHandle() const
+D3D12_GPU_DESCRIPTOR_HANDLE PipelineInterface::GetRenderTargetSRVGPUHandle(unsigned int FrameContextIndex) const
 {
-    return LevelSRVGPUHandle;
+    return FrameContexts[FrameContextIndex].RenderTargetSRVGPUDescriptorHandle;
 }
 
 //  Deprecated, for reading only.
@@ -743,9 +771,11 @@ void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInsta
     // memcpy(ConstantBufferDataBegin, &Buffer, ConstantBufferSize);
 }
 
-void PipelineInterface::UpdateViewport(ImVec2 NewViewportSize)
+void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize)
 {
-    if (ViewportSize.x != NewViewportSize.x || ViewportSize.y != NewViewportSize.y)
+    bool SizeChanged = ViewportSize.x != NewViewportSize.x || ViewportSize.y != NewViewportSize.y;
+    
+    if (SizeChanged || bResizedLastFrame)
     {
         D3D12_RESOURCE_DESC RenderTargetDesc = {};
         RenderTargetDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -775,21 +805,79 @@ void PipelineInterface::UpdateViewport(ImVec2 NewViewportSize)
             &RenderTargetDesc,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
             &ClearValue,
-            IID_PPV_ARGS(&RenderTarget));
+            IID_PPV_ARGS(&FrameContexts[FrameContextIndex].RenderTarget));
 
-        D3DDevice->CreateRenderTargetView(RenderTarget.Get(), nullptr, LevelRenderTargetDescriptorHandle);
-        LevelRenderTargetResource = RenderTarget;
+        D3DDevice->CreateRenderTargetView(FrameContexts[FrameContextIndex].RenderTarget.Get(), nullptr, FrameContexts[FrameContextIndex].RenderTargetCPUDescriptorHandle);
 
         D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc = {};
         SRVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         SRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         SRVDesc.Texture2D.MipLevels = 1;
-        D3DDevice->CreateShaderResourceView(RenderTarget.Get(), &SRVDesc, D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart());
+        D3DDevice->CreateShaderResourceView(FrameContexts[FrameContextIndex].RenderTarget.Get(), &SRVDesc, FrameContexts[FrameContextIndex].RenderTargetSRVCPUDescriptorHandle);
+        
+        D3D12_RESOURCE_DESC DepthStencilDesc;
+        DepthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        DepthStencilDesc.Alignment = 0;
+        DepthStencilDesc.Width = static_cast<UINT64>(NewViewportSize.x);;
+        DepthStencilDesc.Height = static_cast<UINT64>(NewViewportSize.y);;
+        DepthStencilDesc.DepthOrArraySize = 1;
+        DepthStencilDesc.MipLevels = 1;
+
+        // Correction 11/12/2016: SSAO chapter requires an SRV to the depth buffer to read from 
+        // the depth buffer.  Therefore, because we need to create two views to the same resource:
+        //   1. SRV format: DXGI_FORMAT_R24_UNORM_X8_TYPELESS
+        //   2. DSV Format: DXGI_FORMAT_D24_UNORM_S8_UINT
+        // we need to create the depth buffer resource with a typeless format.  
+        DepthStencilDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
+        DepthStencilDesc.SampleDesc.Count = 1;
+        DepthStencilDesc.SampleDesc.Quality = 0;
+        DepthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        DepthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+        D3D12_CLEAR_VALUE DepthStencilClearValue;
+        DepthStencilClearValue.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        DepthStencilClearValue.DepthStencil.Depth = 1.0f;
+        DepthStencilClearValue.DepthStencil.Stencil = 0;
+
+        HeapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+        HeapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+        HeapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+        D3DDevice->CreateCommittedResource(
+            &HeapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &DepthStencilDesc,
+            D3D12_RESOURCE_STATE_COMMON,
+            &DepthStencilClearValue,
+            IID_PPV_ARGS(FrameContexts[FrameContextIndex].DepthStencilBuffer.GetAddressOf()));
+
+        D3D12_DEPTH_STENCIL_VIEW_DESC DeptStencilViewDesc;
+        DeptStencilViewDesc.Flags = D3D12_DSV_FLAG_NONE;
+        DeptStencilViewDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        DeptStencilViewDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        DeptStencilViewDesc.Texture2D.MipSlice = 0;
+        D3DDevice->CreateDepthStencilView(FrameContexts[FrameContextIndex].DepthStencilBuffer.Get(), &DeptStencilViewDesc, FrameContexts[FrameContextIndex].DepthStencilCPUDescriptorHandle);
+
+        CD3DX12_RESOURCE_BARRIER BufferBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        FrameContexts[FrameContextIndex].DepthStencilBuffer.Get(),
+        D3D12_RESOURCE_STATE_COMMON,
+        D3D12_RESOURCE_STATE_DEPTH_WRITE);
+        
+        FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &BufferBarrier);
+
+        ViewportSize.x = NewViewportSize.x;
+        ViewportSize.y = NewViewportSize.y;
     }
-    
-    ViewportSize.x = NewViewportSize.x;
-    ViewportSize.y = NewViewportSize.y;
+
+    if (SizeChanged && FrameNumInFlight > 1)
+    {
+        bResizedLastFrame = true;
+    }
+    else
+    {
+        bResizedLastFrame = false;
+    }
 }
 
 void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance)
@@ -797,20 +885,22 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
     D3D12_RESOURCE_BARRIER Barrier = {};
     Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     Barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    Barrier.Transition.pResource = RenderTarget.Get();
+    Barrier.Transition.pResource = FrameContexts[FrameContextIndex].RenderTarget.Get();
     Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
     Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
     FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &Barrier);
-    FrameContexts[FrameContextIndex].CommandList->OMSetRenderTargets(1, &LevelRenderTargetDescriptorHandle, false, nullptr);
+    FrameContexts[FrameContextIndex].CommandList->OMSetRenderTargets(1, &FrameContexts[FrameContextIndex].RenderTargetCPUDescriptorHandle, false, &FrameContexts[FrameContextIndex].DepthStencilCPUDescriptorHandle);
 
     ID3D12DescriptorHeap* RawHeap = D3DSRVCBVDescHeap.Get();
     FrameContexts[FrameContextIndex].CommandList->SetDescriptorHeaps(1, &RawHeap);
     
     const float ClearColor[] = { 0, 0, 0, 1.0f };
-    FrameContexts[FrameContextIndex].CommandList->ClearRenderTargetView(LevelRenderTargetDescriptorHandle, ClearColor, 0, nullptr);
+    FrameContexts[FrameContextIndex].CommandList->ClearRenderTargetView(FrameContexts[FrameContextIndex].RenderTargetCPUDescriptorHandle, ClearColor, 0, nullptr);
 
+    FrameContexts[FrameContextIndex].CommandList->ClearDepthStencilView(FrameContexts[FrameContextIndex].DepthStencilCPUDescriptorHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+    
     CD3DX12_VIEWPORT ViewPort = CD3DX12_VIEWPORT(0.f, 0.f, ViewportSize.x, ViewportSize.y);
     CD3DX12_RECT ScissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(ViewportSize.x), static_cast<LONG>(ViewportSize.y));
     FrameContexts[FrameContextIndex].CommandList->RSSetViewports(1, &ViewPort);

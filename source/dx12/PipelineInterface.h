@@ -75,6 +75,12 @@ struct FrameContext
     ComPtr<ID3D12CommandAllocator> CommandAllocator;
     ComPtr<ID3D12GraphicsCommandList> CommandList;
     UINT64 FenceValue;
+    D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetCPUDescriptorHandle;
+    D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilCPUDescriptorHandle;
+    D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetSRVCPUDescriptorHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE RenderTargetSRVGPUDescriptorHandle;
+    ComPtr<ID3D12Resource> RenderTarget = nullptr;
+    ComPtr<ID3D12Resource> DepthStencilBuffer = nullptr;
 };
 
 class PipelineInterface : public Singleton<PipelineInterface>
@@ -94,23 +100,24 @@ class PipelineInterface : public Singleton<PipelineInterface>
     vector<FrameContext> FrameContexts;                                     //  FrameNumInFlight
     
     ComPtr<ID3D12DescriptorHeap> D3DRTVDescHeap = nullptr;
+    ComPtr<ID3D12DescriptorHeap> D3DDSDescHeap = nullptr;
     ComPtr<ID3D12DescriptorHeap> D3DSRVCBVDescHeap = nullptr;
     vector<D3D12_CPU_DESCRIPTOR_HANDLE> IMGUIRenderTargetDescriptorHandles; //  BackBufferCount
-    D3D12_CPU_DESCRIPTOR_HANDLE LevelRenderTargetDescriptorHandle;
+    //D3D12_CPU_DESCRIPTOR_HANDLE LevelRenderTargetDescriptorHandle;
+    //D3D12_CPU_DESCRIPTOR_HANDLE LevelDepthStencilDescriptorHandle;
     vector<ComPtr<ID3D12Resource>> IMGUIRenderTargetResources;              //  BackBufferCount
-    ComPtr<ID3D12Resource> LevelRenderTargetResource;
-        
+    
     ImGUIDescriptorHeapAllocator D3DSRVDescriptorHeapAllocator;
     HANDLE FenceEvent = nullptr;
     ComPtr<ID3D12Fence> Fence = nullptr;
     unsigned int FrameIndex = 0;
-
-    ComPtr<ID3D12Resource> RenderTarget = nullptr;
+    
     ComPtr<ID3D12RootSignature> RootSignature;
     ComPtr<ID3D12PipelineState> PipelineState;
-    D3D12_GPU_DESCRIPTOR_HANDLE LevelSRVGPUHandle;
+    //D3D12_GPU_DESCRIPTOR_HANDLE LevelSRVGPUHandle;
 
     XMFLOAT2 ViewportSize = XMFLOAT2(0, 0);
+    bool bResizedLastFrame = false;
     
     //  Constant buffer data
     D3D12_CPU_DESCRIPTOR_HANDLE ConstantBufferCPUHandle;
@@ -136,10 +143,10 @@ public:
     ID3D12GraphicsCommandList* GetCommandList(unsigned int FrameContextIndex) const;
     IDXGISwapChain3* GetSwapChain();
     void UpdateFrameContextFenceValue(unsigned int FrameContextIndex, unsigned long FenceValue);
-    D3D12_GPU_DESCRIPTOR_HANDLE GetLevelRenderTargetGPUHandle() const;
+    D3D12_GPU_DESCRIPTOR_HANDLE GetRenderTargetSRVGPUHandle(unsigned int FrameContextIndex) const;
     void CreateShapeProxyBuffer(const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance);
     void CreateConstantBuffer(const CameraActor* CameraActorInstance);
     
-    void UpdateViewport(ImVec2 NewViewportSize);
+    void UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);
     void RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance);
 };

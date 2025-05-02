@@ -170,11 +170,11 @@ int main(int, char**)
 		{
 			ControlCamera(1000.0f / io.Framerate, CameraActorInstance);
 			ImVec2 ViewportSize = ImGui::GetContentRegionAvail();
-			PipelineInterface::GetInstance().UpdateViewport(ViewportSize);
+			PipelineInterface::GetInstance().UpdateViewport(FrameContextIndex, ViewportSize);
 			CameraActorInstance->AspectRatio = ViewportSize.x / ViewportSize.y;
 			Level::GetInstance().Update(0);
 			PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
-			ImGui::Image(static_cast<ImTextureID>(PipelineInterface::GetInstance().GetLevelRenderTargetGPUHandle().ptr), ViewportSize);
+			ImGui::Image(static_cast<ImTextureID>(PipelineInterface::GetInstance().GetRenderTargetSRVGPUHandle(FrameContextIndex).ptr), ViewportSize);
 		}
 		ImGui::End();
 		//	Editor UI logic end.
