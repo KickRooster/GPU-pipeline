@@ -79,11 +79,11 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>D:\GPU-pipeline\imgui</IncludePath>
+    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>D:\GPU-pipeline\imgui</IncludePath>
+    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -144,13 +144,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="imgui\backends\imgui_impl_dx12.cpp" />
-    <ClCompile Include="imgui\backends\imgui_impl_win32.cpp" />
-    <ClCompile Include="imgui\imgui.cpp" />
-    <ClCompile Include="imgui\imgui_demo.cpp" />
-    <ClCompile Include="imgui\imgui_draw.cpp" />
-    <ClCompile Include="imgui\imgui_tables.cpp" />
-    <ClCompile Include="imgui\imgui_widgets.cpp" />
     <ClCompile Include="source\actor\Actor.cpp" />
     <ClCompile Include="source\actor\CameraActor.cpp" />
     <ClCompile Include="source\actor\CubeActor.cpp" />
@@ -161,13 +154,15 @@
     <ClCompile Include="source\Log.cpp" />
     <ClCompile Include="source\shape\Cube.cpp" />
     <ClCompile Include="source\shape\Triangle.cpp" />
+    <ClCompile Include="thirdpatry\imgui\imgui.cpp" />
+    <ClCompile Include="thirdpatry\imgui\imgui_demo.cpp" />
+    <ClCompile Include="thirdpatry\imgui\imgui_draw.cpp" />
+    <ClCompile Include="thirdpatry\imgui\imgui_tables.cpp" />
+    <ClCompile Include="thirdpatry\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="thirdpatry\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="thirdpatry\imgui\backends\imgui_impl_dx12.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="imgui\backends\imgui_impl_dx12.h" />
-    <ClInclude Include="imgui\backends\imgui_impl_win32.h" />
-    <ClInclude Include="imgui\imconfig.h" />
-    <ClInclude Include="imgui\imgui.h" />
-    <ClInclude Include="imgui\imgui_internal.h" />
     <ClInclude Include="source\actor\Actor.h" />
     <ClInclude Include="source\actor\CubeActor.h" />
     <ClInclude Include="source\actor\TriangleActor.h" />
@@ -182,16 +177,21 @@
     <ClInclude Include="source\shape\Cube.h" />
     <ClInclude Include="source\shape\Shape.h" />
     <ClInclude Include="source\shape\Triangle.h" />
+    <ClInclude Include="thirdpatry\imgui\imconfig.h" />
+    <ClInclude Include="thirdpatry\imgui\imgui.h" />
+    <ClInclude Include="thirdpatry\imgui\imgui_internal.h" />
+    <ClInclude Include="thirdpatry\imgui\backends\imgui_impl_win32.h" />
+    <ClInclude Include="thirdpatry\imgui\backends\imgui_impl_dx12.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="imgui\misc\debuggers\imgui.natstepfilter" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <Natvis Include="imgui\misc\debuggers\imgui.natvis" />
+    <ClInclude Include="source\actor\CameraActor.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="source\actor\CameraActor.h" />
+    <Content Include="thirdpatry\imgui\misc\debuggers\imgui.natstepfilter" />
+    <Content Include="thirdpatry\imgui\misc\debuggers\imgui.natvis" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
@@ -199,7 +199,7 @@
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
-      <ErrorText>这台计算机上缺少此项目引用的 NuGet 程序包。使用“NuGet 程序包还原”可下载这些程序包。有关更多信息，请参见 http://go.microsoft.com/fwlink/?LinkID=322105。缺少的文件是 {0}。</ErrorText>
+      <ErrorText>这台计算机上缺少此项目引用的 NuGet 程序包。使用"NuGet 程序包还原"可下载这些程序包。有关更多信息，请参见 http://go.microsoft.com/fwlink/?LinkID=322105。缺少的文件是 {0}。</ErrorText>
     </PropertyGroup>
     <Error Condition="!Exists('packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\Microsoft.Direct3D.D3D12.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\Microsoft.Direct3D.D3D12.props'))" />
     <Error Condition="!Exists('packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\Microsoft.Direct3D.D3D12.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\Microsoft.Direct3D.D3D12.targets'))" />
