@@ -103,8 +103,6 @@ class PipelineInterface : public Singleton<PipelineInterface>
     ComPtr<ID3D12DescriptorHeap> D3DDSDescHeap = nullptr;
     ComPtr<ID3D12DescriptorHeap> D3DSRVCBVDescHeap = nullptr;
     vector<D3D12_CPU_DESCRIPTOR_HANDLE> IMGUIRenderTargetDescriptorHandles; //  BackBufferCount
-    //D3D12_CPU_DESCRIPTOR_HANDLE LevelRenderTargetDescriptorHandle;
-    //D3D12_CPU_DESCRIPTOR_HANDLE LevelDepthStencilDescriptorHandle;
     vector<ComPtr<ID3D12Resource>> IMGUIRenderTargetResources;              //  BackBufferCount
     
     ImGUIDescriptorHeapAllocator D3DSRVDescriptorHeapAllocator;
@@ -114,7 +112,6 @@ class PipelineInterface : public Singleton<PipelineInterface>
     
     ComPtr<ID3D12RootSignature> RootSignature;
     ComPtr<ID3D12PipelineState> PipelineState;
-    //D3D12_GPU_DESCRIPTOR_HANDLE LevelSRVGPUHandle;
 
     XMFLOAT2 ViewportSize = XMFLOAT2(0, 0);
     bool bResizedLastFrame = false;

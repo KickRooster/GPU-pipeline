@@ -1,6 +1,3 @@
-[submodule "imgui"]
-	path = imgui
+[submodule "thirdpatry/imgui"]
+	path = thirdpatry/imgui
 	url = https://github.com/ocornut/imgui.git
-[submodule "DirectXMath"]
-	path = DirectXMath
-	url = https://github.com/microsoft/DirectXMath.git
