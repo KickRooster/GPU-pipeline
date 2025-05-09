@@ -7,9 +7,9 @@
 #include "imgui.h"
 #include "backends/imgui_impl_dx12.h"
 #include <vector>
-#include "ShapeProxy.h"
+#include "MeshProxy.h"
 #include "../level/Level.h"
-#include "../shape/Shape.h"
+#include "../mesh/Mesh.h"
 
 class CameraActor;
 using namespace Microsoft::WRL;
@@ -141,7 +141,7 @@ public:
     IDXGISwapChain3* GetSwapChain();
     void UpdateFrameContextFenceValue(unsigned int FrameContextIndex, unsigned long FenceValue);
     D3D12_GPU_DESCRIPTOR_HANDLE GetRenderTargetSRVGPUHandle(unsigned int FrameContextIndex) const;
-    void CreateShapeProxyBuffer(const Shape* ShapeInstance, ShapeProxy* ShapeProxyInstance);
+    void CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProxy* MeshProxyInstance);
     void CreateConstantBuffer(const CameraActor* CameraActorInstance);
     
     void UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);

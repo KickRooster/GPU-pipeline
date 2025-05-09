@@ -1,21 +1,6 @@
 #pragma once
-#include <DirectXMath.h>
+#include "Base.h"
 #include "DesignPatterns.h"
-
-using namespace DirectX;
-
-struct Vertex
-{
-    XMFLOAT4 Pos;
-    XMFLOAT4 Color;
-};
-
-struct Transform
-{
-    XMFLOAT4 Rotation;
-    XMFLOAT3 Position;
-    XMFLOAT3 Scale;
-};
 
 class MathTool : public Singleton<MathTool>
 {

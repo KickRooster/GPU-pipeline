@@ -2,21 +2,24 @@
 #include <memory>
 #include "../misc/Base.h"
 #include "../misc/Math.h"
-#include "../dx12/ShapeProxy.h"
-#include "../shape/Shape.h"
+#include "../dx12/MeshProxy.h"
+#include "../mesh/Mesh.h"
+
+using namespace std;
 
 class Actor
 {
 protected:
-    std::unique_ptr<Shape> ShapeInstance = nullptr;
-    std::unique_ptr<ShapeProxy> ShapeProxyInstance = nullptr;
+    vector<unique_ptr<Mesh>> MeshInstances;
+    vector<unique_ptr<MeshProxy>> MeshProxyInstances;
     XMMATRIX TransformationMatrix;
     
 public:
     Transform Transform;
     Actor() = default;
-    Shape* GetShapeInstance() const ;
-    ShapeProxy* GetShapeProxyInstance() const;
+    unsigned int GetSubMeshCount() const;
+    Mesh* GetMeshInstance(unsigned int Index) const ;
+    MeshProxy* GetMeshProxyInstance(unsigned int Index) const;
     virtual void Update(float DeltaTime);
     virtual ~Actor() = default;
 };

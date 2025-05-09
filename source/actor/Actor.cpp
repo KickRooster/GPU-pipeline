@@ -1,13 +1,30 @@
 #include "Actor.h"
 
-Shape* Actor::GetShapeInstance() const
+unsigned Actor::GetSubMeshCount() const
 {
-    return ShapeInstance.get();    
+    assert(MeshInstances.size() == MeshProxyInstances.size());
+    
+    return MeshInstances.size();    
 }
 
-ShapeProxy* Actor::GetShapeProxyInstance() const
+Mesh* Actor::GetMeshInstance(unsigned int Index) const
 {
-    return ShapeProxyInstance.get();    
+    if (MeshInstances.size() == 0)
+    {
+        return nullptr;
+    }
+    
+    return MeshInstances[Index].get();    
+}
+
+MeshProxy* Actor::GetMeshProxyInstance(unsigned int Index) const
+{
+    if (MeshProxyInstances.size() == 0)
+    {
+        return nullptr;
+    }
+    
+    return MeshProxyInstances[Index].get();    
 }
 
 void Actor::Update(float DeltaTime)

@@ -4,7 +4,7 @@
 
 using namespace Microsoft::WRL;
 
-struct ShapeProxy
+struct MeshProxy
 {
     ComPtr<ID3D12Resource> VertexBuffer;
     ComPtr<ID3D12Resource> VertexBufferUpload;

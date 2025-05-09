@@ -1,19 +1,10 @@
 #include "Level.h"
-#include "../actor/TriangleActor.h"
-#include "../actor/CubeActor.h"
 #include "../actor/CameraActor.h"
+#include "../actor/StaticMeshActor.h"
 
-Actor* Level::InstantiateTriagleActor()
+Actor* Level::InstantiateStaticMeshActor(const string& Path)
 {
-    unique_ptr<TriangleActor> Actor = make_unique<TriangleActor>();
-    Actors.push_back(std::move(Actor));
-
-    return Actors.back().get();
-}
-
-Actor* Level::InstantiateCubeActor()
-{
-    unique_ptr<CubeActor> Actor = make_unique<CubeActor>();
+    unique_ptr<StaticMeshActor> Actor = make_unique<StaticMeshActor>(Path);
     Actor->Transform.Position.x = 0;
     Actor->Transform.Position.y = 0;
     Actor->Transform.Position.z = 20.f;

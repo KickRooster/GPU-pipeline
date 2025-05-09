@@ -23,29 +23,29 @@ void CameraActor::ResponseToUI(const UIState* State)
 
         if (State->WPressed)
         {
-            Position = XMVectorAdd(Position, XMVectorScale(Look, State->MoveSpeed));
+            Position = XMVectorAdd(Position, XMVectorScale(Look, State->MoveSpeed * State->DeltaTime));
         }
         if (State->SPressed)
         {
-            Position = XMVectorSubtract(Position, XMVectorScale(Look, State->MoveSpeed));
+            Position = XMVectorSubtract(Position, XMVectorScale(Look, State->MoveSpeed * State->DeltaTime));
         }
     
         if (State->APressed)
         {
-            Position = XMVectorSubtract(Position, XMVectorScale(Right, State->MoveSpeed));
+            Position = XMVectorSubtract(Position, XMVectorScale(Right, State->MoveSpeed * State->DeltaTime));
         }
         if (State->DPressed)
         {
-            Position = XMVectorAdd(Position, XMVectorScale(Right, State->MoveSpeed));
+            Position = XMVectorAdd(Position, XMVectorScale(Right, State->MoveSpeed * State->DeltaTime));
         }
     
         if (State->QPressed)
         {
-            Position = XMVectorSubtract(Position, XMVectorScale(Up, State->MoveSpeed));
+            Position = XMVectorSubtract(Position, XMVectorScale(Up, State->MoveSpeed * State->DeltaTime));
         }
         if (State->EPressed)
         {
-            Position = XMVectorAdd(Position, XMVectorScale(Up, State->MoveSpeed));
+            Position = XMVectorAdd(Position, XMVectorScale(Up, State->MoveSpeed * State->DeltaTime));
         }
     
         XMStoreFloat3(&Transform.Position, Position);
@@ -55,7 +55,7 @@ void CameraActor::ResponseToUI(const UIState* State)
     {
         if (State->DeltaX != 0.0f)
         {
-            XMMATRIX RotY = XMMatrixRotationY(State->DeltaX * State->RotateSpeed);
+            XMMATRIX RotY = XMMatrixRotationY(State->DeltaX * State->RotateSpeed * State->DeltaTime);
         
             XMVECTOR Look = XMLoadFloat3(&LookDirection);
             Look = XMVector3TransformNormal(Look, RotY);
@@ -72,7 +72,7 @@ void CameraActor::ResponseToUI(const UIState* State)
             XMVECTOR Up = XMLoadFloat3(&UpDirection);
             XMVECTOR Right = XMVector3Cross(Up, Look);
         
-            XMMATRIX RotX = XMMatrixRotationAxis(Right, State->DeltaY * State->RotateSpeed);
+            XMMATRIX RotX = XMMatrixRotationAxis(Right, State->DeltaY * State->RotateSpeed * State->DeltaTime);
         
             Look = XMVector3TransformNormal(Look, RotX);
             XMStoreFloat3(&LookDirection, Look);
