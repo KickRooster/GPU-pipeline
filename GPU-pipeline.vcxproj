@@ -79,11 +79,13 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)thirdpatry\assimp\build\lib\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)thirdpatry\assimp\build\lib\Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -123,7 +125,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;d3dcompiler.lib;dxgi.lib</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;d3dcompiler.lib;dxgi.lib;assimp-vc143-mtd.lib;$(ProjectDir)thirdpatry\assimp\build\contrib\zlib\Debug\zlibstaticd.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -140,20 +142,18 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;d3dcompiler.lib;dxgi.lib</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;d3dcompiler.lib;dxgi.lib;assimp-vc143-mt.lib;$(ProjectDir)thirdpatry\assimp\build\contrib\zlib\Release\zlibstatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="source\actor\Actor.cpp" />
     <ClCompile Include="source\actor\CameraActor.cpp" />
-    <ClCompile Include="source\actor\CubeActor.cpp" />
-    <ClCompile Include="source\actor\TriangleActor.cpp" />
+    <ClCompile Include="source\actor\StaticMeshActor.cpp" />
     <ClCompile Include="source\dx12\PipelineInterface.cpp" />
     <ClCompile Include="source\GPU-pipeline.cpp" />
     <ClCompile Include="source\level\Level.cpp" />
     <ClCompile Include="source\Log.cpp" />
-    <ClCompile Include="source\shape\Cube.cpp" />
-    <ClCompile Include="source\shape\Triangle.cpp" />
+    <ClCompile Include="source\mesh\MeshLoader.cpp" />
     <ClCompile Include="thirdpatry\imgui\imgui.cpp" />
     <ClCompile Include="thirdpatry\imgui\imgui_demo.cpp" />
     <ClCompile Include="thirdpatry\imgui\imgui_draw.cpp" />
@@ -164,19 +164,17 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\actor\Actor.h" />
-    <ClInclude Include="source\actor\CubeActor.h" />
-    <ClInclude Include="source\actor\TriangleActor.h" />
+    <ClInclude Include="source\actor\StaticMeshActor.h" />
+    <ClInclude Include="source\mesh\MeshLoader.h" />
+    <ClInclude Include="source\mesh\Mesh.h" />
     <ClInclude Include="source\misc\Base.h" />
     <ClInclude Include="source\misc\DesignPatterns.h" />
     <ClInclude Include="source\misc\Math.h" />
     <ClInclude Include="source\dx12\ConstantBuffer.h" />
     <ClInclude Include="source\dx12\ConstantBufferProxy.h" />
     <ClInclude Include="source\dx12\PipelineInterface.h" />
-    <ClInclude Include="source\dx12\ShapeProxy.h" />
+    <ClInclude Include="source\dx12\MeshProxy.h" />
     <ClInclude Include="source\level\Level.h" />
-    <ClInclude Include="source\shape\Cube.h" />
-    <ClInclude Include="source\shape\Shape.h" />
-    <ClInclude Include="source\shape\Triangle.h" />
     <ClInclude Include="thirdpatry\imgui\imconfig.h" />
     <ClInclude Include="thirdpatry\imgui\imgui.h" />
     <ClInclude Include="thirdpatry\imgui\imgui_internal.h" />

@@ -15,6 +15,7 @@
 #include "dx12/PipelineInterface.h"
 #include "level/Level.h"
 #include "misc/Math.h"
+#include "actor/CameraActor.h"
 
 static unsigned long                FenceLastSignaledValue = 0;
 static bool                         SwapChainOccluded = false;
@@ -28,14 +29,30 @@ void ControlCamera(float DeltaTime, CameraActor* CameraActorInstance)
 	State.DPressed = ImGui::IsKeyPressed(ImGuiKey_D);
 	State.QPressed = ImGui::IsKeyPressed(ImGuiKey_Q);
 	State.EPressed = ImGui::IsKeyPressed(ImGuiKey_E);
-	State.MoveSpeed = DeltaTime * 0.008f;
+
+	if (State.MoveSpeed == 0)
+	{
+		State.MoveSpeed = 0.008f;
+	}
+	
+	const float MouseWheel = ImGui::GetIO().MouseWheel;
+	if (MouseWheel > 0.0f)
+	{
+		State.MoveSpeed *= 1.2f;
+	}
+	else if (MouseWheel < 0.0f)
+	{
+		State.MoveSpeed *= 0.8f;
+	}
 
 	State.LeftButtonDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
 	State.RightButtonDown = ImGui::IsMouseDown(ImGuiMouseButton_Right);
 
 	State.DeltaX = ImGui::GetIO().MouseDelta.x;
 	State.DeltaY = ImGui::GetIO().MouseDelta.y;
-	State.RotateSpeed = DeltaTime * 0.00008f;
+	State.RotateSpeed = 0.00008f;
+
+	State.DeltaTime = DeltaTime;
 
 	CameraActorInstance->ResponseToUI(&State);
 }
@@ -60,8 +77,11 @@ int main(int, char**)
 	}
 
 	//	Initialize the level manually.
-	const Actor* CubeActorInstance = Level::GetInstance().InstantiateCubeActor();
-	PipelineInterface::GetInstance().CreateShapeProxyBuffer(CubeActorInstance->GetShapeInstance(), CubeActorInstance->GetShapeProxyInstance());
+	const Actor* StaticMeshActorInstance = Level::GetInstance().InstantiateStaticMeshActor("D:\\GPU-pipeline\\content\\mesh\\jeep1.fbx");
+	for (unsigned int I = 0; I < StaticMeshActorInstance->GetSubMeshCount(); ++I)
+	{
+		PipelineInterface::GetInstance().CreateMeshProxyBuffer(StaticMeshActorInstance->GetMeshInstance(I), StaticMeshActorInstance->GetMeshProxyInstance(I));
+	}
 	CameraActor* CameraActorInstance = static_cast<CameraActor*>(Level::GetInstance().InstantiateCameraActor());
 	PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
 	

@@ -1,4 +1,7 @@
 ﻿#pragma once
+#include <DirectXMath.h>
+
+using namespace DirectX;
 
 enum class ErrorCode
 {
@@ -18,7 +21,8 @@ enum class ErrorCode
     DXGIFactoryCreateFailed,
     SwapChainForHwndCreateFailed,
     QueryIDXGISwapChain3InterfaceFailed,
-    //  xxx begin.
+    //  Assimp begin.
+    MeshDataIncomplete,
     ErrorCode_Num
 };
 
@@ -36,7 +40,24 @@ struct UIState
 
     float DeltaX;
     float DeltaY;
+    float MouseWheel;
 
     float MoveSpeed;
     float RotateSpeed;
+    float DeltaTime;
+};
+
+struct Vertex
+{
+    XMFLOAT3 Position;
+    XMFLOAT3 Normal;
+    XMFLOAT4 Color;
+    XMFLOAT2 UV0;
+};
+
+struct Transform
+{
+    XMFLOAT4 Rotation;
+    XMFLOAT3 Position;
+    XMFLOAT3 Scale;
 };
