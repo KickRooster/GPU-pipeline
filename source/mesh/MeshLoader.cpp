@@ -1,5 +1,8 @@
 #include "MeshLoader.h"
 
+using namespace std;
+using namespace DirectX;
+
 void MeshLoader::ProcessNode(aiNode* Node, const aiScene* Scene, vector<Mesh>& OutMeshes)
 {
     for (unsigned int I = 0; I < Node->mNumMeshes; ++I)
@@ -75,12 +78,16 @@ void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, vector<Me
 ErrorCode MeshLoader::LoadMesh(const std::string& Path, vector<Mesh>& OutMeshes)
 {
     Assimp::Importer Importer;
-    const aiScene* Scene = Importer.ReadFile(Path, 
+
+    unsigned int PostProcessFlags = 
         aiProcess_Triangulate |
-        //aiProcess_MakeLeftHanded |
-        aiProcess_GenNormals | 
+        aiProcess_MakeLeftHanded |
+        aiProcess_FlipWindingOrder |
+        aiProcess_GenNormals |
         aiProcess_CalcTangentSpace |
-        aiProcess_FlipUVs);
+        aiProcess_FlipUVs;
+    
+    const aiScene* Scene = Importer.ReadFile(Path, PostProcessFlags);
 
     if (!Scene || Scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !Scene->mRootNode)
     {

@@ -11,10 +11,6 @@
 #include "../level/Level.h"
 #include "../mesh/Mesh.h"
 
-class CameraActor;
-using namespace Microsoft::WRL;
-using namespace std;
-
 // Simple free list based allocator
 struct ImGUIDescriptorHeapAllocator
 {
@@ -72,15 +68,15 @@ struct ImGUIDescriptorHeapAllocator
 
 struct FrameContext
 {
-    ComPtr<ID3D12CommandAllocator> CommandAllocator;
-    ComPtr<ID3D12GraphicsCommandList> CommandList;
+    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CommandAllocator;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> CommandList;
     UINT64 FenceValue;
     D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetCPUDescriptorHandle;
     D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilCPUDescriptorHandle;
     D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetSRVCPUDescriptorHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE RenderTargetSRVGPUDescriptorHandle;
-    ComPtr<ID3D12Resource> RenderTarget = nullptr;
-    ComPtr<ID3D12Resource> DepthStencilBuffer = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Resource> RenderTarget = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Resource> DepthStencilBuffer = nullptr;
 };
 
 class PipelineInterface : public Singleton<PipelineInterface>
@@ -93,27 +89,27 @@ class PipelineInterface : public Singleton<PipelineInterface>
     const int FrameNumInFlight = 2;
     const int SRVHeapSize = 64;
     
-    ComPtr<ID3D12Device> D3DDevice = nullptr;
-    ComPtr<ID3D12CommandQueue> D3DCommandQueue = nullptr;
-    ComPtr<IDXGISwapChain3> SwapChain = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Device> D3DDevice = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> D3DCommandQueue = nullptr;
+    Microsoft::WRL::ComPtr<IDXGISwapChain3> SwapChain = nullptr;
     HANDLE SwapChainWaitableObject = nullptr;
-    vector<FrameContext> FrameContexts;                                     //  FrameNumInFlight
+    std::vector<FrameContext> FrameContexts;                                     //  FrameNumInFlight
     
-    ComPtr<ID3D12DescriptorHeap> D3DRTVDescHeap = nullptr;
-    ComPtr<ID3D12DescriptorHeap> D3DDSDescHeap = nullptr;
-    ComPtr<ID3D12DescriptorHeap> D3DSRVCBVDescHeap = nullptr;
-    vector<D3D12_CPU_DESCRIPTOR_HANDLE> IMGUIRenderTargetDescriptorHandles; //  BackBufferCount
-    vector<ComPtr<ID3D12Resource>> IMGUIRenderTargetResources;              //  BackBufferCount
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> D3DRTVDescHeap = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> D3DDSDescHeap = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> D3DSRVCBVDescHeap = nullptr;
+    std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> IMGUIRenderTargetDescriptorHandles; //  BackBufferCount
+    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> IMGUIRenderTargetResources;              //  BackBufferCount
     
     ImGUIDescriptorHeapAllocator D3DSRVDescriptorHeapAllocator;
     HANDLE FenceEvent = nullptr;
-    ComPtr<ID3D12Fence> Fence = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Fence> Fence = nullptr;
     unsigned int FrameIndex = 0;
     
-    ComPtr<ID3D12RootSignature> RootSignature;
-    ComPtr<ID3D12PipelineState> PipelineState;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> RootSignature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> PipelineState;
 
-    XMFLOAT2 ViewportSize = XMFLOAT2(0, 0);
+    DirectX::XMFLOAT2 ViewportSize = DirectX::XMFLOAT2(0, 0);
     bool bResizedLastFrame = false;
     
     //  Constant buffer data
@@ -143,6 +139,7 @@ public:
     D3D12_GPU_DESCRIPTOR_HANDLE GetRenderTargetSRVGPUHandle(unsigned int FrameContextIndex) const;
     void CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProxy* MeshProxyInstance);
     void CreateConstantBuffer(const CameraActor* CameraActorInstance);
+    void CreateConstantBuffer(const StaticMeshActor* ActorInstance);
     
     void UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);
     void RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance);

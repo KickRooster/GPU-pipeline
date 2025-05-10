@@ -2,9 +2,18 @@
 #include "../misc/Math.h"
 #include <DirectXMath.h>
 
-using namespace DirectX;
+struct CameraConstantBuffer
+{
+    DirectX::XMFLOAT4X4 ViewProj = MathTool::GetInstance().Identity4x4();
+};
+
+struct StaticMeshActorConstantBuffer
+{
+    DirectX::XMFLOAT4X4 World = MathTool::GetInstance().Identity4x4();
+};
 
 struct ConstantBuffer
 {
-    XMFLOAT4X4 WorldViewProj = MathTool::GetInstance().Identity4x4();
+    DirectX::XMFLOAT4X4 ViewProj = MathTool::GetInstance().Identity4x4();
+    DirectX::XMFLOAT4X4 World = MathTool::GetInstance().Identity4x4();
 };

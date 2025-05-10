@@ -2,20 +2,20 @@
 #include <vector>
 #include <memory>
 #include <string>
-
-#include "../actor/Actor.h"
+#include "../actor/StaticMeshActor.h"
+#include "../actor/CameraActor.h"
 #include "../misc/DesignPatterns.h"
-
-using namespace std;
 
 class Level : public Singleton<Level>
 {
-    vector<unique_ptr<Actor>> Actors;
-
+    std::vector<std::unique_ptr<StaticMeshActor>> StaticMeshActors;
+    std::vector<std::unique_ptr<CameraActor>> CameraActors;
+    
 public:
-    Actor* InstantiateStaticMeshActor(const string& Path);
-    Actor* InstantiateCameraActor();
+    StaticMeshActor* InstantiateStaticMeshActor(const std::string& Path);
+    CameraActor* InstantiateCameraActor();
     void Update(float DeletaTime) const;
-    vector<Actor*> GetActors() const;
+    std::vector<StaticMeshActor*> GetStaticMeshActors() const;
+    std::vector<CameraActor*> GetCameraActors() const;
     ~Level();
 };

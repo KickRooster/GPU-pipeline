@@ -9,9 +9,9 @@ class MathTool : public Singleton<MathTool>
     ~MathTool() = default;
     
 public:
-    XMFLOAT4X4 Identity4x4()
+    DirectX::XMFLOAT4X4 Identity4x4()
     {
-        static XMFLOAT4X4 I(
+        static DirectX::XMFLOAT4X4 I(
             1.0f, 0.0f, 0.0f, 0.0f,
             0.0f, 1.0f, 0.0f, 0.0f,
             0.0f, 0.0f, 1.0f, 0.0f,

@@ -6,10 +6,8 @@
 #include <assimp/postprocess.h>
 #include "../misc/Base.h"
 
-using namespace std;
-
 struct Mesh
 {
-    vector<Vertex> Vertices;
-    vector<unsigned int> Indices;
+    std::vector<Vertex> Vertices;
+    std::vector<unsigned int> Indices;
 };

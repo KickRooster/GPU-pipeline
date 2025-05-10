@@ -4,9 +4,14 @@
 // Transforms and colors geometry.
 //***************************************************************************************
 
-cbuffer cbPerObject : register(b0)
+cbuffer cbCamera : register(b0)
 {
-	float4x4 gWorldViewProj; 
+	float4x4 gViewProj; 
+};
+
+cbuffer cbStaticMeshActor : register(b1)
+{
+	float4x4 gWorld;
 };
 
 struct VertexIn
@@ -20,6 +25,7 @@ struct VertexIn
 struct VertexOut
 {
 	float4 PosH  : SV_POSITION;
+	float3 NormalW : NORMAL;
     float4 Color : COLOR;
 };
 
@@ -27,12 +33,14 @@ VertexOut VS(VertexIn vin)
 {
 	VertexOut vout;
 	
-	// Transform to homogeneous clip space.
-	vout.PosH = mul(float4(vin.PosL, 1.0f), gWorldViewProj);
+	float4 posW = mul(float4(vin.PosL, 1.0f), gWorld);
 	
-	// Just pass vertex color into the pixel shader.
-    //vout.Color = vin.Color;
-	vout.Color.xyz = abs(vin.Normal);
+	float3x3 worldInvTranspose = transpose((float3x3)gWorld);
+	vout.NormalW = normalize(mul(vin.Normal, worldInvTranspose));
+	
+	vout.PosH = mul(posW, gViewProj);
+	
+	vout.Color.xyz = abs(vout.NormalW);
 	vout.Color.w = 1.0;
 	
     return vout;
@@ -42,5 +50,3 @@ float4 PS(VertexOut pin) : SV_Target
 {
     return pin.Color;
 }
-
-

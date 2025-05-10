@@ -146,7 +146,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="source\actor\Actor.cpp" />
     <ClCompile Include="source\actor\CameraActor.cpp" />
     <ClCompile Include="source\actor\StaticMeshActor.cpp" />
     <ClCompile Include="source\dx12\PipelineInterface.cpp" />

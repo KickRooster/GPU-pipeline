@@ -1,9 +1,16 @@
 #include "StaticMeshActor.h"
 #include "../mesh/Mesh.h"
 #include "../mesh/MeshLoader.h"
+#include "../dx12/MeshProxy.h"
+
+using namespace std;
+using namespace DirectX;
 
 StaticMeshActor::StaticMeshActor(const string& Path)
 {
+    ConstantBufferInstance = make_unique<StaticMeshActorConstantBuffer>();
+    ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
+    
     vector<Mesh> Meshes;
     MeshLoader::GetInstance().LoadMesh(Path, Meshes);
     
@@ -21,5 +28,65 @@ StaticMeshActor::StaticMeshActor(const string& Path)
 
 void StaticMeshActor::Update(float DeltaTime)
 {
+    XMMATRIX Scale = XMMatrixScaling(Transform.Scale.x, Transform.Scale.y, Transform.Scale.z);
     
+    XMMATRIX Rotation = XMMatrixRotationRollPitchYaw(
+        Transform.Rotation.x * XM_PI / 180.0f,  // Pitch (X轴)
+        Transform.Rotation.y * XM_PI / 180.0f,  // Yaw (Y轴)
+        Transform.Rotation.z * XM_PI / 180.0f   // Roll (Z轴)
+    );
+    
+    XMMATRIX Translation = XMMatrixTranslation(Transform.Position.x, Transform.Position.y, Transform.Position.z);
+    
+    TransformationMatrix = Translation * Rotation * Scale;
+    
+    if (ConstantBufferInstance)
+    {
+        XMStoreFloat4x4(&ConstantBufferInstance->World, XMMatrixTranspose(TransformationMatrix));
+        
+        if (ConstantBufferProxyInstance->MappedData != nullptr)
+        {
+            memcpy(
+                ConstantBufferProxyInstance->MappedData,
+                ConstantBufferInstance.get(),
+                sizeof(StaticMeshActorConstantBuffer));
+        }
+    }
+}
+
+unsigned StaticMeshActor::GetSubMeshCount() const
+{
+    assert(MeshInstances.size() == MeshProxyInstances.size());
+    
+    return MeshInstances.size();    
+}
+
+Mesh* StaticMeshActor::GetMeshInstance(unsigned int Index) const
+{
+    if (MeshInstances.size() == 0)
+    {
+        return nullptr;
+    }
+    
+    return MeshInstances[Index].get();    
+}
+
+MeshProxy* StaticMeshActor::GetMeshProxyInstance(unsigned int Index) const
+{
+    if (MeshProxyInstances.size() == 0)
+    {
+        return nullptr;
+    }
+    
+    return MeshProxyInstances[Index].get();    
+}
+
+StaticMeshActorConstantBuffer* StaticMeshActor::GetConstantBuffer() const
+{
+    return ConstantBufferInstance.get();
+}
+
+ConstantBufferProxy* StaticMeshActor::GetConstantBufferProxy() const
+{
+    return ConstantBufferProxyInstance.get();   
 }
