@@ -1,6 +1,7 @@
 ﻿#include "PipelineInterface.h"
 #include "../misc/Math.h"
 #include "../actor/CameraActor.h"
+#include "../actor/StaticMeshActor.h"
 #include <d3dcompiler.h>
 #include <iostream>
 #include <string>
@@ -18,6 +19,8 @@
 #include <dxgidebug.h>
 #pragma comment(lib, "dxguid.lib")
 #endif
+
+using namespace Microsoft::WRL;
 
 ErrorCode PipelineInterface::Initialize(HWND hWnd)
 {
@@ -236,17 +239,19 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
     }
     
-    CD3DX12_DESCRIPTOR_RANGE1 Ranges[1];
-    CD3DX12_ROOT_PARAMETER1 RootParameters[1];
+    CD3DX12_DESCRIPTOR_RANGE1 Ranges[2];
+    CD3DX12_ROOT_PARAMETER1 RootParameters[2];
+    
+    // Camera constant buffer - register b0
     Ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-    RootParameters[0].InitAsDescriptorTable(1, &Ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
+    RootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+    
+    // Object constant buffer - register b1
+    Ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+    RootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
     
     D3D12_ROOT_SIGNATURE_FLAGS RootSignatureFlags =
-                D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
-                D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
-                D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-                D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
-                D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+                D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC RootSignatureDesc;
     RootSignatureDesc.Init_1_1(_countof(RootParameters), RootParameters, 0, nullptr, RootSignatureFlags);
 
@@ -751,7 +756,7 @@ void PipelineInterface::CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProx
 
 void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInstance)
 {
-    const unsigned int ByteSize = MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(CameraActorInstance->GetConstantBuffer()));
+    const unsigned int ByteSize = MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(CameraConstantBuffer));
     ConstantBufferProxy* BufferProxy = CameraActorInstance->GetConstantBufferProxy();
     BufferProxy->ElementByteSize = ByteSize;
 
@@ -774,10 +779,25 @@ void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInsta
     D3DDevice->CreateConstantBufferView(
         &ConstantBufferViewDesc,
         ConstantBufferCPUHandle);
+}
 
-    // CD3DX12_RANGE ReadRange(0, 0);        // We do not intend to read from this resource on the CPU.
-    // ConstantBuffer->Map(0, &ReadRange, reinterpret_cast<void**>(&ConstantBufferDataBegin));
-    // memcpy(ConstantBufferDataBegin, &Buffer, ConstantBufferSize);
+void PipelineInterface::CreateConstantBuffer(const StaticMeshActor* ActorInstance)
+{
+    const unsigned int ByteSize = MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(StaticMeshActorConstantBuffer));
+    ConstantBufferProxy* BufferProxy = ActorInstance->GetConstantBufferProxy();
+    BufferProxy->ElementByteSize = ByteSize;
+
+    CD3DX12_HEAP_PROPERTIES HeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(ByteSize);
+    D3DDevice->CreateCommittedResource(
+            &HeapProperties,
+            D3D12_HEAP_FLAG_NONE,
+            &BufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&BufferProxy->UploadBuffer));
+
+    BufferProxy->UploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&BufferProxy->MappedData));
 }
 
 void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize)
@@ -918,20 +938,29 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
     FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootSignature(RootSignature.Get());
     FrameContexts[FrameContextIndex].CommandList->SetPipelineState(PipelineState.Get());
 
-    for (int I = 0; I < LevelInstance->GetActors().size(); ++I)
+    if (LevelInstance->GetCameraActors().size() > 0)
     {
-        for (unsigned int SubMeshIndex = 0; SubMeshIndex < LevelInstance->GetActors()[I]->GetSubMeshCount(); ++SubMeshIndex)
+        const CameraActor* CameraActorInstance = LevelInstance->GetCameraActors()[0];
+
+        const D3D12_GPU_VIRTUAL_ADDRESS CameraConstantBufferAddress = CameraActorInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
+        FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootConstantBufferView(0, CameraConstantBufferAddress);
+    }
+
+    for (int I = 0; I < LevelInstance->GetStaticMeshActors().size(); ++I)
+    {
+        const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = LevelInstance->GetStaticMeshActors()[I]->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
+        FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
+        
+        for (unsigned int SubMeshIndex = 0; SubMeshIndex < LevelInstance->GetStaticMeshActors()[I]->GetSubMeshCount(); ++SubMeshIndex)
         {
-            D3D12_VERTEX_BUFFER_VIEW VertexBufferView = LevelInstance->GetActors()[I]->GetMeshProxyInstance(SubMeshIndex)->VertexBufferView;//GetVertexBufferView();
+            D3D12_VERTEX_BUFFER_VIEW VertexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance(SubMeshIndex)->VertexBufferView;
             FrameContexts[FrameContextIndex].CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
-            D3D12_INDEX_BUFFER_VIEW IndexBufferView = LevelInstance->GetActors()[I]->GetMeshProxyInstance(SubMeshIndex)->IndexBufferView;//GetIndexBufferView();
+            D3D12_INDEX_BUFFER_VIEW IndexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance(SubMeshIndex)->IndexBufferView;
             FrameContexts[FrameContextIndex].CommandList->IASetIndexBuffer(&IndexBufferView);
             FrameContexts[FrameContextIndex].CommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-            FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootDescriptorTable(0, ConstantBufferGPUHandle);
-    
             FrameContexts[FrameContextIndex].CommandList->DrawIndexedInstanced(
-            LevelInstance->GetActors()[I]->GetMeshInstance(SubMeshIndex)->Indices.size(),
+            LevelInstance->GetStaticMeshActors()[I]->GetMeshInstance(SubMeshIndex)->Indices.size(),
                 1, 0, 0, 0);
         }
     }

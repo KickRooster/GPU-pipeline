@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include "Actor.h"
 #include "../dx12/ConstantBuffer.h"
 #include "../dx12/ConstantBufferProxy.h"
@@ -6,13 +7,14 @@
 class CameraActor : public Actor
 {
 protected:
-    XMMATRIX ProjectionMatrix;
-    std::unique_ptr<ConstantBuffer> ConstantBufferInstance;
+    DirectX::XMMATRIX ViewMatrix;
+    DirectX::XMMATRIX ProjectionMatrix;
+    std::unique_ptr<CameraConstantBuffer> ConstantBufferInstance;
     std::unique_ptr<ConstantBufferProxy> ConstantBufferProxyInstance;
 
 public:
-    XMFLOAT3 LookDirection;
-    XMFLOAT3 UpDirection;
+    DirectX::XMFLOAT3 LookDirection;
+    DirectX::XMFLOAT3 UpDirection;
     float FovY;
     float AspectRatio;
     float NearPlane;
@@ -21,7 +23,7 @@ public:
     CameraActor();
     void ResponseToUI(const UIState* State);
     void Update(float DeltaTime) override;
-    ConstantBuffer* GetConstantBuffer() const;
+    CameraConstantBuffer* GetConstantBuffer() const;
     ConstantBufferProxy* GetConstantBufferProxy() const;
     ~CameraActor() override = default;
 };

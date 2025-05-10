@@ -16,6 +16,7 @@
 #include "level/Level.h"
 #include "misc/Math.h"
 #include "actor/CameraActor.h"
+#include "actor/StaticMeshActor.h"
 
 static unsigned long                FenceLastSignaledValue = 0;
 static bool                         SwapChainOccluded = false;
@@ -77,12 +78,14 @@ int main(int, char**)
 	}
 
 	//	Initialize the level manually.
-	const Actor* StaticMeshActorInstance = Level::GetInstance().InstantiateStaticMeshActor("D:\\GPU-pipeline\\content\\mesh\\jeep1.fbx");
+	const StaticMeshActor* StaticMeshActorInstance = Level::GetInstance().InstantiateStaticMeshActor("D:\\GPU-pipeline\\content\\mesh\\jeep1.fbx");
 	for (unsigned int I = 0; I < StaticMeshActorInstance->GetSubMeshCount(); ++I)
 	{
 		PipelineInterface::GetInstance().CreateMeshProxyBuffer(StaticMeshActorInstance->GetMeshInstance(I), StaticMeshActorInstance->GetMeshProxyInstance(I));
 	}
-	CameraActor* CameraActorInstance = static_cast<CameraActor*>(Level::GetInstance().InstantiateCameraActor());
+	PipelineInterface::GetInstance().CreateConstantBuffer(StaticMeshActorInstance);
+
+	CameraActor* CameraActorInstance = Level::GetInstance().InstantiateCameraActor();
 	PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
 	
 	// Show the window
@@ -188,11 +191,12 @@ int main(int, char**)
 		
 		ImGui::Begin("Scene View");
 		{
-			ControlCamera(1000.0f / io.Framerate, CameraActorInstance);
+			float DeltaTime = 1000.0f / io.Framerate;
+			ControlCamera(DeltaTime, CameraActorInstance);
 			ImVec2 ViewportSize = ImGui::GetContentRegionAvail();
 			PipelineInterface::GetInstance().UpdateViewport(FrameContextIndex, ViewportSize);
 			CameraActorInstance->AspectRatio = ViewportSize.x / ViewportSize.y;
-			Level::GetInstance().Update(0);
+			Level::GetInstance().Update(DeltaTime);
 			PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
 			ImGui::Image(static_cast<ImTextureID>(PipelineInterface::GetInstance().GetRenderTargetSRVGPUHandle(FrameContextIndex).ptr), ViewportSize);
 		}

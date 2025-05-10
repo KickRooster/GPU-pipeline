@@ -11,9 +11,9 @@
 
 class MeshLoader : public Singleton<MeshLoader>
 {
-    void ProcessNode(aiNode* Node, const aiScene* Scene, vector<Mesh>& OutMeshes);
-    void ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, vector<Mesh>& OutMeshes);
+    void ProcessNode(aiNode* Node, const aiScene* Scene, std::vector<Mesh>& OutMeshes);
+    void ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, std::vector<Mesh>& OutMeshes);
     
 public:
-    ErrorCode LoadMesh(const std::string& Path, vector<Mesh>& OutMeshes);
+    ErrorCode LoadMesh(const std::string& Path, std::vector<Mesh>& OutMeshes);
 };

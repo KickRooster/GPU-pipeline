@@ -1,8 +1,11 @@
 #include "CameraActor.h"
 
+using namespace std;
+using namespace DirectX;
+
 CameraActor::CameraActor()
 {
-    ConstantBufferInstance = make_unique<ConstantBuffer>();
+    ConstantBufferInstance = make_unique<CameraConstantBuffer>();
     ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
 }
 
@@ -85,27 +88,26 @@ void CameraActor::ResponseToUI(const UIState* State)
 
 void CameraActor::Update(float DeltaTime)
 {
-    TransformationMatrix = XMMatrixLookToLH(
+    ViewMatrix = XMMatrixLookToLH(
         XMLoadFloat3(&Transform.Position),
         XMLoadFloat3(&LookDirection),
-            XMLoadFloat3(&UpDirection));
-
-    // view = XMMatrixLookToLH(
-    //     XMVectorSet(0, 0, -4.f, 1),
-    //     XMVectorSet(0, 0, 1, 0),
-    //     XMLoadFloat3(&UpDirection));
+        XMLoadFloat3(&UpDirection));
 
     ProjectionMatrix = XMMatrixPerspectiveFovLH(FovY * XM_PI / 180.f, AspectRatio, NearPlane, FarPlane);
-    XMMATRIX WorldViewProj = TransformationMatrix * ProjectionMatrix;
+    XMMATRIX ViewProj = ViewMatrix * ProjectionMatrix;
 
-    XMStoreFloat4x4(&ConstantBufferInstance->WorldViewProj, XMMatrixTranspose(WorldViewProj));
-    memcpy(
-        &ConstantBufferProxyInstance->MappedData[0 * ConstantBufferProxyInstance->ElementByteSize],
-        &ConstantBufferInstance.get()->WorldViewProj,
-        sizeof(ConstantBuffer));
+    XMStoreFloat4x4(&ConstantBufferInstance->ViewProj, XMMatrixTranspose(ViewProj));
+    
+    if (ConstantBufferProxyInstance->MappedData != nullptr)
+    {
+        memcpy(
+            ConstantBufferProxyInstance->MappedData,
+            ConstantBufferInstance.get(),
+            sizeof(CameraConstantBuffer));
+    }
 }
 
-ConstantBuffer* CameraActor::GetConstantBuffer() const
+CameraConstantBuffer* CameraActor::GetConstantBuffer() const
 {
     return ConstantBufferInstance.get();    
 }

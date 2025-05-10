@@ -1,8 +1,6 @@
 ﻿#pragma once
 #include <DirectXMath.h>
 
-using namespace DirectX;
-
 enum class ErrorCode
 {
     Illegal = -1,
@@ -49,15 +47,15 @@ struct UIState
 
 struct Vertex
 {
-    XMFLOAT3 Position;
-    XMFLOAT3 Normal;
-    XMFLOAT4 Color;
-    XMFLOAT2 UV0;
+    DirectX::XMFLOAT3 Position;
+    DirectX::XMFLOAT3 Normal;
+    DirectX::XMFLOAT4 Color;
+    DirectX::XMFLOAT2 UV0;
 };
 
 struct Transform
 {
-    XMFLOAT4 Rotation;
-    XMFLOAT3 Position;
-    XMFLOAT3 Scale;
+    DirectX::XMFLOAT4 Rotation;
+    DirectX::XMFLOAT3 Position;
+    DirectX::XMFLOAT3 Scale;
 };

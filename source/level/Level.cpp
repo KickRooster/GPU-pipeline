@@ -2,55 +2,75 @@
 #include "../actor/CameraActor.h"
 #include "../actor/StaticMeshActor.h"
 
-Actor* Level::InstantiateStaticMeshActor(const string& Path)
+using namespace std;
+using namespace DirectX;
+
+StaticMeshActor* Level::InstantiateStaticMeshActor(const string& Path)
 {
-    unique_ptr<StaticMeshActor> Actor = make_unique<StaticMeshActor>(Path);
-    Actor->Transform.Position.x = 0;
-    Actor->Transform.Position.y = 0;
-    Actor->Transform.Position.z = 20.f;
-    Actor->Transform.Scale.x = 1.0f;
-    Actor->Transform.Scale.y = 1.0f;
-    Actor->Transform.Scale.z = 1.0f;
-    Actor->Transform.Rotation.x = 0;
-    Actor->Transform.Rotation.y = 0;
-    Actor->Transform.Rotation.z = 0;
-    Actors.push_back(std::move(Actor));
+    unique_ptr<StaticMeshActor> ActorInstance = make_unique<StaticMeshActor>(Path);
+    ActorInstance->Transform.Position.x = 0;
+    ActorInstance->Transform.Position.y = 0;
+    ActorInstance->Transform.Position.z = 0;
+    ActorInstance->Transform.Scale.x = 1.0f;
+    ActorInstance->Transform.Scale.y = 1.0f;
+    ActorInstance->Transform.Scale.z = 1.0f;
+    ActorInstance->Transform.Rotation.x = 0;
+    ActorInstance->Transform.Rotation.y = 0;
+    ActorInstance->Transform.Rotation.z = 0;
+    StaticMeshActors.push_back(std::move(ActorInstance));
     
-    return Actors.back().get();
+    return StaticMeshActors.back().get();
 }
 
-Actor* Level::InstantiateCameraActor()
+CameraActor* Level::InstantiateCameraActor()
 {
-    unique_ptr<CameraActor> Actor = make_unique<CameraActor>();
-    Actor->FovY = 90.f;
-    Actor->AspectRatio = 1.f;
-    Actor->NearPlane = 0.1f;
-    Actor->FarPlane = 1000.0f;
-    Actor->Transform.Position.x = 0;
-    Actor->Transform.Position.y = 0;
-    Actor->Transform.Position.z = -5.f;
-    Actor->LookDirection = XMFLOAT3(0, 0, 1);
-    Actor->UpDirection = XMFLOAT3(0, 1, 0);
-    Actors.push_back(std::move(Actor));
+    unique_ptr<CameraActor> ActorInstance = make_unique<CameraActor>();
+    ActorInstance->FovY = 90.f;
+    ActorInstance->AspectRatio = 1.f;
+    ActorInstance->NearPlane = 0.1f;
+    ActorInstance->FarPlane = 1000.0f;
+    ActorInstance->Transform.Position.x = 0;
+    ActorInstance->Transform.Position.y = 0;
+    ActorInstance->Transform.Position.z = -5.f;
+    ActorInstance->LookDirection = XMFLOAT3(0, 0, 1);
+    ActorInstance->UpDirection = XMFLOAT3(0, 1, 0);
+    CameraActors.push_back(std::move(ActorInstance));
 
-    return Actors.back().get();
+    return CameraActors.back().get();
 }
 
 void Level::Update(float DeletaTime) const
 {
-    for (const unique_ptr<Actor>& Actor : Actors)
+    for (const unique_ptr<CameraActor>& Actor : CameraActors)
+    {
+        Actor->Update(DeletaTime);
+    }
+    
+    for (const unique_ptr<StaticMeshActor>& Actor : StaticMeshActors)
     {
         Actor->Update(DeletaTime);
     }
 }
 
-vector<Actor*> Level::GetActors() const
+vector<StaticMeshActor*> Level::GetStaticMeshActors() const
 {
-    vector<Actor*> Result;
+    vector<StaticMeshActor*> Result;
 
-    for (int I = 0; I < Actors.size(); ++I)
+    for (int I = 0; I < StaticMeshActors.size(); ++I)
     {
-        Result.push_back(Actors[I].get());
+        Result.push_back(StaticMeshActors[I].get());
+    }
+    
+    return Result;    
+}
+
+vector<CameraActor*> Level::GetCameraActors() const
+{
+    vector<CameraActor*> Result;
+
+    for (int I = 0; I < CameraActors.size(); ++I)
+    {
+        Result.push_back(CameraActors[I].get());
     }
     
     return Result;    
@@ -58,5 +78,5 @@ vector<Actor*> Level::GetActors() const
 
 Level::~Level()
 {
-    Actors.clear();
+    StaticMeshActors.clear();
 }
