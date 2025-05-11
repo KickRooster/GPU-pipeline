@@ -7,12 +7,8 @@
 #include <string>
 #include <Windows.h>
 
-#ifndef _DEBUG
-#define _DEBUG 1
-#endif
-
-#ifdef _DEBUG
-#define DX12_ENABLE_DEBUG_LAYER
+#ifndef DX12_ENABLE_DEBUG_LAYER
+#define DX12_ENABLE_DEBUG_LAYER 1
 #endif
 
 #ifdef DX12_ENABLE_DEBUG_LAYER
@@ -662,8 +658,8 @@ D3D12_GPU_DESCRIPTOR_HANDLE PipelineInterface::GetRenderTargetSRVGPUHandle(unsig
 
 void PipelineInterface::CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProxy* MeshProxyInstance)
 {
-    const unsigned int VertexBufferSize = sizeof(Vertex) * MeshInstance->Vertices.size();
-    const unsigned int IndexBufferSize = sizeof(unsigned int) * MeshInstance->Indices.size();
+    const unsigned int VertexBufferSize = sizeof(Vertex) * static_cast<unsigned int>(MeshInstance->Vertices.size());
+    const unsigned int IndexBufferSize = sizeof(unsigned int) * static_cast<unsigned int>(MeshInstance->Indices.size());
     
     //  Create vertex buffer on default heap
     CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
@@ -946,7 +942,7 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
         FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootConstantBufferView(0, CameraConstantBufferAddress);
     }
 
-    for (int I = 0; I < LevelInstance->GetStaticMeshActors().size(); ++I)
+    for (int I = 0; I < static_cast<int>(LevelInstance->GetStaticMeshActors().size()); ++I)
     {
         const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = LevelInstance->GetStaticMeshActors()[I]->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
         FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
@@ -960,7 +956,7 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
             FrameContexts[FrameContextIndex].CommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
             FrameContexts[FrameContextIndex].CommandList->DrawIndexedInstanced(
-            LevelInstance->GetStaticMeshActors()[I]->GetMeshInstance(SubMeshIndex)->Indices.size(),
+                static_cast<UINT>(LevelInstance->GetStaticMeshActors()[I]->GetMeshInstance(SubMeshIndex)->Indices.size()),
                 1, 0, 0, 0);
         }
     }
