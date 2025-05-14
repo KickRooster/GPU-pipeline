@@ -203,23 +203,21 @@ int main(int, char**)
 
 		// Rendering
 		ImGui::Render();
-		
-		unsigned int BackBufferIndex = PipelineInterface::GetInstance().GetCurrentBackBufferIndex();
-		PipelineInterface::GetInstance().InsertIMGUIRenderTargetBarrier(FrameContextIndex, BackBufferIndex,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);
+		PipelineInterface::GetInstance().InsertIMGUIRenderTargetBarrier(D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);
 		
 		// Render Dear ImGui graphics
 		const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
-		PipelineInterface::GetInstance().ClearIMGUIRenderTargetView(FrameContextIndex, BackBufferIndex, clear_color_with_alpha, 0, nullptr);
-		PipelineInterface::GetInstance().OMSetIMGUIRenderTargets(FrameContextIndex, 1, BackBufferIndex, false, nullptr);
+		PipelineInterface::GetInstance().ClearIMGUIRenderTargetView(clear_color_with_alpha, 0, nullptr);
+		PipelineInterface::GetInstance().OMSetIMGUIRenderTargets(1, false, nullptr);
 		//	Has been call during Level:Render()
 		//PipelineInterface::GetInstance().SetSRVDescriptorHeaps(FrameContextIndex, 1);
 	
-		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList(FrameContextIndex));
+		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), PipelineInterface::GetInstance().GetCommandList());
 		
-		PipelineInterface::GetInstance().InsertIMGUIRenderTargetBarrier(FrameContextIndex, BackBufferIndex, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+		PipelineInterface::GetInstance().InsertIMGUIRenderTargetBarrier(D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
-		PipelineInterface::GetInstance().GetCommandList(FrameContextIndex)->Close();
-		PipelineInterface::GetInstance().ExecuteCommandLists(FrameContextIndex);
+		PipelineInterface::GetInstance().GetCommandList()->Close();
+		PipelineInterface::GetInstance().ExecuteCommandLists();
 		
 		// Update and Render additional Platform Windows
 		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)

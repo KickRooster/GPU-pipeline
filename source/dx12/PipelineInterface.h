@@ -69,7 +69,6 @@ struct ImGUIDescriptorHeapAllocator
 struct FrameContext
 {
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CommandAllocator;
-    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> CommandList;
     UINT64 FenceValue;
     D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetCPUDescriptorHandle;
     D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilCPUDescriptorHandle;
@@ -83,13 +82,14 @@ class PipelineInterface : public Singleton<PipelineInterface>
 {
     friend class Singleton<PipelineInterface>;
     PipelineInterface() = default; 
-    ~PipelineInterface() = default;
+    ~PipelineInterface() override = default;
     
     const int BackBufferCount = 2;
     const int FrameNumInFlight = 2;
     const int SRVHeapSize = 64;
     
     Microsoft::WRL::ComPtr<ID3D12Device> D3DDevice = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> CommandList;
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> D3DCommandQueue = nullptr;
     Microsoft::WRL::ComPtr<IDXGISwapChain3> SwapChain = nullptr;
     HANDLE SwapChainWaitableObject = nullptr;
@@ -111,10 +111,6 @@ class PipelineInterface : public Singleton<PipelineInterface>
 
     DirectX::XMFLOAT2 ViewportSize = DirectX::XMFLOAT2(0, 0);
     bool bResizedLastFrame = false;
-    
-    //  Constant buffer data
-    D3D12_CPU_DESCRIPTOR_HANDLE ConstantBufferCPUHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE ConstantBufferGPUHandle;
 
 public:
     ErrorCode Initialize(HWND hWnd);
@@ -123,24 +119,22 @@ public:
     unsigned int WaitForNextFrameResources();
     void WaitForLastSubmittedFrame();
     HRESULT Present(unsigned int SyncInterval, unsigned int Flags) const;
-    unsigned int GetCurrentBackBufferIndex() const;
-    void InsertIMGUIRenderTargetBarrier(unsigned int FrameContextIndex, unsigned int BackbufferIndex, D3D12_RESOURCE_STATES StateBefore, D3D12_RESOURCE_STATES StateAfter, D3D12_RESOURCE_BARRIER_TYPE BarrierType = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_FLAGS BarrierFlag = D3D12_RESOURCE_BARRIER_FLAG_NONE) const;
-    void ClearIMGUIRenderTargetView(unsigned int FrameContextIndex, unsigned int BackBufferIndex, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT *pRects) const;
-    void OMSetIMGUIRenderTargets(unsigned int FrameContextIndex, unsigned int NumRenderTargetDescriptors, unsigned int BackBufferIndex, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE *pDepthStencilDescriptor) const;
-    void ExecuteCommandLists(unsigned int FrameContextIndex) const;
+    void InsertIMGUIRenderTargetBarrier(D3D12_RESOURCE_STATES StateBefore, D3D12_RESOURCE_STATES StateAfter, D3D12_RESOURCE_BARRIER_TYPE BarrierType = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_FLAGS BarrierFlag = D3D12_RESOURCE_BARRIER_FLAG_NONE) const;
+    void ClearIMGUIRenderTargetView(const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT *pRects) const;
+    void OMSetIMGUIRenderTargets(unsigned int NumRenderTargetDescriptors, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE *pDepthStencilDescriptor) const;
+    void ExecuteCommandLists() const;
     void CreateIMGUIRenderTarget();
     void CleanupIMGUIRenderTarget();
     void ResetCommandAllocator(unsigned int FrameContextIndex) const;
     HRESULT ResetCommandList(unsigned int FrameContextIndex) const;
     void Signal(unsigned long FenceValue) const;
-    ID3D12GraphicsCommandList* GetCommandList(unsigned int FrameContextIndex) const;
+    ID3D12GraphicsCommandList* GetCommandList() const;
     IDXGISwapChain3* GetSwapChain();
     void UpdateFrameContextFenceValue(unsigned int FrameContextIndex, unsigned long FenceValue);
     D3D12_GPU_DESCRIPTOR_HANDLE GetRenderTargetSRVGPUHandle(unsigned int FrameContextIndex) const;
     void CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProxy* MeshProxyInstance);
     void CreateConstantBuffer(const CameraActor* CameraActorInstance);
     void CreateConstantBuffer(const StaticMeshActor* ActorInstance);
-    
     void UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);
     void RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance);
 };

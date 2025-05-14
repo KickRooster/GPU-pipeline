@@ -63,16 +63,16 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         {
             return ErrorCode::CommandAllocatorCreateFailed;
         }
+    }
 
-        if (D3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, FrameContexts[I].CommandAllocator.Get(), nullptr, IID_PPV_ARGS(&FrameContexts[I].CommandList)) != S_OK)
-        {
-            return ErrorCode::CommandListCreateFailed;
-        }
+    if (D3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, FrameContexts[0].CommandAllocator.Get(), nullptr, IID_PPV_ARGS(&CommandList)) != S_OK)
+    {
+        return ErrorCode::CommandListCreateFailed;
+    }
 
-        if (FrameContexts[I].CommandList->Close() != S_OK)
-        {
-            return ErrorCode::CommandListCloseFailed;
-        }
+    if (CommandList->Close() != S_OK)
+    {
+        return ErrorCode::CommandListCloseFailed;
     }
 
     //  RTV(imgui & level rendering)
@@ -149,12 +149,6 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
             CPUHandle.ptr += IncrementSize;
             GPUHandle.ptr += IncrementSize;
         }
-        //  Then D3D12_CPU_DESCRIPTOR_HANDLE of D3DSRVDescHeap is reserved for constant buffer.
-        ConstantBufferCPUHandle = CPUHandle;
-        CPUHandle.ptr += IncrementSize;
-
-        ConstantBufferGPUHandle = GPUHandle;
-        GPUHandle.ptr += IncrementSize;
 
         D3DSRVDescriptorHeapAllocator.Create(D3DDevice.Get(), D3DSRVCBVDescHeap.Get(), FrameNumInFlight + 1);
     }
@@ -367,14 +361,14 @@ void PipelineInterface::CleanUp()
             FrameContexts[I].CommandAllocator->Release();
             FrameContexts[I].CommandAllocator = nullptr;
         }
-
-        if (FrameContexts[I].CommandList)
-        {
-            FrameContexts[I].CommandList->Release();
-            FrameContexts[I].CommandList = nullptr;
-        }
     }
     FrameContexts.clear();
+
+    if (CommandList)
+    {
+        CommandList->Release();
+        CommandList = nullptr;
+    }
 
     if (D3DCommandQueue)
     {
@@ -497,37 +491,32 @@ HRESULT PipelineInterface::Present(unsigned SyncInterval, unsigned Flags) const
 {
     return SwapChain->Present(SyncInterval, Flags);
 }
-
-unsigned int PipelineInterface::GetCurrentBackBufferIndex() const
-{
-    return SwapChain->GetCurrentBackBufferIndex();
-}
     
-void PipelineInterface::InsertIMGUIRenderTargetBarrier(unsigned int FrameContextIndex, unsigned BackbufferIndex, D3D12_RESOURCE_STATES StateBefore, D3D12_RESOURCE_STATES StateAfter, D3D12_RESOURCE_BARRIER_TYPE BarrierType, D3D12_RESOURCE_BARRIER_FLAGS BarrierFlag) const
+void PipelineInterface::InsertIMGUIRenderTargetBarrier(D3D12_RESOURCE_STATES StateBefore, D3D12_RESOURCE_STATES StateAfter, D3D12_RESOURCE_BARRIER_TYPE BarrierType, D3D12_RESOURCE_BARRIER_FLAGS BarrierFlag) const
 {
     D3D12_RESOURCE_BARRIER Barrier;
     Barrier.Type = BarrierType;
     Barrier.Flags = BarrierFlag;
-    Barrier.Transition.pResource = IMGUIRenderTargetResources[BackbufferIndex].Get();
+    Barrier.Transition.pResource = IMGUIRenderTargetResources[SwapChain->GetCurrentBackBufferIndex()].Get();
     Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     Barrier.Transition.StateBefore = StateBefore;
     Barrier.Transition.StateAfter = StateAfter;
-    FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &Barrier);
+    CommandList->ResourceBarrier(1, &Barrier);
 }
     
-void PipelineInterface::ClearIMGUIRenderTargetView(unsigned int FrameContextIndex, unsigned int BackBufferIndex, const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT* pRects) const
+void PipelineInterface::ClearIMGUIRenderTargetView(const float ColorRGBA[4], unsigned int NumRects, const D3D12_RECT* pRects) const
 {
-    FrameContexts[FrameContextIndex].CommandList->ClearRenderTargetView(IMGUIRenderTargetDescriptorHandles[BackBufferIndex], ColorRGBA, NumRects, pRects);
+    CommandList->ClearRenderTargetView(IMGUIRenderTargetDescriptorHandles[SwapChain->GetCurrentBackBufferIndex()], ColorRGBA, NumRects, pRects);
 }
 
-void PipelineInterface::OMSetIMGUIRenderTargets(unsigned int FrameContextIndex, unsigned NumRenderTargetDescriptors, unsigned int BackBufferIndex, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE* pDepthStencilDescriptor) const
+void PipelineInterface::OMSetIMGUIRenderTargets(unsigned NumRenderTargetDescriptors, bool RTsSingleHandleToDescriptorRange, const D3D12_CPU_DESCRIPTOR_HANDLE* pDepthStencilDescriptor) const
 {
-    FrameContexts[FrameContextIndex].CommandList->OMSetRenderTargets(NumRenderTargetDescriptors, &IMGUIRenderTargetDescriptorHandles[BackBufferIndex], RTsSingleHandleToDescriptorRange, pDepthStencilDescriptor);
+    CommandList->OMSetRenderTargets(NumRenderTargetDescriptors, &IMGUIRenderTargetDescriptorHandles[SwapChain->GetCurrentBackBufferIndex()], RTsSingleHandleToDescriptorRange, pDepthStencilDescriptor);
 }
 
-void PipelineInterface::ExecuteCommandLists(unsigned int FrameContextIndex) const
+void PipelineInterface::ExecuteCommandLists() const
 {
-    ID3D12GraphicsCommandList* RawPointer = FrameContexts[FrameContextIndex].CommandList.Get();
+    ID3D12GraphicsCommandList* RawPointer = CommandList.Get();
     D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&RawPointer);
 }
 
@@ -563,7 +552,7 @@ void PipelineInterface::ResetCommandAllocator(unsigned FrameContextIndex) const
     
 HRESULT PipelineInterface::ResetCommandList(unsigned int FrameContextIndex) const
 {
-    return FrameContexts[FrameContextIndex].CommandList->Reset(
+    return CommandList->Reset(
         FrameContexts[FrameContextIndex].CommandAllocator.Get(),
         nullptr);
 }
@@ -573,9 +562,9 @@ void PipelineInterface::Signal(unsigned long FenceValue) const
     D3DCommandQueue->Signal(Fence.Get(), FenceValue);
 }
     
-ID3D12GraphicsCommandList* PipelineInterface::GetCommandList(unsigned FrameContextIndex) const
+ID3D12GraphicsCommandList* PipelineInterface::GetCommandList() const
 {
-    return FrameContexts[FrameContextIndex].CommandList.Get();
+    return CommandList.Get();
 }
 
 
@@ -695,10 +684,10 @@ void PipelineInterface::CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProx
     
     //  Reset command list for initializing resource, any command list is okay
     FrameContext.CommandAllocator->Reset();
-    FrameContext.CommandList->Reset(FrameContext.CommandAllocator.Get(), nullptr);
+    CommandList->Reset(FrameContext.CommandAllocator.Get(), nullptr);
     
     //  Record copy command
-    FrameContext.CommandList->CopyBufferRegion(
+    CommandList->CopyBufferRegion(
         MeshProxyInstance->VertexBuffer.Get(), 0,
         MeshProxyInstance->VertexBufferUpload.Get(), 0,
         VertexBufferSize);
@@ -708,10 +697,10 @@ void PipelineInterface::CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProx
         MeshProxyInstance->VertexBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-    FrameContext.CommandList->ResourceBarrier(1, &BufferBarrier);
+    CommandList->ResourceBarrier(1, &BufferBarrier);
 
     //  Record copy command
-    FrameContext.CommandList->CopyBufferRegion(
+    CommandList->CopyBufferRegion(
         MeshProxyInstance->IndexBuffer.Get(), 0,
         MeshProxyInstance->IndexBufferUpload.Get(), 0,
         IndexBufferSize);
@@ -721,13 +710,13 @@ void PipelineInterface::CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProx
         MeshProxyInstance->IndexBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_INDEX_BUFFER);
-    FrameContext.CommandList->ResourceBarrier(1, &BufferBarrier);
+    CommandList->ResourceBarrier(1, &BufferBarrier);
     
     //  Close command list
-    FrameContext.CommandList->Close();
+    CommandList->Close();
     
     //  Execute command list
-    ID3D12GraphicsCommandList* CommandListPointer = FrameContext.CommandList.Get();
+    ID3D12GraphicsCommandList* CommandListPointer = CommandList.Get();
     D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&CommandListPointer);
     
     //  Wait for it completion on GPU
@@ -767,14 +756,8 @@ void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInsta
             IID_PPV_ARGS(&BufferProxy->UploadBuffer));
 
     BufferProxy->UploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&BufferProxy->MappedData));
-    
-    D3D12_CONSTANT_BUFFER_VIEW_DESC ConstantBufferViewDesc;
-    ConstantBufferViewDesc.BufferLocation = BufferProxy->UploadBuffer->GetGPUVirtualAddress();
-    ConstantBufferViewDesc.SizeInBytes = ByteSize;
 
-    D3DDevice->CreateConstantBufferView(
-        &ConstantBufferViewDesc,
-        ConstantBufferCPUHandle);
+    //  XXX:    We will change to use DescriptorTable later.
 }
 
 void PipelineInterface::CreateConstantBuffer(const StaticMeshActor* ActorInstance)
@@ -889,7 +872,7 @@ void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 Ne
         D3D12_RESOURCE_STATE_COMMON,
         D3D12_RESOURCE_STATE_DEPTH_WRITE);
         
-        FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &BufferBarrier);
+        CommandList->ResourceBarrier(1, &BufferBarrier);
 
         ViewportSize.x = NewViewportSize.x;
         ViewportSize.y = NewViewportSize.y;
@@ -915,47 +898,47 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
     Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
     Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
-    FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &Barrier);
-    FrameContexts[FrameContextIndex].CommandList->OMSetRenderTargets(1, &FrameContexts[FrameContextIndex].RenderTargetCPUDescriptorHandle, false, &FrameContexts[FrameContextIndex].DepthStencilCPUDescriptorHandle);
+    CommandList->ResourceBarrier(1, &Barrier);
+    CommandList->OMSetRenderTargets(1, &FrameContexts[FrameContextIndex].RenderTargetCPUDescriptorHandle, false, &FrameContexts[FrameContextIndex].DepthStencilCPUDescriptorHandle);
 
     ID3D12DescriptorHeap* RawHeap = D3DSRVCBVDescHeap.Get();
-    FrameContexts[FrameContextIndex].CommandList->SetDescriptorHeaps(1, &RawHeap);
+    CommandList->SetDescriptorHeaps(1, &RawHeap);
     
     const float ClearColor[] = { 0, 0, 0, 1.0f };
-    FrameContexts[FrameContextIndex].CommandList->ClearRenderTargetView(FrameContexts[FrameContextIndex].RenderTargetCPUDescriptorHandle, ClearColor, 0, nullptr);
+    CommandList->ClearRenderTargetView(FrameContexts[FrameContextIndex].RenderTargetCPUDescriptorHandle, ClearColor, 0, nullptr);
 
-    FrameContexts[FrameContextIndex].CommandList->ClearDepthStencilView(FrameContexts[FrameContextIndex].DepthStencilCPUDescriptorHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+    CommandList->ClearDepthStencilView(FrameContexts[FrameContextIndex].DepthStencilCPUDescriptorHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
     
     CD3DX12_VIEWPORT ViewPort = CD3DX12_VIEWPORT(0.f, 0.f, ViewportSize.x, ViewportSize.y);
     CD3DX12_RECT ScissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(ViewportSize.x), static_cast<LONG>(ViewportSize.y));
-    FrameContexts[FrameContextIndex].CommandList->RSSetViewports(1, &ViewPort);
-    FrameContexts[FrameContextIndex].CommandList->RSSetScissorRects(1, &ScissorRect);
+    CommandList->RSSetViewports(1, &ViewPort);
+    CommandList->RSSetScissorRects(1, &ScissorRect);
 
-    FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootSignature(RootSignature.Get());
-    FrameContexts[FrameContextIndex].CommandList->SetPipelineState(PipelineState.Get());
+    CommandList->SetGraphicsRootSignature(RootSignature.Get());
+    CommandList->SetPipelineState(PipelineState.Get());
 
     if (LevelInstance->GetCameraActors().size() > 0)
     {
         const CameraActor* CameraActorInstance = LevelInstance->GetCameraActors()[0];
 
         const D3D12_GPU_VIRTUAL_ADDRESS CameraConstantBufferAddress = CameraActorInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
-        FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootConstantBufferView(0, CameraConstantBufferAddress);
+        CommandList->SetGraphicsRootConstantBufferView(0, CameraConstantBufferAddress);
     }
 
     for (int I = 0; I < static_cast<int>(LevelInstance->GetStaticMeshActors().size()); ++I)
     {
         const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = LevelInstance->GetStaticMeshActors()[I]->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
-        FrameContexts[FrameContextIndex].CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
+        CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
         
         for (unsigned int SubMeshIndex = 0; SubMeshIndex < LevelInstance->GetStaticMeshActors()[I]->GetSubMeshCount(); ++SubMeshIndex)
         {
             D3D12_VERTEX_BUFFER_VIEW VertexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance(SubMeshIndex)->VertexBufferView;
-            FrameContexts[FrameContextIndex].CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
+            CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
             D3D12_INDEX_BUFFER_VIEW IndexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance(SubMeshIndex)->IndexBufferView;
-            FrameContexts[FrameContextIndex].CommandList->IASetIndexBuffer(&IndexBufferView);
-            FrameContexts[FrameContextIndex].CommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            CommandList->IASetIndexBuffer(&IndexBufferView);
+            CommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-            FrameContexts[FrameContextIndex].CommandList->DrawIndexedInstanced(
+            CommandList->DrawIndexedInstanced(
                 static_cast<UINT>(LevelInstance->GetStaticMeshActors()[I]->GetMeshInstance(SubMeshIndex)->Indices.size()),
                 1, 0, 0, 0);
         }
@@ -963,5 +946,5 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
     
     Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    FrameContexts[FrameContextIndex].CommandList->ResourceBarrier(1, &Barrier);
+    CommandList->ResourceBarrier(1, &Barrier);
 }
