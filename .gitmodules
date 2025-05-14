@@ -4,3 +4,6 @@
 [submodule "thirdpatry/assimp"]
 	path = thirdpatry/assimp
 	url = https://github.com/assimp/assimp.git
+[submodule "thirdpatry/meshoptimizer"]
+	path = thirdpatry/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer.git

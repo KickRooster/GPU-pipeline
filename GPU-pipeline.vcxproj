@@ -79,12 +79,12 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(IncludePath)</IncludePath>
     <LibraryPath>$(ProjectDir)thirdpatry\assimp\build\lib\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(IncludePath)</IncludePath>
     <LibraryPath>$(ProjectDir)thirdpatry\assimp\build\lib\Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -160,6 +160,22 @@
     <ClCompile Include="thirdpatry\imgui\imgui_widgets.cpp" />
     <ClCompile Include="thirdpatry\imgui\backends\imgui_impl_win32.cpp" />
     <ClCompile Include="thirdpatry\imgui\backends\imgui_impl_dx12.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\allocator.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\clusterizer.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\indexanalyzer.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\indexcodec.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\indexgenerator.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\overdrawoptimizer.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\partition.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\quantization.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\rasterizer.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\simplifier.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\spatialorder.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\stripifier.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\vcacheoptimizer.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\vertexcodec.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\vertexfilter.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\vfetchoptimizer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\actor\Actor.h" />
@@ -179,6 +195,7 @@
     <ClInclude Include="thirdpatry\imgui\imgui_internal.h" />
     <ClInclude Include="thirdpatry\imgui\backends\imgui_impl_win32.h" />
     <ClInclude Include="thirdpatry\imgui\backends\imgui_impl_dx12.h" />
+    <ClInclude Include="thirdpatry\meshoptimizer\src\meshoptimizer.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
