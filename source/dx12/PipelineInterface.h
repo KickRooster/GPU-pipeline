@@ -137,6 +137,7 @@ public:
     void UpdateFrameContextFenceValue(unsigned int FrameContextIndex, unsigned long FenceValue);
     D3D12_GPU_DESCRIPTOR_HANDLE GetRenderTargetSRVGPUHandle(unsigned int FrameContextIndex) const;
     void CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProxy* MeshProxyInstance);
+    void CreateMeshletDataProxyBuffer(const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance);
     void CreateConstantBuffer(const CameraActor* CameraActorInstance);
     void CreateConstantBuffer(const StaticMeshActor* ActorInstance);
     void UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);

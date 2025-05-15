@@ -859,6 +859,11 @@ void PipelineInterface::CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProx
     MeshProxyInstance->IndexBufferView.SizeInBytes = IndexBufferSize;
 }
 
+void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance)
+{
+    
+}
+
 void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInstance)
 {
     const unsigned int ByteSize = MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(CameraConstantBuffer));

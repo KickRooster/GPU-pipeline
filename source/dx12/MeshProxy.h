@@ -12,3 +12,16 @@ struct MeshProxy
     Microsoft::WRL::ComPtr<ID3D12Resource> IndexBufferUpload;
     D3D12_INDEX_BUFFER_VIEW IndexBufferView;
 };
+
+struct MeshletDataProxy
+{
+    Microsoft::WRL::ComPtr<ID3D12Resource> MeshletsBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> MeshletVerticesBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> MeshletTrianglesBuffer;
+    
+    Microsoft::WRL::ComPtr<ID3D12Resource> MeshletsBufferUpload;
+    Microsoft::WRL::ComPtr<ID3D12Resource> MeshletVerticesBufferUpload;
+    Microsoft::WRL::ComPtr<ID3D12Resource> MeshletTrianglesBufferUpload;
+    
+    uint32_t MeshletCount;
+};

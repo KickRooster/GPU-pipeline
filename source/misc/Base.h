@@ -56,6 +56,14 @@ struct Vertex
     DirectX::XMFLOAT2 UV0;
 };
 
+struct Meshlet
+{
+    uint32_t VertexOffset;
+    uint32_t TriangleOffset;
+    uint32_t VertexCount;
+    uint32_t TriangleCount;
+};
+
 struct Transform
 {
     DirectX::XMFLOAT4 Rotation;
