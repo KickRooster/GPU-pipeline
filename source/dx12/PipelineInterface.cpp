@@ -75,6 +75,135 @@ ErrorCode PipelineInterface::CreateRootSignature()
     return ErrorCode::OK;
 }
 
+ErrorCode PipelineInterface::CreateVertexShaderPipelinestate()
+{
+    ComPtr<ID3DBlob> VertexShader;
+    ComPtr<ID3DBlob> PixelShader;
+
+#ifdef DX12_ENABLE_DEBUG_LAYER
+    // Enable better shader debugging with the graphics debugging tools.
+    UINT CompileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+    UINT CompileFlags = 0;
+#endif
+
+    std::wstring ShaderPath = L"D:\\GPU-pipeline\\content\\shader\\color.hlsl";
+    ComPtr<ID3DBlob> Errors;
+    HRESULT hResult = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "VS", "vs_5_0", CompileFlags, 0, &VertexShader, &Errors);
+    if (Errors != nullptr)
+    {
+        OutputDebugStringA((char*)Errors->GetBufferPointer());
+    }
+    
+    hResult = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PS", "ps_5_0", CompileFlags, 0, &PixelShader, &Errors);
+    if (Errors != nullptr)
+    {
+        OutputDebugStringA((char*)Errors->GetBufferPointer());
+    }
+
+    D3D12_INPUT_ELEMENT_DESC InputElementDescs[] =
+        {
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+        };
+    
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC PSODesc = {};
+    PSODesc.InputLayout = { InputElementDescs, _countof(InputElementDescs) };
+    PSODesc.pRootSignature = RootSignature.Get();
+    PSODesc.VS = CD3DX12_SHADER_BYTECODE(VertexShader.Get());
+    PSODesc.PS = CD3DX12_SHADER_BYTECODE(PixelShader.Get());
+    PSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    PSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    
+    PSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    PSODesc.DepthStencilState.DepthEnable = TRUE;
+    PSODesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+    PSODesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+    PSODesc.DepthStencilState.StencilEnable = FALSE;
+    
+    PSODesc.SampleMask = UINT_MAX;
+    PSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    PSODesc.NumRenderTargets = 1;
+    PSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    PSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    PSODesc.SampleDesc.Count = 1;
+    D3DDevice->CreateGraphicsPipelineState(&PSODesc, IID_PPV_ARGS(&VertexShaderPipelineState));
+
+    return ErrorCode::OK;
+}
+
+ErrorCode PipelineInterface::CreateMeshShaderPipelinestate()
+{
+    ComPtr<ID3DBlob> AmplificationShader;
+    ComPtr<ID3DBlob> MeshShader;
+    ComPtr<ID3DBlob> PixelShader;
+
+#ifdef DX12_ENABLE_DEBUG_LAYER
+    // Enable better shader debugging with the graphics debugging tools.
+    UINT CompileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+    UINT CompileFlags = 0;
+#endif
+
+    std::wstring ShaderPath = L"D:\\GPU-pipeline\\content\\shader\\meshlet.hlsl";
+    ComPtr<ID3DBlob> Errors;
+    HRESULT hResult = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "AS", "as_6_5", CompileFlags, 0, &AmplificationShader, &Errors);
+    if (Errors != nullptr)
+    {
+        OutputDebugStringA((char*)Errors->GetBufferPointer());
+    }
+    
+    hResult = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "MS", "ms_6_5", CompileFlags, 0, &MeshShader, &Errors);
+    if (Errors != nullptr)
+    {
+        OutputDebugStringA((char*)Errors->GetBufferPointer());
+    }
+    
+    hResult = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PS", "ps_5_0", CompileFlags, 0, &PixelShader, &Errors);
+    if (Errors != nullptr)
+    {
+        OutputDebugStringA((char*)Errors->GetBufferPointer());
+    }
+
+    D3DX12_MESH_SHADER_PIPELINE_STATE_DESC PSODesc = {};
+    PSODesc.pRootSignature = RootSignature.Get();
+    PSODesc.AS = CD3DX12_SHADER_BYTECODE(AmplificationShader.Get());
+    PSODesc.MS = CD3DX12_SHADER_BYTECODE(MeshShader.Get());
+    PSODesc.PS = CD3DX12_SHADER_BYTECODE(PixelShader.Get());
+    
+    PSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    PSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    
+    PSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    PSODesc.DepthStencilState.DepthEnable = TRUE;
+    PSODesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+    PSODesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+    PSODesc.DepthStencilState.StencilEnable = FALSE;
+    
+    PSODesc.SampleMask = UINT_MAX;
+    PSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    PSODesc.NumRenderTargets = 1;
+    PSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    PSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    PSODesc.SampleDesc.Count = 1;
+
+    CD3DX12_PIPELINE_MESH_STATE_STREAM PipelineStream(PSODesc);
+
+    D3D12_PIPELINE_STATE_STREAM_DESC StreamDesc;
+    StreamDesc.pPipelineStateSubobjectStream = &PipelineStream;
+    StreamDesc.SizeInBytes = sizeof(PipelineStream);
+
+    hResult = D3DDevice->CreatePipelineState(&StreamDesc, IID_PPV_ARGS(&MeshShaderPipelineState));
+    if (FAILED(hResult))
+    {
+        return ErrorCode::MeshShaderPipelineStateCreateFailed;
+    }
+
+    return ErrorCode::OK;
+}
+
 ErrorCode PipelineInterface::Initialize(HWND hWnd)
 {
     UINT DxgiFactoryFlags = 0;
@@ -282,61 +411,19 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
     {
         return Result;
     }
-    
-    ComPtr<ID3DBlob> VertexShader;
-    ComPtr<ID3DBlob> PixelShader;
 
-#ifdef DX12_ENABLE_DEBUG_LAYER
-    // Enable better shader debugging with the graphics debugging tools.
-    UINT CompileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#else
-    UINT CompileFlags = 0;
-#endif
-
-    std::wstring ShaderPath = L"D:\\GPU-pipeline\\content\\shader\\color.hlsl";
-    ComPtr<ID3DBlob> Errors;
-    HRESULT hResult = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "VS", "vs_5_0", CompileFlags, 0, &VertexShader, &Errors);
-    if (Errors != nullptr)
+    Result = CreateVertexShaderPipelinestate();
+    if (Result != ErrorCode::OK)
     {
-        OutputDebugStringA((char*)Errors->GetBufferPointer());
+        return Result;
+    }
+
+    Result = CreateMeshShaderPipelinestate();
+    if (Result != ErrorCode::OK)
+    {
+        return Result;
     }
     
-    hResult = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PS", "ps_5_0", CompileFlags, 0, &PixelShader, &Errors);
-    if (Errors != nullptr)
-    {
-        OutputDebugStringA((char*)Errors->GetBufferPointer());
-    }
-    
-    D3D12_INPUT_ELEMENT_DESC InputElementDescs[] =
-    {
-        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
-    };
-
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC PSODesc = {};
-    PSODesc.InputLayout = { InputElementDescs, _countof(InputElementDescs) };
-    PSODesc.pRootSignature = RootSignature.Get();
-    PSODesc.VS = CD3DX12_SHADER_BYTECODE(VertexShader.Get());
-    PSODesc.PS = CD3DX12_SHADER_BYTECODE(PixelShader.Get());
-    PSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    PSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    
-    PSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-    PSODesc.DepthStencilState.DepthEnable = TRUE;
-    PSODesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-    PSODesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
-    PSODesc.DepthStencilState.StencilEnable = FALSE;
-    
-    PSODesc.SampleMask = UINT_MAX;
-    PSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    PSODesc.NumRenderTargets = 1;
-    PSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-    PSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    PSODesc.SampleDesc.Count = 1;
-    D3DDevice->CreateGraphicsPipelineState(&PSODesc, IID_PPV_ARGS(&PipelineState));
-
     return ErrorCode::OK;
 }
 
@@ -948,7 +1035,7 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
     CommandList->RSSetScissorRects(1, &ScissorRect);
 
     CommandList->SetGraphicsRootSignature(RootSignature.Get());
-    CommandList->SetPipelineState(PipelineState.Get());
+    CommandList->SetPipelineState(VertexShaderPipelineState.Get());
 
     if (LevelInstance->GetCameraActors().size() > 0)
     {

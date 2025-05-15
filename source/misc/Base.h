@@ -10,6 +10,7 @@ enum class ErrorCode
     DebugInterfaceNotFound,
     SerializeVersionedRootSignatureFailed,
     RootSignatureCreationFailed,
+    MeshShaderPipelineStateCreateFailed,
     DeviceCreateFailed,
     DescriptorHeapCreateFailed,
     CommandQueueCreateFailed,

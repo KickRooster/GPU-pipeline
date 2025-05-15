@@ -88,7 +88,7 @@ class PipelineInterface : public Singleton<PipelineInterface>
     const int FrameNumInFlight = 2;
     const int SRVHeapSize = 64;
     
-    Microsoft::WRL::ComPtr<ID3D12Device> D3DDevice = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Device2> D3DDevice = nullptr;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> CommandList;
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> D3DCommandQueue = nullptr;
     Microsoft::WRL::ComPtr<IDXGISwapChain3> SwapChain = nullptr;
@@ -107,13 +107,16 @@ class PipelineInterface : public Singleton<PipelineInterface>
     unsigned int FrameIndex = 0;
     
     Microsoft::WRL::ComPtr<ID3D12RootSignature> RootSignature;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> PipelineState;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> VertexShaderPipelineState;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> MeshShaderPipelineState;
 
     DirectX::XMFLOAT2 ViewportSize = DirectX::XMFLOAT2(0, 0);
     bool bResizedLastFrame = false;
 
 public:
     ErrorCode CreateRootSignature();
+    ErrorCode CreateVertexShaderPipelinestate();
+    ErrorCode CreateMeshShaderPipelinestate();
     ErrorCode Initialize(HWND hWnd);
     void CleanUp();
     void PackImGuiInitInfo(ImGui_ImplDX12_InitInfo& OutInitInfo);
