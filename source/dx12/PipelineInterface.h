@@ -113,6 +113,7 @@ class PipelineInterface : public Singleton<PipelineInterface>
     bool bResizedLastFrame = false;
 
 public:
+    ErrorCode CreateRootSignature();
     ErrorCode Initialize(HWND hWnd);
     void CleanUp();
     void PackImGuiInitInfo(ImGui_ImplDX12_InitInfo& OutInitInfo);

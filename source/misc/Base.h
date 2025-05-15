@@ -8,6 +8,8 @@ enum class ErrorCode
     //  DX12 error code begin.
     Failed,
     DebugInterfaceNotFound,
+    SerializeVersionedRootSignatureFailed,
+    RootSignatureCreationFailed,
     DeviceCreateFailed,
     DescriptorHeapCreateFailed,
     CommandQueueCreateFailed,

@@ -18,6 +18,63 @@
 
 using namespace Microsoft::WRL;
 
+ErrorCode PipelineInterface::CreateRootSignature()
+{
+    D3D12_FEATURE_DATA_ROOT_SIGNATURE FeatureData = {};
+
+    // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
+    FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+    if (FAILED(D3DDevice->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &FeatureData, sizeof(FeatureData))))
+    {
+        FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+    }
+    
+    //  2CBV + 4SRV
+    CD3DX12_ROOT_PARAMETER1 RootParameters[6] = {};
+    
+    //  Camera (b0)
+    RootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+    //  StaticMeshActor (b1)
+    RootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+    
+    CD3DX12_DESCRIPTOR_RANGE1 Ranges[4] = {};
+    Ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC); // Meshlets (t0)
+    Ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC); // MeshletVertices (t1)
+    Ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC); // MeshletIndices (t2)
+    Ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC); // Vertices (t3)
+
+    RootParameters[2].InitAsDescriptorTable(1, &Ranges[0]); // Meshlets
+    RootParameters[3].InitAsDescriptorTable(1, &Ranges[1]); // MeshletVertices
+    RootParameters[4].InitAsDescriptorTable(1, &Ranges[2]); // MeshletIndices
+    RootParameters[5].InitAsDescriptorTable(1, &Ranges[3]); // Vertices
+    
+    D3D12_ROOT_SIGNATURE_FLAGS RootSignatureFlags =
+                D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+    
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC RootSignatureDesc;
+    RootSignatureDesc.Init_1_1(_countof(RootParameters), RootParameters, 0, nullptr, RootSignatureFlags);
+
+    // 序列化并创建根签名
+    ComPtr<ID3DBlob> Signature;
+    ComPtr<ID3DBlob> Error;
+    
+    HRESULT hResult = D3DX12SerializeVersionedRootSignature(&RootSignatureDesc, FeatureData.HighestVersion, &Signature, &Error);
+    if (FAILED(hResult))
+    {
+        return ErrorCode::SerializeVersionedRootSignatureFailed;
+    }
+    
+    hResult = D3DDevice->CreateRootSignature(0, Signature->GetBufferPointer(), Signature->GetBufferSize(), 
+                                      IID_PPV_ARGS(&RootSignature));
+    
+    if (FAILED(hResult))
+    {
+        return ErrorCode::RootSignatureCreationFailed;
+    }
+    
+    return ErrorCode::OK;
+}
+
 ErrorCode PipelineInterface::Initialize(HWND hWnd)
 {
     UINT DxgiFactoryFlags = 0;
@@ -220,36 +277,12 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         IMGUIRenderTargetResources.push_back(BackBuffer);
     }
 
-    D3D12_FEATURE_DATA_ROOT_SIGNATURE FeatureData = {};
-
-    // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
-    FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
-    if (FAILED(D3DDevice->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &FeatureData, sizeof(FeatureData))))
+    ErrorCode Result = CreateRootSignature();
+    if (Result != ErrorCode::OK)
     {
-        FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+        return Result;
     }
     
-    CD3DX12_DESCRIPTOR_RANGE1 Ranges[2];
-    CD3DX12_ROOT_PARAMETER1 RootParameters[2];
-    
-    // Camera constant buffer - register b0
-    Ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-    RootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
-    
-    // Object constant buffer - register b1
-    Ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-    RootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
-    
-    D3D12_ROOT_SIGNATURE_FLAGS RootSignatureFlags =
-                D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC RootSignatureDesc;
-    RootSignatureDesc.Init_1_1(_countof(RootParameters), RootParameters, 0, nullptr, RootSignatureFlags);
-
-    ComPtr<ID3DBlob> Signature;
-    ComPtr<ID3DBlob> Error;
-    D3DX12SerializeVersionedRootSignature(&RootSignatureDesc, FeatureData.HighestVersion, &Signature, &Error);
-    D3DDevice->CreateRootSignature(0, Signature->GetBufferPointer(), Signature->GetBufferSize(), IID_PPV_ARGS(&RootSignature));
-
     ComPtr<ID3DBlob> VertexShader;
     ComPtr<ID3DBlob> PixelShader;
 
@@ -262,13 +295,13 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
 
     std::wstring ShaderPath = L"D:\\GPU-pipeline\\content\\shader\\color.hlsl";
     ComPtr<ID3DBlob> Errors;
-    HRESULT Result = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "VS", "vs_5_0", CompileFlags, 0, &VertexShader, &Errors);
+    HRESULT hResult = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "VS", "vs_5_0", CompileFlags, 0, &VertexShader, &Errors);
     if (Errors != nullptr)
     {
         OutputDebugStringA((char*)Errors->GetBufferPointer());
     }
     
-    Result = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PS", "ps_5_0", CompileFlags, 0, &PixelShader, &Errors);
+    hResult = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PS", "ps_5_0", CompileFlags, 0, &PixelShader, &Errors);
     if (Errors != nullptr)
     {
         OutputDebugStringA((char*)Errors->GetBufferPointer());
