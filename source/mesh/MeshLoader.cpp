@@ -98,3 +98,53 @@ ErrorCode MeshLoader::LoadMesh(const std::string& Path, vector<Mesh>& OutMeshes)
 
     return ErrorCode::OK;
 }
+
+ErrorCode MeshLoader::GenerateMeshletData(const std::vector<Mesh>& Meshes, std::vector<MeshletData>& OutMeshletData) const
+{
+    for (unsigned int I = 0; I < Meshes.size(); ++I)
+    {
+        MeshletData MeshletDataInstance;
+    
+        constexpr size_t MaxVertexCountPerMeshlet = 64;
+        constexpr size_t MaxTriangleCountPerMeshlet = 124;
+        constexpr float ConeWeight = 0.7f;
+        
+        const size_t MaxMeshletCount = meshopt_buildMeshletsBound(
+            Meshes[I].Indices.size(), MaxVertexCountPerMeshlet, MaxTriangleCountPerMeshlet);
+    
+        MeshletDataInstance.Meshlets.resize(MaxMeshletCount);
+        MeshletDataInstance.MeshletVertices.resize(MaxMeshletCount * MaxVertexCountPerMeshlet);
+        MeshletDataInstance.MeshletIndices.resize(MaxMeshletCount * MaxTriangleCountPerMeshlet * 3);
+        
+        const size_t MeshletCount = meshopt_buildMeshlets(
+            MeshletDataInstance.Meshlets.data(),
+            MeshletDataInstance.MeshletVertices.data(),
+            MeshletDataInstance.MeshletIndices.data(),
+            Meshes[I].Indices.data(),
+            Meshes[I].Indices.size(),
+            &Meshes[I].Vertices[0].Position.x,
+            Meshes[I].Vertices.size(),
+            sizeof(Vertex),
+            MaxVertexCountPerMeshlet,
+            MaxTriangleCountPerMeshlet,
+            ConeWeight);
+    
+        MeshletDataInstance.Meshlets.resize(MeshletCount);
+
+        size_t TotalVertexCount = 0;
+        size_t TotalTriangleCount = 0;
+    
+        for (size_t J = 0; J < MeshletCount; ++J)
+        {
+            TotalVertexCount += MeshletDataInstance.Meshlets[J].vertex_count;
+            TotalTriangleCount += MeshletDataInstance.Meshlets[J].triangle_count;
+        }
+    
+        MeshletDataInstance.MeshletVertices.resize(TotalVertexCount);
+        MeshletDataInstance.MeshletIndices.resize(TotalTriangleCount * 3);
+
+        OutMeshletData.push_back(MeshletDataInstance);
+    }
+
+    return ErrorCode::OK;
+}

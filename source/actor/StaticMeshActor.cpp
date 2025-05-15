@@ -13,6 +13,12 @@ StaticMeshActor::StaticMeshActor(const string& Path)
     
     vector<Mesh> Meshes;
     MeshLoader::GetInstance().LoadMesh(Path, Meshes);
+
+    vector<MeshletData> MeshletData;
+    for (unsigned int I = 0; I < Meshes.size(); ++I)
+    {
+        MeshLoader::GetInstance().GenerateMeshletData(Meshes, MeshletData);
+    }
     
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
