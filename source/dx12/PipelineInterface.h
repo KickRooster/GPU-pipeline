@@ -89,7 +89,7 @@ class PipelineInterface : public Singleton<PipelineInterface>
     const int SRVHeapSize = 64;
     
     Microsoft::WRL::ComPtr<ID3D12Device2> D3DDevice = nullptr;
-    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> CommandList;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList6> CommandList;
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> D3DCommandQueue = nullptr;
     Microsoft::WRL::ComPtr<IDXGISwapChain3> SwapChain = nullptr;
     HANDLE SwapChainWaitableObject = nullptr;
@@ -132,7 +132,7 @@ public:
     void ResetCommandAllocator(unsigned int FrameContextIndex) const;
     HRESULT ResetCommandList(unsigned int FrameContextIndex) const;
     void Signal(unsigned long FenceValue) const;
-    ID3D12GraphicsCommandList* GetCommandList() const;
+    ID3D12GraphicsCommandList6* GetCommandList() const;
     IDXGISwapChain3* GetSwapChain();
     void UpdateFrameContextFenceValue(unsigned int FrameContextIndex, unsigned long FenceValue);
     D3D12_GPU_DESCRIPTOR_HANDLE GetRenderTargetSRVGPUHandle(unsigned int FrameContextIndex) const;
@@ -142,4 +142,5 @@ public:
     void CreateConstantBuffer(const StaticMeshActor* ActorInstance);
     void UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);
     void RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance);
+    void RenderLevelMeshlet(unsigned int FrameContextIndex, const Level* LevelInstance);
 };

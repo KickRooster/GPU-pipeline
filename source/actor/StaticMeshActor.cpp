@@ -14,11 +14,8 @@ StaticMeshActor::StaticMeshActor(const string& Path)
     vector<Mesh> Meshes;
     MeshLoader::GetInstance().LoadMesh(Path, Meshes);
 
-    vector<MeshletData> MeshletData;
-    for (unsigned int I = 0; I < Meshes.size(); ++I)
-    {
-        MeshLoader::GetInstance().GenerateMeshletData(Meshes, MeshletData);
-    }
+    vector<MeshletData> MeshletDatas;
+    MeshLoader::GetInstance().GenerateMeshletData(Meshes, MeshletDatas);
     
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
@@ -29,6 +26,18 @@ StaticMeshActor::StaticMeshActor(const string& Path)
         
         unique_ptr<MeshProxy> MeshProxyInstance = make_unique<MeshProxy>();
         MeshProxyInstances.push_back(std::move(MeshProxyInstance));
+    }
+
+    for (unsigned int I = 0; I < MeshletDatas.size(); ++I)
+    {
+        unique_ptr<MeshletData> MeshletDataInstance = make_unique<MeshletData>();
+        MeshletDataInstance->Meshlets = MeshletDatas[I].Meshlets;
+        MeshletDataInstance->MeshletVertices = MeshletDatas[I].MeshletVertices;
+        MeshletDataInstance->MeshletIndices = MeshletDatas[I].MeshletIndices;
+        MeshletDataInstances.push_back(std::move(MeshletDataInstance));
+        
+        unique_ptr<MeshletDataProxy> MeshletDataProxyInstance = make_unique<MeshletDataProxy>();
+        MeshletDataProxyInstances.push_back(std::move(MeshletDataProxyInstance));
     }
 }
 
@@ -85,6 +94,26 @@ MeshProxy* StaticMeshActor::GetMeshProxyInstance(unsigned int Index) const
     }
     
     return MeshProxyInstances[Index].get();    
+}
+
+MeshletData* StaticMeshActor::GetMeshletDataInstance(unsigned int Index) const
+{
+    if (MeshletDataInstances.size() == 0)
+    {
+        return nullptr;
+    }
+    
+    return MeshletDataInstances[Index].get();    
+}
+
+MeshletDataProxy* StaticMeshActor::GetMeshletDataProxyInstance(unsigned int Index) const
+{
+    if (MeshletDataProxyInstances.size() == 0)
+    {
+        return nullptr;
+    }
+    
+    return MeshletDataProxyInstances[Index].get();    
 }
 
 StaticMeshActorConstantBuffer* StaticMeshActor::GetConstantBuffer() const

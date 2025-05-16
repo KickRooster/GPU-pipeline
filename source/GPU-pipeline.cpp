@@ -82,6 +82,7 @@ int main(int, char**)
 	for (unsigned int I = 0; I < StaticMeshActorInstance->GetSubMeshCount(); ++I)
 	{
 		PipelineInterface::GetInstance().CreateMeshProxyBuffer(StaticMeshActorInstance->GetMeshInstance(I), StaticMeshActorInstance->GetMeshProxyInstance(I));
+		PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(StaticMeshActorInstance->GetMeshletDataInstance(I), StaticMeshActorInstance->GetMeshletDataProxyInstance(I));
 	}
 	PipelineInterface::GetInstance().CreateConstantBuffer(StaticMeshActorInstance);
 

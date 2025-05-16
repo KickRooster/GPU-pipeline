@@ -11,19 +11,25 @@
 class StaticMeshActor : public Actor
 {
 protected:
-    std::vector<std::unique_ptr<Mesh>> MeshInstances;
-    std::vector<std::unique_ptr<MeshProxy>> MeshProxyInstances;
     DirectX::XMMATRIX TransformationMatrix;
     
+    std::vector<std::unique_ptr<Mesh>> MeshInstances;
+    std::vector<std::unique_ptr<MeshProxy>> MeshProxyInstances;
+
+    std::vector<std::unique_ptr<MeshletData>> MeshletDataInstances;
+    std::vector<std::unique_ptr<MeshletDataProxy>> MeshletDataProxyInstances;
+
     std::unique_ptr<StaticMeshActorConstantBuffer> ConstantBufferInstance;
     std::unique_ptr<ConstantBufferProxy> ConstantBufferProxyInstance;
-    
+
 public:
     StaticMeshActor(const std::string& Path);
     void Update(float DeltaTime) override;
     unsigned int GetSubMeshCount() const;
     Mesh* GetMeshInstance(unsigned int Index) const;
     MeshProxy* GetMeshProxyInstance(unsigned int Index) const;
+    MeshletData* GetMeshletDataInstance(unsigned int Index) const;
+    MeshletDataProxy* GetMeshletDataProxyInstance(unsigned int Index) const;
     StaticMeshActorConstantBuffer* GetConstantBuffer() const;
     ConstantBufferProxy* GetConstantBufferProxy() const;
     ~StaticMeshActor() override = default;
