@@ -958,18 +958,14 @@ void PipelineInterface::CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProx
 
 void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance)
 {
-    // 设置 Meshlet 数量
     MeshletDataProxyInstance->MeshletCount = static_cast<uint32_t>(MeshletDataInstance->Meshlets.size());
     
-    // 计算缓冲区大小
     const unsigned int MeshletsBufferSize = sizeof(Meshlet) * MeshletDataProxyInstance->MeshletCount;
     const unsigned int MeshletVerticesBufferSize = sizeof(unsigned int) * static_cast<unsigned int>(MeshletDataInstance->MeshletVertices.size());
     const unsigned int MeshletTrianglesBufferSize = sizeof(unsigned int) * static_cast<unsigned int>(MeshletDataInstance->MeshletIndices.size());
     
-    // 在默认堆上创建 Meshlets 缓冲区
     CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
     
-    // Meshlets 缓冲区
     CD3DX12_RESOURCE_DESC MeshletsBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(MeshletsBufferSize);
     D3DDevice->CreateCommittedResource(
         &DefaultHeapProperties, 
@@ -979,7 +975,6 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletsBuffer));
     
-    // MeshletVertices 缓冲区
     CD3DX12_RESOURCE_DESC MeshletVerticesBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(MeshletVerticesBufferSize);
     D3DDevice->CreateCommittedResource(
         &DefaultHeapProperties, 
@@ -989,7 +984,6 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletVerticesBuffer));
     
-    // MeshletTriangles 缓冲区
     CD3DX12_RESOURCE_DESC MeshletTrianglesBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(MeshletTrianglesBufferSize);
     D3DDevice->CreateCommittedResource(
         &DefaultHeapProperties, 
@@ -999,10 +993,8 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletTrianglesBuffer));
     
-    // 在上传堆上创建缓冲区
     CD3DX12_HEAP_PROPERTIES UploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
     
-    // Meshlets 上传缓冲区
     D3DDevice->CreateCommittedResource(
         &UploadHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
@@ -1011,7 +1003,6 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletsBufferUpload));
     
-    // MeshletVertices 上传缓冲区
     D3DDevice->CreateCommittedResource(
         &UploadHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
@@ -1020,7 +1011,6 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletVerticesBufferUpload));
     
-    // MeshletTriangles 上传缓冲区
     D3DDevice->CreateCommittedResource(
         &UploadHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
@@ -1029,12 +1019,10 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletTrianglesBufferUpload));
     
-    // 将 Meshlet 数据从 meshopt_Meshlet 转换为我们自己的 Meshlet 格式并复制到上传缓冲区
     Meshlet* MeshletDataBegin;
-    CD3DX12_RANGE MeshletReadRange(0, 0); // 我们不打算从 CPU 读取此资源
+    CD3DX12_RANGE MeshletReadRange(0, 0);
     MeshletDataProxyInstance->MeshletsBufferUpload->Map(0, &MeshletReadRange, reinterpret_cast<void**>(&MeshletDataBegin));
     
-    // 将 meshopt_Meshlet 数据转换为我们的 Meshlet 格式
     for (size_t i = 0; i < MeshletDataInstance->Meshlets.size(); ++i)
     {
         MeshletDataBegin[i].VertexOffset = MeshletDataInstance->Meshlets[i].vertex_offset;
@@ -1045,74 +1033,61 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
     
     MeshletDataProxyInstance->MeshletsBufferUpload->Unmap(0, nullptr);
     
-    // 复制 MeshletVertices 数据到上传缓冲区
     unsigned int* VertexDataBegin;
     CD3DX12_RANGE VertexReadRange(0, 0);
     MeshletDataProxyInstance->MeshletVerticesBufferUpload->Map(0, &VertexReadRange, reinterpret_cast<void**>(&VertexDataBegin));
     memcpy(VertexDataBegin, MeshletDataInstance->MeshletVertices.data(), MeshletVerticesBufferSize);
     MeshletDataProxyInstance->MeshletVerticesBufferUpload->Unmap(0, nullptr);
     
-    // 复制 MeshletTriangles 数据到上传缓冲区
     unsigned int* TriangleDataBegin;
     CD3DX12_RANGE TriangleReadRange(0, 0);
     MeshletDataProxyInstance->MeshletTrianglesBufferUpload->Map(0, &TriangleReadRange, reinterpret_cast<void**>(&TriangleDataBegin));
     memcpy(TriangleDataBegin, MeshletDataInstance->MeshletIndices.data(), MeshletTrianglesBufferSize);
     MeshletDataProxyInstance->MeshletTrianglesBufferUpload->Unmap(0, nullptr);
     
-    // 使用命令列表复制数据
     FrameContext& FrameContext = FrameContexts[0];
     
-    // 重置命令分配器和命令列表
     FrameContext.CommandAllocator->Reset();
     CommandList->Reset(FrameContext.CommandAllocator.Get(), nullptr);
     
-    // 复制 Meshlets 缓冲区
     CommandList->CopyBufferRegion(
         MeshletDataProxyInstance->MeshletsBuffer.Get(), 0,
         MeshletDataProxyInstance->MeshletsBufferUpload.Get(), 0,
         MeshletsBufferSize);
     
-    // 为 Meshlets 缓冲区插入屏障，转换为着色器资源状态
     CD3DX12_RESOURCE_BARRIER MeshletsBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
         MeshletDataProxyInstance->MeshletsBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     CommandList->ResourceBarrier(1, &MeshletsBarrier);
     
-    // 复制 MeshletVertices 缓冲区
     CommandList->CopyBufferRegion(
         MeshletDataProxyInstance->MeshletVerticesBuffer.Get(), 0,
         MeshletDataProxyInstance->MeshletVerticesBufferUpload.Get(), 0,
         MeshletVerticesBufferSize);
     
-    // 为 MeshletVertices 缓冲区插入屏障，转换为着色器资源状态
     CD3DX12_RESOURCE_BARRIER VerticesBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
         MeshletDataProxyInstance->MeshletVerticesBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     CommandList->ResourceBarrier(1, &VerticesBarrier);
     
-    // 复制 MeshletTriangles 缓冲区
     CommandList->CopyBufferRegion(
         MeshletDataProxyInstance->MeshletTrianglesBuffer.Get(), 0,
         MeshletDataProxyInstance->MeshletTrianglesBufferUpload.Get(), 0,
         MeshletTrianglesBufferSize);
     
-    // 为 MeshletTriangles 缓冲区插入屏障，转换为着色器资源状态
     CD3DX12_RESOURCE_BARRIER TrianglesBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
         MeshletDataProxyInstance->MeshletTrianglesBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     CommandList->ResourceBarrier(1, &TrianglesBarrier);
     
-    // 关闭命令列表
     CommandList->Close();
     
-    // 执行命令列表
     ID3D12GraphicsCommandList* CommandListPointer = CommandList.Get();
     D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&CommandListPointer);
     
-    // 等待 GPU 执行完成
     UINT64 FenceValue = 1;
     D3DCommandQueue->Signal(Fence.Get(), FenceValue);
     if (Fence->GetCompletedValue() < FenceValue)
@@ -1140,7 +1115,7 @@ void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInsta
 
     BufferProxy->UploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&BufferProxy->MappedData));
 
-    //  XXX:    We will change to use DescriptorTable later.
+    //  XXX:    We will change to use DescriptorTable in the feature.
 }
 
 void PipelineInterface::CreateConstantBuffer(const StaticMeshActor* ActorInstance)
@@ -1361,7 +1336,6 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
     CommandList->SetGraphicsRootSignature(RootSignature.Get());
     CommandList->SetPipelineState(MeshShaderPipelineState.Get());
 
-    // 设置相机常量缓冲区（参数0，b0寄存器）
     if (LevelInstance->GetCameraActors().size() > 0)
     {
         const CameraActor* CameraActorInstance = LevelInstance->GetCameraActors()[0];
@@ -1373,27 +1347,21 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
     {
         const StaticMeshActor* StaticMeshActorInstance = LevelInstance->GetStaticMeshActors()[I];
         
-        // 设置对象常量缓冲区（参数1，b1寄存器）
         const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = StaticMeshActorInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
         CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
         
         for (unsigned int SubMeshIndex = 0; SubMeshIndex < StaticMeshActorInstance->GetSubMeshCount(); ++SubMeshIndex)
         {
-            // Get mesh and meshlet proxy instances
-            MeshProxy* MeshProxyInstance = StaticMeshActorInstance->GetMeshProxyInstance(SubMeshIndex);
-            MeshletDataProxy* MeshletDataProxyInstance = StaticMeshActorInstance->GetMeshletDataProxyInstance(SubMeshIndex);
+            const MeshProxy* MeshProxyInstance = StaticMeshActorInstance->GetMeshProxyInstance(SubMeshIndex);
+            const MeshletDataProxy* MeshletDataProxyInstance = StaticMeshActorInstance->GetMeshletDataProxyInstance(SubMeshIndex);
             
-            // 设置着色器资源视图 - 调整了参数索引
             CommandList->SetGraphicsRootShaderResourceView(2, MeshProxyInstance->VertexBuffer->GetGPUVirtualAddress());
             CommandList->SetGraphicsRootShaderResourceView(3, MeshletDataProxyInstance->MeshletsBuffer->GetGPUVirtualAddress());
             CommandList->SetGraphicsRootShaderResourceView(4, MeshletDataProxyInstance->MeshletVerticesBuffer->GetGPUVirtualAddress());
-            // 确保MeshletTriangles作为ByteAddressBuffer进行绑定
             CommandList->SetGraphicsRootShaderResourceView(5, MeshletDataProxyInstance->MeshletTrianglesBuffer->GetGPUVirtualAddress());
             
-            // 分派所有meshlet
-            const UINT TotalMeshlets = MeshletDataProxyInstance->MeshletCount;
+            const unsigned int TotalMeshlets = MeshletDataProxyInstance->MeshletCount;
             
-            // 分派网格着色器
             CommandList->DispatchMesh(TotalMeshlets, 1, 1);
         }
     }

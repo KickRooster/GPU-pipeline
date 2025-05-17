@@ -37,12 +37,12 @@ enum class ErrorCode
 
 struct UIState
 {
-    bool WPressed;
-    bool SPressed;
-    bool APressed;
-    bool DPressed;
-    bool QPressed;
-    bool EPressed;
+    bool WDown;
+    bool SDown;
+    bool ADown;
+    bool DDown;
+    bool QDown;
+    bool EDown;
 
     bool LeftButtonDown;
     bool RightButtonDown;

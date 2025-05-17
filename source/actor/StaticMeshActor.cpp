@@ -12,7 +12,6 @@ StaticMeshActor::StaticMeshActor(const string& Path)
     ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
     
     vector<Mesh> Meshes;
-    //MeshLoader::GetInstance().LoadCubeMesh(Meshes);
     MeshLoader::GetInstance().LoadMesh(Path, Meshes);
 
     vector<MeshletDataForMeshOptimizer> MeshletDatas;
@@ -73,11 +72,11 @@ void StaticMeshActor::Update(float DeltaTime)
     }
 }
 
-unsigned StaticMeshActor::GetSubMeshCount() const
+unsigned int StaticMeshActor::GetSubMeshCount() const
 {
     assert(MeshInstances.size() == MeshProxyInstances.size());
     
-    return MeshInstances.size();    
+    return static_cast<unsigned int>(MeshInstances.size());    
 }
 
 Mesh* StaticMeshActor::GetMeshInstance(unsigned int Index) const

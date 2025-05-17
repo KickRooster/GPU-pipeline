@@ -24,12 +24,12 @@ static UIState State;
 
 void ControlCamera(float DeltaTime, CameraActor* CameraActorInstance)
 {
-	State.WPressed = ImGui::IsKeyPressed(ImGuiKey_W);
-	State.SPressed = ImGui::IsKeyPressed(ImGuiKey_S);
-	State.APressed = ImGui::IsKeyPressed(ImGuiKey_A);
-	State.DPressed = ImGui::IsKeyPressed(ImGuiKey_D);
-	State.QPressed = ImGui::IsKeyPressed(ImGuiKey_Q);
-	State.EPressed = ImGui::IsKeyPressed(ImGuiKey_E);
+	State.WDown = ImGui::IsKeyDown(ImGuiKey_W);
+	State.SDown = ImGui::IsKeyDown(ImGuiKey_S);
+	State.ADown = ImGui::IsKeyDown(ImGuiKey_A);
+	State.DDown = ImGui::IsKeyDown(ImGuiKey_D);
+	State.QDown = ImGui::IsKeyDown(ImGuiKey_Q);
+	State.EDown = ImGui::IsKeyDown(ImGuiKey_E);
 
 	if (State.MoveSpeed == 0)
 	{
@@ -51,7 +51,7 @@ void ControlCamera(float DeltaTime, CameraActor* CameraActorInstance)
 
 	State.DeltaX = ImGui::GetIO().MouseDelta.x;
 	State.DeltaY = ImGui::GetIO().MouseDelta.y;
-	State.RotateSpeed = 0.00008f;
+	State.RotateSpeed = 0.000087f;
 
 	State.DeltaTime = DeltaTime;
 
