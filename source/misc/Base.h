@@ -8,6 +8,17 @@ enum class ErrorCode
     //  DX12 error code begin.
     Failed,
     DebugInterfaceNotFound,
+    SerializeVersionedRootSignatureFailed,
+    RootSignatureCreationFailed,
+    DxcUtilsCreateFailed,
+    DxcCompilerCreateFailed,
+    DxcCompileResultGetOutputFailed,
+    DefaultIncludeHandlerCreateFailed,
+    PixelShaderLoadFailed,
+    PixelShaderCompileFailed,
+    MeshShaderLoadFailed,
+    MeshShaderCompileFailed,
+    MeshShaderPipelineStateCreateFailed,
     DeviceCreateFailed,
     DescriptorHeapCreateFailed,
     CommandQueueCreateFailed,
@@ -26,12 +37,12 @@ enum class ErrorCode
 
 struct UIState
 {
-    bool WPressed;
-    bool SPressed;
-    bool APressed;
-    bool DPressed;
-    bool QPressed;
-    bool EPressed;
+    bool WDown;
+    bool SDown;
+    bool ADown;
+    bool DDown;
+    bool QDown;
+    bool EDown;
 
     bool LeftButtonDown;
     bool RightButtonDown;
@@ -51,6 +62,14 @@ struct Vertex
     DirectX::XMFLOAT3 Normal;
     DirectX::XMFLOAT4 Color;
     DirectX::XMFLOAT2 UV0;
+};
+
+struct Meshlet
+{
+    uint32_t VertexOffset;
+    uint32_t TriangleOffset;
+    uint32_t VertexCount;
+    uint32_t TriangleCount;
 };
 
 struct Transform

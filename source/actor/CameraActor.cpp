@@ -24,29 +24,29 @@ void CameraActor::ResponseToUI(const UIState* State)
         XMVECTOR Position = XMLoadFloat3(&Transform.Position);
         XMVECTOR Right = XMVector3Cross(Up, Look);
 
-        if (State->WPressed)
+        if (State->WDown)
         {
             Position = XMVectorAdd(Position, XMVectorScale(Look, State->MoveSpeed * State->DeltaTime));
         }
-        if (State->SPressed)
+        if (State->SDown)
         {
             Position = XMVectorSubtract(Position, XMVectorScale(Look, State->MoveSpeed * State->DeltaTime));
         }
     
-        if (State->APressed)
+        if (State->ADown)
         {
             Position = XMVectorSubtract(Position, XMVectorScale(Right, State->MoveSpeed * State->DeltaTime));
         }
-        if (State->DPressed)
+        if (State->DDown)
         {
             Position = XMVectorAdd(Position, XMVectorScale(Right, State->MoveSpeed * State->DeltaTime));
         }
     
-        if (State->QPressed)
+        if (State->QDown)
         {
             Position = XMVectorSubtract(Position, XMVectorScale(Up, State->MoveSpeed * State->DeltaTime));
         }
-        if (State->EPressed)
+        if (State->EDown)
         {
             Position = XMVectorAdd(Position, XMVectorScale(Up, State->MoveSpeed * State->DeltaTime));
         }

@@ -88,8 +88,8 @@ class PipelineInterface : public Singleton<PipelineInterface>
     const int FrameNumInFlight = 2;
     const int SRVHeapSize = 64;
     
-    Microsoft::WRL::ComPtr<ID3D12Device> D3DDevice = nullptr;
-    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> CommandList;
+    Microsoft::WRL::ComPtr<ID3D12Device2> D3DDevice = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList6> CommandList;
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> D3DCommandQueue = nullptr;
     Microsoft::WRL::ComPtr<IDXGISwapChain3> SwapChain = nullptr;
     HANDLE SwapChainWaitableObject = nullptr;
@@ -107,12 +107,16 @@ class PipelineInterface : public Singleton<PipelineInterface>
     unsigned int FrameIndex = 0;
     
     Microsoft::WRL::ComPtr<ID3D12RootSignature> RootSignature;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> PipelineState;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> VertexShaderPipelineState;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> MeshShaderPipelineState;
 
     DirectX::XMFLOAT2 ViewportSize = DirectX::XMFLOAT2(0, 0);
     bool bResizedLastFrame = false;
 
 public:
+    ErrorCode CreateRootSignature();
+    ErrorCode CreateVertexShaderPipelinestate();
+    ErrorCode CreateMeshShaderPipelinestate();
     ErrorCode Initialize(HWND hWnd);
     void CleanUp();
     void PackImGuiInitInfo(ImGui_ImplDX12_InitInfo& OutInitInfo);
@@ -128,13 +132,15 @@ public:
     void ResetCommandAllocator(unsigned int FrameContextIndex) const;
     HRESULT ResetCommandList(unsigned int FrameContextIndex) const;
     void Signal(unsigned long FenceValue) const;
-    ID3D12GraphicsCommandList* GetCommandList() const;
+    ID3D12GraphicsCommandList6* GetCommandList() const;
     IDXGISwapChain3* GetSwapChain();
     void UpdateFrameContextFenceValue(unsigned int FrameContextIndex, unsigned long FenceValue);
     D3D12_GPU_DESCRIPTOR_HANDLE GetRenderTargetSRVGPUHandle(unsigned int FrameContextIndex) const;
     void CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProxy* MeshProxyInstance);
+    void CreateMeshletDataProxyBuffer(const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance);
     void CreateConstantBuffer(const CameraActor* CameraActorInstance);
     void CreateConstantBuffer(const StaticMeshActor* ActorInstance);
     void UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);
     void RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance);
+    void RenderLevelMeshlet(unsigned int FrameContextIndex, const Level* LevelInstance);
 };

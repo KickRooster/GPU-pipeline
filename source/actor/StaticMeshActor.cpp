@@ -13,6 +13,9 @@ StaticMeshActor::StaticMeshActor(const string& Path)
     
     vector<Mesh> Meshes;
     MeshLoader::GetInstance().LoadMesh(Path, Meshes);
+
+    vector<MeshletDataForMeshOptimizer> MeshletDatas;
+    MeshLoader::GetInstance().GenerateMeshletData(Meshes, MeshletDatas);
     
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
@@ -23,6 +26,21 @@ StaticMeshActor::StaticMeshActor(const string& Path)
         
         unique_ptr<MeshProxy> MeshProxyInstance = make_unique<MeshProxy>();
         MeshProxyInstances.push_back(std::move(MeshProxyInstance));
+    }
+
+    for (unsigned int I = 0; I < MeshletDatas.size(); ++I)
+    {
+        unique_ptr<MeshletData> MeshletDataInstance = make_unique<MeshletData>();
+        MeshletDataInstance->Meshlets = MeshletDatas[I].Meshlets;
+        MeshletDataInstance->MeshletVertices = MeshletDatas[I].MeshletVertices;
+        for (unsigned int J = 0; J < MeshletDatas[I].MeshletIndices.size(); ++J)
+        {
+            MeshletDataInstance->MeshletIndices.push_back(static_cast<unsigned int>(MeshletDatas[I].MeshletIndices[J]));
+        }
+        MeshletDataInstances.push_back(std::move(MeshletDataInstance));
+        
+        unique_ptr<MeshletDataProxy> MeshletDataProxyInstance = make_unique<MeshletDataProxy>();
+        MeshletDataProxyInstances.push_back(std::move(MeshletDataProxyInstance));
     }
 }
 
@@ -54,11 +72,11 @@ void StaticMeshActor::Update(float DeltaTime)
     }
 }
 
-unsigned StaticMeshActor::GetSubMeshCount() const
+unsigned int StaticMeshActor::GetSubMeshCount() const
 {
     assert(MeshInstances.size() == MeshProxyInstances.size());
     
-    return MeshInstances.size();    
+    return static_cast<unsigned int>(MeshInstances.size());    
 }
 
 Mesh* StaticMeshActor::GetMeshInstance(unsigned int Index) const
@@ -79,6 +97,26 @@ MeshProxy* StaticMeshActor::GetMeshProxyInstance(unsigned int Index) const
     }
     
     return MeshProxyInstances[Index].get();    
+}
+
+MeshletData* StaticMeshActor::GetMeshletDataInstance(unsigned int Index) const
+{
+    if (MeshletDataInstances.size() == 0)
+    {
+        return nullptr;
+    }
+    
+    return MeshletDataInstances[Index].get();    
+}
+
+MeshletDataProxy* StaticMeshActor::GetMeshletDataProxyInstance(unsigned int Index) const
+{
+    if (MeshletDataProxyInstances.size() == 0)
+    {
+        return nullptr;
+    }
+    
+    return MeshletDataProxyInstances[Index].get();    
 }
 
 StaticMeshActorConstantBuffer* StaticMeshActor::GetConstantBuffer() const
