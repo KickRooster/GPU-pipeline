@@ -196,7 +196,8 @@ int main(int, char**)
 			PipelineInterface::GetInstance().UpdateViewport(FrameContextIndex, ViewportSize);
 			CameraActorInstance->AspectRatio = ViewportSize.x / ViewportSize.y;
 			Level::GetInstance().Update(DeltaTime);
-			PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
+			//PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
+			PipelineInterface::GetInstance().RenderLevelMeshlet(FrameContextIndex, &Level::GetInstance());
 			ImGui::Image(static_cast<ImTextureID>(PipelineInterface::GetInstance().GetRenderTargetSRVGPUHandle(FrameContextIndex).ptr), ViewportSize);
 		}
 		ImGui::End();

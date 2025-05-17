@@ -10,9 +10,17 @@ struct Mesh
     std::vector<unsigned int> Indices;
 };
 
-struct MeshletData
+struct MeshletDataForMeshOptimizer
 {
     std::vector<meshopt_Meshlet> Meshlets;
     std::vector<unsigned int> MeshletVertices;
     std::vector<unsigned char> MeshletIndices;
+};
+
+//  XXX:    We use unsigned int for MeshletIndices now, it's easy for developing early.
+struct MeshletData
+{
+    std::vector<meshopt_Meshlet> Meshlets;
+    std::vector<unsigned int> MeshletVertices;
+    std::vector<unsigned int> MeshletIndices;
 };

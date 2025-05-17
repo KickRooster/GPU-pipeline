@@ -16,5 +16,6 @@ class MeshLoader : public Singleton<MeshLoader>
     
 public:
     ErrorCode LoadMesh(const std::string& Path, std::vector<Mesh>& OutMeshes);
-    ErrorCode GenerateMeshletData(const std::vector<Mesh>& Meshes, std::vector<MeshletData>& OutMeshletData) const;
+    ErrorCode LoadCubeMesh(std::vector<Mesh>& OutMeshes);
+    ErrorCode GenerateMeshletData(const std::vector<Mesh>& Meshes, std::vector<MeshletDataForMeshOptimizer>& OutMeshletData) const;
 };

@@ -12,9 +12,10 @@ StaticMeshActor::StaticMeshActor(const string& Path)
     ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
     
     vector<Mesh> Meshes;
+    //MeshLoader::GetInstance().LoadCubeMesh(Meshes);
     MeshLoader::GetInstance().LoadMesh(Path, Meshes);
 
-    vector<MeshletData> MeshletDatas;
+    vector<MeshletDataForMeshOptimizer> MeshletDatas;
     MeshLoader::GetInstance().GenerateMeshletData(Meshes, MeshletDatas);
     
     for (unsigned int I = 0; I < Meshes.size(); ++I)
@@ -33,7 +34,10 @@ StaticMeshActor::StaticMeshActor(const string& Path)
         unique_ptr<MeshletData> MeshletDataInstance = make_unique<MeshletData>();
         MeshletDataInstance->Meshlets = MeshletDatas[I].Meshlets;
         MeshletDataInstance->MeshletVertices = MeshletDatas[I].MeshletVertices;
-        MeshletDataInstance->MeshletIndices = MeshletDatas[I].MeshletIndices;
+        for (unsigned int J = 0; J < MeshletDatas[I].MeshletIndices.size(); ++J)
+        {
+            MeshletDataInstance->MeshletIndices.push_back(static_cast<unsigned int>(MeshletDatas[I].MeshletIndices[J]));
+        }
         MeshletDataInstances.push_back(std::move(MeshletDataInstance));
         
         unique_ptr<MeshletDataProxy> MeshletDataProxyInstance = make_unique<MeshletDataProxy>();

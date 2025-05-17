@@ -34,24 +34,26 @@ ErrorCode PipelineInterface::CreateRootSignature()
         FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
     }
     
-    //  2CBV + 1 descriptor table with 4SRV
-    CD3DX12_ROOT_PARAMETER1 RootParameters[3] = {};
+    // 定义与顶点着色器管线一致的根参数，移除根常量
+    CD3DX12_ROOT_PARAMETER1 RootParameters[6] = {};
     
-    //  Camera (b0)
+    // Parameter 0: Camera Constants (b0) - gViewProj矩阵 (相机变换)
     RootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
-    //  StaticMeshActor (b1)
+    
+    // Parameter 1: Object Constants (b1) - gWorld矩阵 (对象变换)
     RootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
     
-    // 创建一个包含所有4个SRV的描述符范围
-    CD3DX12_DESCRIPTOR_RANGE1 SrvRanges[4] = {};
-    // 按照shader中的寄存器顺序设置
-    SrvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC); // Vertices (t0)
-    SrvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC); // Meshlets (t1)
-    SrvRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC); // UniqueVertexIndices (t2)
-    SrvRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC); // PrimitiveIndices (t3)
-
-    // 将所有SRV范围合并到一个描述符表中
-    RootParameters[2].InitAsDescriptorTable(4, SrvRanges, D3D12_SHADER_VISIBILITY_ALL);
+    // Parameter 2: Vertex Buffer SRV (t0) - 索引调整
+    RootParameters[2].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    
+    // Parameter 3: Meshlets Buffer SRV (t1) - 索引调整
+    RootParameters[3].InitAsShaderResourceView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    
+    // Parameter 4: Vertex Indices Buffer SRV (t2) - 索引调整
+    RootParameters[4].InitAsShaderResourceView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    
+    // Parameter 5: Triangle Indices Buffer SRV (t3) - 索引调整
+    RootParameters[5].InitAsShaderResourceView(3, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
     
     D3D12_ROOT_SIGNATURE_FLAGS RootSignatureFlags =
                 D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
@@ -500,6 +502,7 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         IMGUIRenderTargetResources.push_back(BackBuffer);
     }
 
+    // Create root signature
     ErrorCode Result = CreateRootSignature();
     if (Result != ErrorCode::OK)
     {
@@ -961,7 +964,7 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
     // 计算缓冲区大小
     const unsigned int MeshletsBufferSize = sizeof(Meshlet) * MeshletDataProxyInstance->MeshletCount;
     const unsigned int MeshletVerticesBufferSize = sizeof(unsigned int) * static_cast<unsigned int>(MeshletDataInstance->MeshletVertices.size());
-    const unsigned int MeshletTrianglesBufferSize = sizeof(unsigned char) * static_cast<unsigned int>(MeshletDataInstance->MeshletIndices.size());
+    const unsigned int MeshletTrianglesBufferSize = sizeof(unsigned int) * static_cast<unsigned int>(MeshletDataInstance->MeshletIndices.size());
     
     // 在默认堆上创建 Meshlets 缓冲区
     CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
@@ -1050,7 +1053,7 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
     MeshletDataProxyInstance->MeshletVerticesBufferUpload->Unmap(0, nullptr);
     
     // 复制 MeshletTriangles 数据到上传缓冲区
-    unsigned char* TriangleDataBegin;
+    unsigned int* TriangleDataBegin;
     CD3DX12_RANGE TriangleReadRange(0, 0);
     MeshletDataProxyInstance->MeshletTrianglesBufferUpload->Map(0, &TriangleReadRange, reinterpret_cast<void**>(&TriangleDataBegin));
     memcpy(TriangleDataBegin, MeshletDataInstance->MeshletIndices.data(), MeshletTrianglesBufferSize);
@@ -1358,10 +1361,10 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
     CommandList->SetGraphicsRootSignature(RootSignature.Get());
     CommandList->SetPipelineState(MeshShaderPipelineState.Get());
 
+    // 设置相机常量缓冲区（参数0，b0寄存器）
     if (LevelInstance->GetCameraActors().size() > 0)
     {
         const CameraActor* CameraActorInstance = LevelInstance->GetCameraActors()[0];
-
         const D3D12_GPU_VIRTUAL_ADDRESS CameraConstantBufferAddress = CameraActorInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
         CommandList->SetGraphicsRootConstantBufferView(0, CameraConstantBufferAddress);
     }
@@ -1369,87 +1372,32 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
     for (int I = 0; I < static_cast<int>(LevelInstance->GetStaticMeshActors().size()); ++I)
     {
         const StaticMeshActor* StaticMeshActorInstance = LevelInstance->GetStaticMeshActors()[I];
+        
+        // 设置对象常量缓冲区（参数1，b1寄存器）
         const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = StaticMeshActorInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
         CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
         
         for (unsigned int SubMeshIndex = 0; SubMeshIndex < StaticMeshActorInstance->GetSubMeshCount(); ++SubMeshIndex)
         {
-            // Get descriptor heap increment size
-            const UINT DescriptorHandleIncrementSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-            
-            // Get base CPU and GPU descriptor handles for SRV heap
-            D3D12_CPU_DESCRIPTOR_HANDLE SrvCpuHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
-            D3D12_GPU_DESCRIPTOR_HANDLE SrvGpuHandle = D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart();
-            
             // Get mesh and meshlet proxy instances
             MeshProxy* MeshProxyInstance = StaticMeshActorInstance->GetMeshProxyInstance(SubMeshIndex);
             MeshletDataProxy* MeshletDataProxyInstance = StaticMeshActorInstance->GetMeshletDataProxyInstance(SubMeshIndex);
             
-            if (!MeshletDataProxyInstance || MeshletDataProxyInstance->MeshletCount == 0)
-            {
-                continue;
-            }
+            // 设置着色器资源视图 - 调整了参数索引
+            CommandList->SetGraphicsRootShaderResourceView(2, MeshProxyInstance->VertexBuffer->GetGPUVirtualAddress());
+            CommandList->SetGraphicsRootShaderResourceView(3, MeshletDataProxyInstance->MeshletsBuffer->GetGPUVirtualAddress());
+            CommandList->SetGraphicsRootShaderResourceView(4, MeshletDataProxyInstance->MeshletVerticesBuffer->GetGPUVirtualAddress());
+            // 确保MeshletTriangles作为ByteAddressBuffer进行绑定
+            CommandList->SetGraphicsRootShaderResourceView(5, MeshletDataProxyInstance->MeshletTrianglesBuffer->GetGPUVirtualAddress());
             
-            // Create SRV for Vertex Buffer (t0)
-            D3D12_SHADER_RESOURCE_VIEW_DESC vertexSrvDesc = {};
-            vertexSrvDesc.Format = DXGI_FORMAT_UNKNOWN;
-            vertexSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-            vertexSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            vertexSrvDesc.Buffer.FirstElement = 0;
-            vertexSrvDesc.Buffer.NumElements = static_cast<UINT>(StaticMeshActorInstance->GetMeshInstance(SubMeshIndex)->Vertices.size());
-            vertexSrvDesc.Buffer.StructureByteStride = sizeof(Vertex);
-            vertexSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+            // 分派所有meshlet
+            const UINT TotalMeshlets = MeshletDataProxyInstance->MeshletCount;
             
-            D3D12_CPU_DESCRIPTOR_HANDLE vertexCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(SrvCpuHandle, 0, DescriptorHandleIncrementSize);
-            D3DDevice->CreateShaderResourceView(MeshProxyInstance->VertexBuffer.Get(), &vertexSrvDesc, vertexCpuHandle);
-            
-            // Create SRV for Meshlets Buffer (t1)
-            D3D12_SHADER_RESOURCE_VIEW_DESC meshletSrvDesc = {};
-            meshletSrvDesc.Format = DXGI_FORMAT_UNKNOWN;
-            meshletSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-            meshletSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            meshletSrvDesc.Buffer.FirstElement = 0;
-            meshletSrvDesc.Buffer.NumElements = MeshletDataProxyInstance->MeshletCount;
-            meshletSrvDesc.Buffer.StructureByteStride = sizeof(Meshlet);
-            meshletSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-            
-            D3D12_CPU_DESCRIPTOR_HANDLE meshletCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(SrvCpuHandle, 1, DescriptorHandleIncrementSize);
-            D3DDevice->CreateShaderResourceView(MeshletDataProxyInstance->MeshletsBuffer.Get(), &meshletSrvDesc, meshletCpuHandle);
-            
-            // Create SRV for Vertex Indices (t2)
-            D3D12_SHADER_RESOURCE_VIEW_DESC vertexIndexSrvDesc = {};
-            vertexIndexSrvDesc.Format = DXGI_FORMAT_R32_UINT;
-            vertexIndexSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-            vertexIndexSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            vertexIndexSrvDesc.Buffer.FirstElement = 0;
-            vertexIndexSrvDesc.Buffer.NumElements = static_cast<UINT>(StaticMeshActorInstance->GetMeshletDataInstance(SubMeshIndex)->MeshletVertices.size());
-            vertexIndexSrvDesc.Buffer.StructureByteStride = 0;
-            vertexIndexSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-            
-            D3D12_CPU_DESCRIPTOR_HANDLE vertexIdxCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(SrvCpuHandle, 2, DescriptorHandleIncrementSize);
-            D3DDevice->CreateShaderResourceView(MeshletDataProxyInstance->MeshletVerticesBuffer.Get(), &vertexIndexSrvDesc, vertexIdxCpuHandle);
-            
-            // Create SRV for Triangle Indices (t3)
-            D3D12_SHADER_RESOURCE_VIEW_DESC triangleIndexSrvDesc = {};
-            triangleIndexSrvDesc.Format = DXGI_FORMAT_R8_UINT;
-            triangleIndexSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-            triangleIndexSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            triangleIndexSrvDesc.Buffer.FirstElement = 0;
-            triangleIndexSrvDesc.Buffer.NumElements = static_cast<UINT>(StaticMeshActorInstance->GetMeshletDataInstance(SubMeshIndex)->MeshletIndices.size());
-            triangleIndexSrvDesc.Buffer.StructureByteStride = 0;
-            triangleIndexSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-            
-            D3D12_CPU_DESCRIPTOR_HANDLE triangleIdxCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(SrvCpuHandle, 3, DescriptorHandleIncrementSize);
-            D3DDevice->CreateShaderResourceView(MeshletDataProxyInstance->MeshletTrianglesBuffer.Get(), &triangleIndexSrvDesc, triangleIdxCpuHandle);
-            
-            // Set the descriptor table to reference all SRVs (t0-t3)
-            CommandList->SetGraphicsRootDescriptorTable(2, SrvGpuHandle);
-            
-            // Dispatch mesh shader - one thread group per meshlet
-            CommandList->DispatchMesh(MeshletDataProxyInstance->MeshletCount, 1, 1);
+            // 分派网格着色器
+            CommandList->DispatchMesh(TotalMeshlets, 1, 1);
         }
     }
-    
+
     Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     CommandList->ResourceBarrier(1, &Barrier);

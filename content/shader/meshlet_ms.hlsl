@@ -4,25 +4,24 @@
 // Mesh shader for meshlet rendering
 //***************************************************************************************
 
-// 使用标准的 cbuffer 语法
-cbuffer Constants : register(b0)
+// 相机常量缓冲区 (b0) - 与vertex shader pipeline保持一致
+cbuffer cbCamera : register(b0)
 {
-    float4x4 World;
-    float4x4 WorldView;
-    float4x4 WorldViewProj;
-    uint     DrawMeshlets;
+    float4x4 gViewProj;
 };
 
-cbuffer MeshInfo : register(b1)
+// 对象常量缓冲区 (b1) - 与vertex shader pipeline保持一致
+cbuffer cbStaticMeshActor : register(b1)
 {
-    uint IndexBytes;
-    uint MeshletOffset;
+    float4x4 gWorld;
 };
 
 struct Vertex
 {
     float3 Position;
     float3 Normal;
+    float4 Color;     // 添加颜色支持
+    float2 UV0;       // 添加UV支持
 };
 
 struct VertexOut
@@ -30,7 +29,8 @@ struct VertexOut
     float4 PositionHS   : SV_Position;
     float3 PositionVS   : POSITION0;
     float3 Normal       : NORMAL0;
-    uint   MeshletIndex : COLOR0;
+    float2 UV           : TEXCOORD0;
+    uint   MeshletIndex : COLOR0;    // 使用MeshletIndex
 };
 
 // 确保与 CreateMeshletDataProxyBuffer 中的 Meshlet 结构定义一致
@@ -42,54 +42,51 @@ struct Meshlet
     uint TriangleCount;
 };
 
-// 使用标准缓冲区绑定
+// 资源绑定
 StructuredBuffer<Vertex>  Vertices            : register(t0);
 StructuredBuffer<Meshlet> Meshlets            : register(t1);
-ByteAddressBuffer         UniqueVertexIndices : register(t2);
-StructuredBuffer<uint>    PrimitiveIndices    : register(t3);
+StructuredBuffer<uint>    UniqueVertexIndices : register(t2);
+StructuredBuffer<uint>    MeshletTriangles    : register(t3); // 修改为StructuredBuffer<uint>
 
 // Data Loaders
-uint3 UnpackPrimitive(uint primitive)
-{
-    // Unpacks a 10 bits per index triangle from a 32-bit uint.
-    return uint3(primitive & 0x3FF, (primitive >> 10) & 0x3FF, (primitive >> 20) & 0x3FF);
-}
-
 uint3 GetPrimitive(Meshlet m, uint index)
 {
-    return UnpackPrimitive(PrimitiveIndices[m.TriangleOffset + index]);
+    // 三角形索引的基础偏移量
+    uint baseIndex = m.TriangleOffset + index * 3;
+    
+    // 直接读取三个连续的32位索引
+    uint idx0 = MeshletTriangles[baseIndex];
+    uint idx1 = MeshletTriangles[baseIndex + 1];
+    uint idx2 = MeshletTriangles[baseIndex + 2];
+    
+    return uint3(idx0, idx1, idx2);
 }
 
 uint GetVertexIndex(Meshlet m, uint localIndex)
 {
-    localIndex = m.VertexOffset + localIndex;
-
-    if (IndexBytes == 4) // 32-bit Vertex Indices
-    {
-        return UniqueVertexIndices.Load(localIndex * 4);
-    }
-    else // 16-bit Vertex Indices
-    {
-        // Byte address must be 4-byte aligned.
-        uint wordOffset = (localIndex & 0x1);
-        uint byteOffset = (localIndex / 2) * 4;
-
-        // Grab the pair of 16-bit indices, shift & mask off proper 16-bits.
-        uint indexPair = UniqueVertexIndices.Load(byteOffset);
-        uint index = (indexPair >> (wordOffset * 16)) & 0xffff;
-
-        return index;
-    }
+    // 直接访问32位索引
+    return UniqueVertexIndices[m.VertexOffset + localIndex];
 }
 
 VertexOut GetVertexAttributes(uint meshletIndex, uint vertexIndex)
 {
     Vertex v = Vertices[vertexIndex];
 
+    // 计算世界空间位置
+    float4 posW = mul(float4(v.Position, 1), gWorld);
+    
+    // 计算法线
+    float3x3 worldInvTranspose = transpose((float3x3)gWorld);
+    float3 normalW = normalize(mul(v.Normal, worldInvTranspose));
+    
+    // 输出顶点
     VertexOut vout;
-    vout.PositionVS = mul(float4(v.Position, 1), WorldView).xyz;
-    vout.PositionHS = mul(float4(v.Position, 1), WorldViewProj);
-    vout.Normal = mul(float4(v.Normal, 0), World).xyz;
+    vout.PositionHS = mul(posW, gViewProj);
+    vout.PositionVS = posW.xyz; // 保存世界空间位置
+    vout.Normal = normalW;
+    
+    vout.UV = v.UV0;
+    // 传递meshlet索引作为颜色
     vout.MeshletIndex = meshletIndex;
 
     return vout;
@@ -99,14 +96,16 @@ VertexOut GetVertexAttributes(uint meshletIndex, uint vertexIndex)
 [NumThreads(128, 1, 1)]
 [OutputTopology("triangle")]
 void main(
-    uint gtid : SV_GroupThreadID,
     uint gid : SV_GroupID,
-    out indices uint3 tris[126],
-    out vertices VertexOut verts[64]
+    uint gtid : SV_GroupThreadID,
+    out vertices VertexOut verts[64],
+    out indices uint3 tris[124]  // 修改为124以匹配MaxTriangleCountPerMeshlet
 )
 {
-    Meshlet m = Meshlets[MeshletOffset + gid];
-
+    // 使用gid作为meshlet索引
+    uint meshletIndex = gid;
+    Meshlet m = Meshlets[meshletIndex];
+    
     SetMeshOutputCounts(m.VertexCount, m.TriangleCount);
 
     if (gtid < m.TriangleCount)
@@ -117,6 +116,6 @@ void main(
     if (gtid < m.VertexCount)
     {
         uint vertexIndex = GetVertexIndex(m, gtid);
-        verts[gtid] = GetVertexAttributes(gid, vertexIndex);
+        verts[gtid] = GetVertexAttributes(meshletIndex, vertexIndex);
     }
 } 
