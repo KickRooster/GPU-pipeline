@@ -78,7 +78,7 @@ VertexOut GetVertexAttributes(uint meshletIndex, uint vertexIndex)
 [OutputTopology("triangle")]
 void main(
     uint gid : SV_GroupID,
-    uint gtid : SV_GroupThreadID,
+    uint3 gtid : SV_GroupThreadID,
     out vertices VertexOut verts[64],   //  identical with MaxVertexCountPerMeshlet in MeshLoader::GenerateMeshletData()
     out indices uint3 tris[124]         //  identical with MaxTriangleCountPerMeshlet in MeshLoader::GenerateMeshletData()
 )
@@ -88,14 +88,14 @@ void main(
     
     SetMeshOutputCounts(m.VertexCount, m.TriangleCount);
 
-    if (gtid < m.TriangleCount)
+    if (gtid.x < m.TriangleCount)
     {
-        tris[gtid] = GetPrimitive(m, gtid);
+        tris[gtid.x] = GetPrimitive(m, gtid.x);
     }
 
-    if (gtid < m.VertexCount)
+    if (gtid.x < m.VertexCount)
     {
-        uint vertexIndex = GetVertexIndex(m, gtid);
-        verts[gtid] = GetVertexAttributes(meshletIndex, vertexIndex);
+        uint vertexIndex = GetVertexIndex(m, gtid.x);
+        verts[gtid.x] = GetVertexAttributes(meshletIndex, vertexIndex);
     }
 }
