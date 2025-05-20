@@ -8,6 +8,12 @@ cbuffer cbStaticMeshActor : register(b1)
     float4x4 gWorld;
 };
 
+// 添加MeshInfo常量缓冲区，与AS shader保持一致
+cbuffer cbMeshInfo : register(b2)
+{
+    uint gMeshletCount;
+};
+
 struct Vertex
 {
     float3 Position;
@@ -31,6 +37,12 @@ struct Meshlet
     uint TriangleOffset;
     uint VertexCount;
     uint TriangleCount;
+};
+
+// Payload结构，从AS接收
+struct Payload
+{
+    uint MeshletIndices[32];
 };
 
 StructuredBuffer<Vertex>  Vertices            : register(t0);
@@ -77,25 +89,30 @@ VertexOut GetVertexAttributes(uint meshletIndex, uint vertexIndex)
 [NumThreads(128, 1, 1)]
 [OutputTopology("triangle")]
 void main(
-    uint gid : SV_GroupID,
-    uint3 gtid : SV_GroupThreadID,
-    out vertices VertexOut verts[64],   //  identical with MaxVertexCountPerMeshlet in MeshLoader::GenerateMeshletData()
-    out indices uint3 tris[124]         //  identical with MaxTriangleCountPerMeshlet in MeshLoader::GenerateMeshletData()
+    uint groupID : SV_GroupID,
+    uint3 groupThreadID : SV_GroupThreadID,
+    uint dispatchThreadID : SV_DispatchThreadID,
+    in payload Payload payload,
+    out vertices VertexOut verts[64],     // identical with MaxVertexCountPerMeshlet in MeshLoader::GenerateMeshletData()
+    out indices uint3 tris[124]           // identical with MaxTriangleCountPerMeshlet in MeshLoader::GenerateMeshletData()
 )
 {
-    uint meshletIndex = gid;
+    // 从payload获取当前线程组应该处理的meshlet索引
+    uint meshletIndex = payload.MeshletIndices[groupID];
+    
+    // 加载对应的meshlet
     Meshlet m = Meshlets[meshletIndex];
     
     SetMeshOutputCounts(m.VertexCount, m.TriangleCount);
 
-    if (gtid.x < m.TriangleCount)
+    if (groupThreadID.x < m.TriangleCount)
     {
-        tris[gtid.x] = GetPrimitive(m, gtid.x);
+        tris[groupThreadID.x] = GetPrimitive(m, groupThreadID.x);
     }
 
-    if (gtid.x < m.VertexCount)
+    if (groupThreadID.x < m.VertexCount)
     {
-        uint vertexIndex = GetVertexIndex(m, gtid.x);
-        verts[gtid.x] = GetVertexAttributes(meshletIndex, vertexIndex);
+        uint vertexIndex = GetVertexIndex(m, groupThreadID.x);
+        verts[groupThreadID.x] = GetVertexAttributes(meshletIndex, vertexIndex);
     }
 }

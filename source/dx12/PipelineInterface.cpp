@@ -22,6 +22,7 @@
 #pragma comment(lib, "dxcompiler.lib")
 
 using namespace Microsoft::WRL;
+using namespace std;
 
 ErrorCode PipelineInterface::CreateRootSignature()
 {
@@ -34,8 +35,8 @@ ErrorCode PipelineInterface::CreateRootSignature()
         FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
     }
     
-    // 定义与顶点着色器管线一致的根参数，移除根常量
-    CD3DX12_ROOT_PARAMETER1 RootParameters[6] = {};
+    // 定义根参数 - 添加MeshInfo常量缓冲区
+    CD3DX12_ROOT_PARAMETER1 RootParameters[7] = {};
     
     // Parameter 0: Camera Constants (b0) - gViewProj矩阵 (相机变换)
     RootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
@@ -43,17 +44,20 @@ ErrorCode PipelineInterface::CreateRootSignature()
     // Parameter 1: Object Constants (b1) - gWorld矩阵 (对象变换)
     RootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
     
-    // Parameter 2: Vertex Buffer SRV (t0) - 索引调整
-    RootParameters[2].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    // Parameter 2: MeshInfo Constants (b2) - meshlet数量信息
+    RootParameters[2].InitAsConstantBufferView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
     
-    // Parameter 3: Meshlets Buffer SRV (t1) - 索引调整
-    RootParameters[3].InitAsShaderResourceView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    // Parameter 3: Vertex Buffer SRV (t0)
+    RootParameters[3].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
     
-    // Parameter 4: Vertex Indices Buffer SRV (t2) - 索引调整
-    RootParameters[4].InitAsShaderResourceView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    // Parameter 4: Meshlets Buffer SRV (t1)
+    RootParameters[4].InitAsShaderResourceView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
     
-    // Parameter 5: Triangle Indices Buffer SRV (t3) - 索引调整
-    RootParameters[5].InitAsShaderResourceView(3, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    // Parameter 5: Vertex Indices Buffer SRV (t2)
+    RootParameters[5].InitAsShaderResourceView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    
+    // Parameter 6: Triangle Indices Buffer SRV (t3)
+    RootParameters[6].InitAsShaderResourceView(3, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
     
     D3D12_ROOT_SIGNATURE_FLAGS RootSignatureFlags =
                 D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
@@ -82,30 +86,145 @@ ErrorCode PipelineInterface::CreateRootSignature()
     return ErrorCode::OK;
 }
 
-ErrorCode PipelineInterface::CreateVertexShaderPipelinestate()
+ErrorCode PipelineInterface::CompileShaderFXC(const std::wstring& ShaderPath, const std::string& EntryPoint, const std::string& TargetProfile, ComPtr<ID3DBlob>& OutShaderBlob) const
 {
-    ComPtr<ID3DBlob> VertexShader;
-    ComPtr<ID3DBlob> PixelShader;
-
 #ifdef DX12_ENABLE_DEBUG_LAYER
-    // Enable better shader debugging with the graphics debugging tools.
     UINT CompileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
     UINT CompileFlags = 0;
 #endif
 
-    std::wstring ShaderPath = L"D:\\GPU-pipeline\\content\\shader\\color.hlsl";
-    ComPtr<ID3DBlob> Errors;
-    HRESULT hResult = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "VS", "vs_5_0", CompileFlags, 0, &VertexShader, &Errors);
-    if (Errors != nullptr)
+    ComPtr<ID3DBlob> ErrorBlob;
+    
+    HRESULT hResult = D3DCompileFromFile(
+        ShaderPath.c_str(), 
+        nullptr,
+        D3D_COMPILE_STANDARD_FILE_INCLUDE,
+        EntryPoint.c_str(),
+        TargetProfile.c_str(),
+        CompileFlags,
+        0,
+        &OutShaderBlob,
+        &ErrorBlob
+    );
+    
+    if (FAILED(hResult))
     {
-        OutputDebugStringA((char*)Errors->GetBufferPointer());
+        if (ErrorBlob)
+        {
+            OutputDebugStringA(static_cast<const char*>(ErrorBlob->GetBufferPointer()));
+        }
+        return ErrorCode::ShaderCompileFailed;
     }
     
-    hResult = D3DCompileFromFile(ShaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PS", "ps_5_0", CompileFlags, 0, &PixelShader, &Errors);
-    if (Errors != nullptr)
+    if (!OutShaderBlob || !OutShaderBlob->GetBufferPointer() || OutShaderBlob->GetBufferSize() == 0)
     {
-        OutputDebugStringA((char*)Errors->GetBufferPointer());
+        return ErrorCode::GetShaderByteCodeFailed;
+    }
+    
+    return ErrorCode::OK;
+}
+
+ErrorCode PipelineInterface::CompileShaderDXC(const wstring& ShaderPath, const wstring& EntryPoint, const wstring& TargetProfile, ComPtr<IDxcBlob>& OutShaderBlob) const
+{
+    ComPtr<IDxcUtils> DxcUtils;
+    ComPtr<IDxcCompiler3> DxcCompiler;
+    
+    HRESULT hResult = DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&DxcUtils));
+    if (FAILED(hResult))
+    {
+        return ErrorCode::DxcUtilsCreateFailed;
+    }
+    
+    hResult = DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&DxcCompiler));
+    if (FAILED(hResult))
+    {
+        return ErrorCode::DxcCompilerCreateFailed;
+    }
+    
+    ComPtr<IDxcIncludeHandler> IncludeHandler;
+    hResult = DxcUtils->CreateDefaultIncludeHandler(&IncludeHandler);
+    if (FAILED(hResult))
+    {
+        return ErrorCode::DefaultIncludeHandlerCreateFailed;
+    }
+
+    ComPtr<IDxcBlobEncoding> ShaderSource;
+    hResult = DxcUtils->LoadFile(ShaderPath.c_str(), nullptr, &ShaderSource);
+    if (FAILED(hResult) || !ShaderSource)
+    {
+        return ErrorCode::ShaderLoadFailed;
+    }
+    
+    std::vector<LPCWSTR> Arguments;
+    Arguments.push_back(L"-E");
+    Arguments.push_back(EntryPoint.c_str());
+    Arguments.push_back(L"-T");
+    Arguments.push_back(TargetProfile.c_str());
+    
+#ifdef DX12_ENABLE_DEBUG_LAYER
+    Arguments.push_back(L"-Zi"); // With debug info
+    Arguments.push_back(L"-Od"); // Disable optimization
+#endif
+    
+    DxcBuffer SourceBuffer = {};
+    SourceBuffer.Ptr = ShaderSource->GetBufferPointer();
+    SourceBuffer.Size = ShaderSource->GetBufferSize();
+    SourceBuffer.Encoding = DXC_CP_ACP;
+    
+    ComPtr<IDxcResult> CompileResult;
+    hResult = DxcCompiler->Compile(
+        &SourceBuffer,
+        Arguments.data(),
+        static_cast<UINT32>(Arguments.size()),
+        IncludeHandler.Get(),
+        IID_PPV_ARGS(&CompileResult)
+    );
+    
+    HRESULT CompileStatus;
+    if (SUCCEEDED(hResult) && CompileResult && SUCCEEDED(CompileResult->GetStatus(&CompileStatus)) && SUCCEEDED(CompileStatus))
+    {
+        hResult = CompileResult->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&OutShaderBlob), nullptr);
+        
+        if (SUCCEEDED(hResult) && OutShaderBlob && OutShaderBlob->GetBufferPointer() && OutShaderBlob->GetBufferSize() > 0)
+        {
+            return ErrorCode::OK;
+        }
+        else
+        {
+            return ErrorCode::GetShaderByteCodeFailed;
+        }
+    }
+    else
+    {
+        ComPtr<IDxcBlobEncoding> ErrorBlob;
+        if (CompileResult && SUCCEEDED(CompileResult->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&ErrorBlob), nullptr))
+            && ErrorBlob && ErrorBlob->GetBufferSize() > 0)
+        {
+            OutputDebugStringA(static_cast<const char*>(ErrorBlob->GetBufferPointer()));
+        }
+        
+        return ErrorCode::ShaderCompileFailed;
+    }
+}
+
+ErrorCode PipelineInterface::CreateVertexShaderPipelinestate()
+{
+    ComPtr<ID3DBlob> VertexShader;
+    ComPtr<ID3DBlob> PixelShader;
+
+    std::wstring ShaderPath = L"D:\\GPU-pipeline\\content\\shader\\color.hlsl";
+    
+    ErrorCode Result = CompileShaderFXC(ShaderPath, "VS", "vs_5_0", VertexShader);
+    if (Result != ErrorCode::OK)
+    {
+        return Result;
+    }
+    
+    Result = CompileShaderFXC(ShaderPath, "PS", "ps_5_0", PixelShader);
+    if (Result != ErrorCode::OK)
+    {
+        return Result;
     }
 
     D3D12_INPUT_ELEMENT_DESC InputElementDescs[] =
@@ -147,163 +266,26 @@ ErrorCode PipelineInterface::CreateMeshShaderPipelinestate()
     ComPtr<IDxcBlob> MeshShader;
     ComPtr<IDxcBlob> PixelShader;
 
-#ifdef DX12_ENABLE_DEBUG_LAYER
-    // Enable better shader debugging with the graphics debugging tools.
-    UINT CompileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#else
-    UINT CompileFlags = 0;
-#endif
-
-    std::wstring AmplificationShaderPath = L"D:\\GPU-pipeline\\content\\shader\\meshlet_as.hlsl";
-    std::wstring MeshShaderPath = L"D:\\GPU-pipeline\\content\\shader\\meshlet_ms.hlsl";
-    std::wstring PixelShaderPath = L"D:\\GPU-pipeline\\content\\shader\\meshlet_ps.hlsl";
+    wstring AmplificationShaderPath = L"D:\\GPU-pipeline\\content\\shader\\meshlet_as.hlsl";
+    wstring MeshShaderPath = L"D:\\GPU-pipeline\\content\\shader\\meshlet_ms.hlsl";
+    wstring PixelShaderPath = L"D:\\GPU-pipeline\\content\\shader\\meshlet_ps.hlsl";
     
-    ComPtr<IDxcUtils> DxcUtils;
-    ComPtr<IDxcCompiler3> DxcCompiler;
-    
-    HRESULT hResult = DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&DxcUtils));
-    if (FAILED(hResult))
+    ErrorCode Result = CompileShaderDXC(AmplificationShaderPath, L"main", L"as_6_5", AmplificationShader);
+    if (Result != ErrorCode::OK)
     {
-        return ErrorCode::DxcUtilsCreateFailed;
-    }
-    
-    hResult = DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&DxcCompiler));
-    if (FAILED(hResult))
-    {
-        return ErrorCode::DxcCompilerCreateFailed;
-    }
-    
-    ComPtr<IDxcIncludeHandler> IncludeHandler;
-    hResult = DxcUtils->CreateDefaultIncludeHandler(&IncludeHandler);
-    if (FAILED(hResult))
-    {
-        return ErrorCode::DefaultIncludeHandlerCreateFailed;
+        return Result;
     }
 
-    // Amplification shader
-    ComPtr<IDxcBlobEncoding> AmplificationShaderSource;
-    hResult = DxcUtils->LoadFile(AmplificationShaderPath.c_str(), nullptr, &AmplificationShaderSource);
-    if (FAILED(hResult) || !AmplificationShaderSource)
+    Result = CompileShaderDXC(MeshShaderPath, L"main", L"ms_6_5", MeshShader);
+    if (Result != ErrorCode::OK)
     {
-        return ErrorCode::AmplificationShaderLoadFailed;
-    }
-    
-    const wchar_t* ASArgs[] = {
-        L"-E", L"main",
-        L"-T", L"as_6_5"
-#ifdef DX12_ENABLE_DEBUG_LAYER
-        , L"-Zi",
-        L"-Od"
-#endif
-    };
-        
-    DxcBuffer AmplificationShaderSourceBuffer = {};
-    AmplificationShaderSourceBuffer.Ptr = AmplificationShaderSource->GetBufferPointer();
-    AmplificationShaderSourceBuffer.Size = AmplificationShaderSource->GetBufferSize();
-    AmplificationShaderSourceBuffer.Encoding = DXC_CP_ACP;
-    
-    ComPtr<IDxcResult> ASCompileResult;
-    hResult = DxcCompiler->Compile(
-        &AmplificationShaderSourceBuffer,
-        ASArgs,
-        sizeof(ASArgs)/sizeof(ASArgs[0]),
-        IncludeHandler.Get(),
-        IID_PPV_ARGS(&ASCompileResult)
-    );
-        
-    if (FAILED(hResult))
-    {
-        return ErrorCode::AmplificationShaderCompileFailed;
-    }
-    
-    hResult = ASCompileResult->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&AmplificationShader), nullptr);
-    if (FAILED(hResult) || !AmplificationShader)
-    {
-        return ErrorCode::DxcCompileResultGetOutputFailed;
+        return Result;
     }
 
-    //  Mesh shader.
-    ComPtr<IDxcBlobEncoding> MeshShaderSource;
-    hResult = DxcUtils->LoadFile(MeshShaderPath.c_str(), nullptr, &MeshShaderSource);
-    if (FAILED(hResult) || !MeshShaderSource)
+    Result = CompileShaderDXC(PixelShaderPath, L"PS", L"ps_6_0", PixelShader);
+    if (Result != ErrorCode::OK)
     {
-        return ErrorCode::MeshShaderLoadFailed;
-    }
-    
-    const wchar_t* MSArgs[] = {
-        L"-E", L"main",
-        L"-T", L"ms_6_5"
-#ifdef DX12_ENABLE_DEBUG_LAYER
-        , L"-Zi",
-        L"-Od"
-#endif
-    };
-    
-    DxcBuffer MeshShaderSourceBuffer = {};
-    MeshShaderSourceBuffer.Ptr = MeshShaderSource->GetBufferPointer();
-    MeshShaderSourceBuffer.Size = MeshShaderSource->GetBufferSize();
-    MeshShaderSourceBuffer.Encoding = DXC_CP_ACP;
-    
-    ComPtr<IDxcResult> MSCompileResult;
-    hResult = DxcCompiler->Compile(
-        &MeshShaderSourceBuffer,
-        MSArgs,
-        sizeof(MSArgs)/sizeof(MSArgs[0]),
-        IncludeHandler.Get(),
-        IID_PPV_ARGS(&MSCompileResult)
-    );
-    
-    if (FAILED(hResult))
-    {
-        return ErrorCode::MeshShaderCompileFailed;
-    }
-    
-    hResult = MSCompileResult->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&MeshShader), nullptr);
-    if (FAILED(hResult) || !MeshShader)
-    {
-        return ErrorCode::DxcCompileResultGetOutputFailed;
-    }
-
-    //  Pixel shader.
-    ComPtr<IDxcBlobEncoding> PixelShaderSource;
-    hResult = DxcUtils->LoadFile(PixelShaderPath.c_str(), nullptr, &PixelShaderSource);
-    if (FAILED(hResult) || !PixelShaderSource)
-    {
-        return ErrorCode::PixelShaderLoadFailed;
-    }
-    
-    const wchar_t* PSArgs[] = {
-        L"-E", L"PS",
-        L"-T", L"ps_6_0"
-#ifdef DX12_ENABLE_DEBUG_LAYER
-        , L"-Zi",
-        L"-Od"
-#endif
-    };
-    
-    DxcBuffer PixelShaderSourceBuffer = {};
-    PixelShaderSourceBuffer.Ptr = PixelShaderSource->GetBufferPointer();
-    PixelShaderSourceBuffer.Size = PixelShaderSource->GetBufferSize();
-    PixelShaderSourceBuffer.Encoding = DXC_CP_ACP;
-    
-    ComPtr<IDxcResult> PSCompileResult;
-    hResult = DxcCompiler->Compile(
-        &PixelShaderSourceBuffer,
-        PSArgs,
-        sizeof(PSArgs)/sizeof(PSArgs[0]),
-        IncludeHandler.Get(),
-        IID_PPV_ARGS(&PSCompileResult)
-    );
-    
-    if (FAILED(hResult))
-    {
-        return ErrorCode::PixelShaderCompileFailed;
-    }
-
-    hResult = PSCompileResult->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&PixelShader), nullptr);
-    if (FAILED(hResult) || !PixelShader)
-    {
-        return ErrorCode::DxcCompileResultGetOutputFailed;
+        return Result;
     }
     
     // 创建管道状态
@@ -336,9 +318,12 @@ ErrorCode PipelineInterface::CreateMeshShaderPipelinestate()
     StreamDesc.pPipelineStateSubobjectStream = &PipelineStream;
     StreamDesc.SizeInBytes = sizeof(PipelineStream);
 
-    hResult = D3DDevice->CreatePipelineState(&StreamDesc, IID_PPV_ARGS(&MeshShaderPipelineState));
+    HRESULT hResult = D3DDevice->CreatePipelineState(&StreamDesc, IID_PPV_ARGS(&MeshShaderPipelineState));
     if (FAILED(hResult))
     {
+        char buffer[256];
+        sprintf_s(buffer, "Failed to create mesh shader pipeline state. HRESULT: 0x%08X\n", hResult);
+        OutputDebugStringA(buffer);
         return ErrorCode::MeshShaderPipelineStateCreateFailed;
     }
 
@@ -1003,9 +988,7 @@ void PipelineInterface::CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProx
 
 void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance)
 {
-    MeshletDataProxyInstance->MeshletCount = static_cast<uint32_t>(MeshletDataInstance->Meshlets.size());
-    
-    const unsigned int MeshletsBufferSize = sizeof(Meshlet) * MeshletDataProxyInstance->MeshletCount;
+    const unsigned int MeshletsBufferSize = sizeof(Meshlet) * static_cast<unsigned int>(MeshletDataInstance->Meshlets.size());
     const unsigned int MeshletVerticesBufferSize = sizeof(unsigned int) * static_cast<unsigned int>(MeshletDataInstance->MeshletVertices.size());
     const unsigned int MeshletTrianglesBufferSize = sizeof(unsigned int) * static_cast<unsigned int>(MeshletDataInstance->MeshletIndices.size());
     
@@ -1140,6 +1123,31 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
         Fence->SetEventOnCompletion(FenceValue, FenceEvent);
         WaitForSingleObject(FenceEvent, INFINITE);
     }
+    
+    // 最后创建MeshInfo常量缓冲区，与其在MeshletDataProxy中定义的位置保持一致
+    MeshletDataProxyInstance->MeshInfoCBProxy = std::make_unique<ConstantBufferProxy>();
+    
+    // 直接在这里创建常量缓冲区
+    const unsigned int ConstantBufferSize = (sizeof(MeshInfoConstantBuffer) + 255) & ~255; // 256字节对齐
+    
+    CD3DX12_RESOURCE_DESC MeshInfoBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(ConstantBufferSize);
+    D3DDevice->CreateCommittedResource(
+        &UploadHeapProperties,
+        D3D12_HEAP_FLAG_NONE,
+        &MeshInfoBufferDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&MeshletDataProxyInstance->MeshInfoCBProxy->UploadBuffer));
+    
+    // 复制数据到常量缓冲区
+    MeshInfoConstantBuffer MeshInfoCB;
+    MeshInfoCB.MeshletCount = static_cast<unsigned int>(MeshletDataInstance->Meshlets.size());
+    
+    void* MappedData = nullptr;
+    CD3DX12_RANGE ReadRange(0, 0); // 我们不打算从CPU读取此资源
+    MeshletDataProxyInstance->MeshInfoCBProxy->UploadBuffer->Map(0, &ReadRange, &MappedData);
+    memcpy(MappedData, &MeshInfoCB, sizeof(MeshInfoConstantBuffer));
+    MeshletDataProxyInstance->MeshInfoCBProxy->UploadBuffer->Unmap(0, nullptr);
 }
 
 void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInstance)
@@ -1335,6 +1343,10 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
         
         for (unsigned int SubMeshIndex = 0; SubMeshIndex < LevelInstance->GetStaticMeshActors()[I]->GetSubMeshCount(); ++SubMeshIndex)
         {
+            // 设置MeshInfo常量缓冲区，即使顶点着色器不使用它，也确保根签名一致性
+            const MeshletDataProxy* MeshletDataProxyInstance = LevelInstance->GetStaticMeshActors()[I]->GetMeshletDataProxyInstance(SubMeshIndex);
+            CommandList->SetGraphicsRootConstantBufferView(2, MeshletDataProxyInstance->MeshInfoCBProxy->UploadBuffer->GetGPUVirtualAddress());
+            
             D3D12_VERTEX_BUFFER_VIEW VertexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance(SubMeshIndex)->VertexBufferView;
             CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
             D3D12_INDEX_BUFFER_VIEW IndexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance(SubMeshIndex)->IndexBufferView;
@@ -1400,12 +1412,18 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
             const MeshProxy* MeshProxyInstance = StaticMeshActorInstance->GetMeshProxyInstance(SubMeshIndex);
             const MeshletDataProxy* MeshletDataProxyInstance = StaticMeshActorInstance->GetMeshletDataProxyInstance(SubMeshIndex);
             
-            CommandList->SetGraphicsRootShaderResourceView(2, MeshProxyInstance->VertexBuffer->GetGPUVirtualAddress());
-            CommandList->SetGraphicsRootShaderResourceView(3, MeshletDataProxyInstance->MeshletsBuffer->GetGPUVirtualAddress());
-            CommandList->SetGraphicsRootShaderResourceView(4, MeshletDataProxyInstance->MeshletVerticesBuffer->GetGPUVirtualAddress());
-            CommandList->SetGraphicsRootShaderResourceView(5, MeshletDataProxyInstance->MeshletTrianglesBuffer->GetGPUVirtualAddress());
+            // 设置MeshInfo常量缓冲区
+            CommandList->SetGraphicsRootConstantBufferView(2, MeshletDataProxyInstance->MeshInfoCBProxy->UploadBuffer->GetGPUVirtualAddress());
             
-            const unsigned int ASGroupCount = (MeshletDataProxyInstance->MeshletCount + 32 - 1) / 32;
+            // 设置SRV资源，与shader声明顺序保持一致
+            CommandList->SetGraphicsRootShaderResourceView(3, MeshProxyInstance->VertexBuffer->GetGPUVirtualAddress());
+            CommandList->SetGraphicsRootShaderResourceView(4, MeshletDataProxyInstance->MeshletsBuffer->GetGPUVirtualAddress());
+            CommandList->SetGraphicsRootShaderResourceView(5, MeshletDataProxyInstance->MeshletVerticesBuffer->GetGPUVirtualAddress());
+            CommandList->SetGraphicsRootShaderResourceView(6, MeshletDataProxyInstance->MeshletTrianglesBuffer->GetGPUVirtualAddress());
+            
+            // 使用AS shader启动渲染
+            const MeshletData* MeshletDataInstance = StaticMeshActorInstance->GetMeshletDataInstance(SubMeshIndex);
+            const unsigned int ASGroupCount = (static_cast<unsigned int>(MeshletDataInstance->Meshlets.size()) + 32 - 1) / 32;
             CommandList->DispatchMesh(ASGroupCount, 1, 1);
         }
     }

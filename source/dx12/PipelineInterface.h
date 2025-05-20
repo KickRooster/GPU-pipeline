@@ -78,6 +78,8 @@ struct FrameContext
     Microsoft::WRL::ComPtr<ID3D12Resource> DepthStencilBuffer = nullptr;
 };
 
+struct IDxcBlob;
+
 class PipelineInterface : public Singleton<PipelineInterface>
 {
     friend class Singleton<PipelineInterface>;
@@ -115,6 +117,8 @@ class PipelineInterface : public Singleton<PipelineInterface>
 
 public:
     ErrorCode CreateRootSignature();
+    ErrorCode CompileShaderFXC(const std::wstring& ShaderPath, const std::string& EntryPoint, const std::string& TargetProfile, Microsoft::WRL::ComPtr<ID3DBlob>& OutShaderBlob) const;
+    ErrorCode CompileShaderDXC(const std::wstring& ShaderPath, const std::wstring& EntryPoint, const std::wstring& TargetProfile, Microsoft::WRL::ComPtr<IDxcBlob>& OutShaderBlob) const;
     ErrorCode CreateVertexShaderPipelinestate();
     ErrorCode CreateMeshShaderPipelinestate();
     ErrorCode Initialize(HWND hWnd);

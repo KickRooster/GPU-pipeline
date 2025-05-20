@@ -14,12 +14,9 @@ enum class ErrorCode
     DxcCompilerCreateFailed,
     DxcCompileResultGetOutputFailed,
     DefaultIncludeHandlerCreateFailed,
-    PixelShaderLoadFailed,
-    PixelShaderCompileFailed,
-    AmplificationShaderLoadFailed,
-    MeshShaderLoadFailed,
-    MeshShaderCompileFailed,
-    AmplificationShaderCompileFailed,
+    ShaderLoadFailed,
+    GetShaderByteCodeFailed,
+    ShaderCompileFailed,
     MeshShaderPipelineStateCreateFailed,
     DeviceCreateFailed,
     DescriptorHeapCreateFailed,
@@ -34,6 +31,7 @@ enum class ErrorCode
     QueryIDXGISwapChain3InterfaceFailed,
     //  Assimp begin.
     MeshDataIncomplete,
+    //  Others
     ErrorCode_Num
 };
 
