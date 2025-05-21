@@ -182,7 +182,7 @@ ErrorCode MeshLoader::GenerateMeshletData(const std::vector<Mesh>& Meshes, std::
     
         constexpr size_t MaxVertexCountPerMeshlet = 64;
         constexpr size_t MaxTriangleCountPerMeshlet = 124;
-        constexpr float ConeWeight = 0.7f;
+        constexpr float ConeWeight = 0.25f;
         
         const size_t MaxMeshletCount = meshopt_buildMeshletsBound(
             Meshes[I].Indices.size(), MaxVertexCountPerMeshlet, MaxTriangleCountPerMeshlet);
@@ -203,9 +203,37 @@ ErrorCode MeshLoader::GenerateMeshletData(const std::vector<Mesh>& Meshes, std::
             MaxVertexCountPerMeshlet,
             MaxTriangleCountPerMeshlet,
             ConeWeight);
-    
+
+        const meshopt_Meshlet& LastMeshlet = MeshletDataInstance.Meshlets[MeshletCount - 1];
+        MeshletDataInstance.MeshletVertices.resize(LastMeshlet.vertex_offset + LastMeshlet.vertex_count);
+        MeshletDataInstance.MeshletIndices.resize(LastMeshlet.triangle_offset + ((LastMeshlet.triangle_count * 3 + 3) & ~3));
         MeshletDataInstance.Meshlets.resize(MeshletCount);
 
+        //  For optimal performance, it is recommended to further optimize each meshlet in isolation for better triangle and vertex locality.
+        for (size_t J = 0; J < MeshletDataInstance.Meshlets.size(); ++J)
+        {
+            const meshopt_Meshlet& CurrentMeshlet = MeshletDataInstance.Meshlets[J];
+            meshopt_optimizeMeshlet(
+                &MeshletDataInstance.MeshletVertices[CurrentMeshlet.vertex_offset],
+                &MeshletDataInstance.MeshletIndices[CurrentMeshlet.triangle_offset],
+                CurrentMeshlet.triangle_count,
+                CurrentMeshlet.vertex_count);
+        }
+
+        //  Generate extra data for each meshlet that can be saved and used at runtime to perform cluster culling.
+        for (size_t J = 0; J < MeshletDataInstance.Meshlets.size(); ++J)
+        {
+            const meshopt_Meshlet& CurrentMeshlet = MeshletDataInstance.Meshlets[J];
+            meshopt_Bounds Bounds = meshopt_computeMeshletBounds(
+                    &MeshletDataInstance.MeshletVertices[CurrentMeshlet.vertex_offset],
+                    &MeshletDataInstance.MeshletIndices[CurrentMeshlet.triangle_offset],
+                    CurrentMeshlet.triangle_count,
+                    &Meshes[I].Vertices[0].Position.x,
+                    Meshes[I].Vertices.size(),
+                    sizeof(Vertex));
+            MeshletDataInstance.MeshletBounds.push_back(Bounds);
+        }
+        
         OutMeshletData.push_back(MeshletDataInstance);
     }
 

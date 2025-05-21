@@ -1,6 +1,7 @@
 #pragma once
 #include <d3d12.h>
 #include <wrl/client.h>
+#include "ConstantBufferProxy.h"
 
 struct MeshProxy
 {
@@ -23,5 +24,6 @@ struct MeshletDataProxy
     Microsoft::WRL::ComPtr<ID3D12Resource> MeshletVerticesBufferUpload;
     Microsoft::WRL::ComPtr<ID3D12Resource> MeshletTrianglesBufferUpload;
     
-    uint32_t MeshletCount;
+    // 新增：MeshInfo常量缓冲区代理
+    std::unique_ptr<ConstantBufferProxy> MeshInfoCBProxy;
 };

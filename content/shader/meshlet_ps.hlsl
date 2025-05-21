@@ -1,3 +1,19 @@
+// 添加与AS和MS着色器相同的常量缓冲区声明
+cbuffer cbCamera : register(b0)
+{
+    float4x4 gViewProj;
+};
+
+cbuffer cbStaticMeshActor : register(b1)
+{
+    float4x4 gWorld;
+};
+
+cbuffer cbMeshInfo : register(b2)
+{
+    uint gMeshletCount;
+};
+
 struct VertexOut
 {
     float4 PositionHS   : SV_Position;

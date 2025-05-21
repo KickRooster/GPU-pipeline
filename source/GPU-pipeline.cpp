@@ -78,7 +78,7 @@ int main(int, char**)
 	}
 
 	//	Initialize the level manually.
-	const StaticMeshActor* StaticMeshActorInstance = Level::GetInstance().InstantiateStaticMeshActor("D:\\GPU-pipeline\\content\\mesh\\jeep1.fbx");
+	const StaticMeshActor* StaticMeshActorInstance = Level::GetInstance().InstantiateStaticMeshActor("D:\\GPU-pipeline\\content\\mesh\\duck.fbx");
 	for (unsigned int I = 0; I < StaticMeshActorInstance->GetSubMeshCount(); ++I)
 	{
 		PipelineInterface::GetInstance().CreateMeshProxyBuffer(StaticMeshActorInstance->GetMeshInstance(I), StaticMeshActorInstance->GetMeshProxyInstance(I));
