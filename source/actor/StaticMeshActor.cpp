@@ -37,6 +37,7 @@ StaticMeshActor::StaticMeshActor(const string& Path)
         {
             MeshletDataInstance->MeshletIndices.push_back(static_cast<unsigned int>(MeshletDatas[I].MeshletIndices[J]));
         }
+        MeshletDataInstance->MeshletBounds = MeshletDatas[I].MeshletBounds;
         MeshletDataInstances.push_back(std::move(MeshletDataInstance));
         
         unique_ptr<MeshletDataProxy> MeshletDataProxyInstance = make_unique<MeshletDataProxy>();
