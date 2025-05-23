@@ -25,5 +25,7 @@ public:
     void Update(float DeltaTime) override;
     CameraConstantBuffer* GetConstantBuffer() const;
     ConstantBufferProxy* GetConstantBufferProxy() const;
+    DirectX::XMMATRIX GetViewMatrix() const;
+    DirectX::XMMATRIX GetProjectionMatrix() const;
     ~CameraActor() override = default;
 };

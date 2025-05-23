@@ -176,6 +176,7 @@
     <ClCompile Include="thirdpatry\meshoptimizer\src\vertexcodec.cpp" />
     <ClCompile Include="thirdpatry\meshoptimizer\src\vertexfilter.cpp" />
     <ClCompile Include="thirdpatry\meshoptimizer\src\vfetchoptimizer.cpp" />
+    <ClCompile Include="thirdpatry\ImGuizmo\ImGuizmo.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\actor\Actor.h" />
@@ -196,6 +197,7 @@
     <ClInclude Include="thirdpatry\imgui\backends\imgui_impl_win32.h" />
     <ClInclude Include="thirdpatry\imgui\backends\imgui_impl_dx12.h" />
     <ClInclude Include="thirdpatry\meshoptimizer\src\meshoptimizer.h" />
+    <ClInclude Include="thirdpatry\ImGuizmo\ImGuizmo.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

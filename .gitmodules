@@ -7,3 +7,6 @@
 [submodule "thirdpatry/meshoptimizer"]
 	path = thirdpatry/meshoptimizer
 	url = https://github.com/zeux/meshoptimizer.git
+[submodule "thirdpatry/ImGuizmo"]
+	path = thirdpatry/ImGuizmo
+	url = https://github.com/CedricGuillemet/ImGuizmo.git

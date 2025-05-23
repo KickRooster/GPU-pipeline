@@ -47,15 +47,12 @@ StaticMeshActor::StaticMeshActor(const string& Path)
 
 void StaticMeshActor::Update(float DeltaTime)
 {
-    XMMATRIX Scale = XMMatrixScaling(Transform.Scale.x, Transform.Scale.y, Transform.Scale.z);
+    const XMMATRIX Scale = XMMatrixScaling(Transform.Scale.x, Transform.Scale.y, Transform.Scale.z);
     
-    XMMATRIX Rotation = XMMatrixRotationRollPitchYaw(
-        Transform.Rotation.x * XM_PI / 180.0f,  // Pitch (X轴)
-        Transform.Rotation.y * XM_PI / 180.0f,  // Yaw (Y轴)
-        Transform.Rotation.z * XM_PI / 180.0f   // Roll (Z轴)
-    );
+    const XMVECTOR Quaternion = XMLoadFloat4(&Transform.Rotation);
+    const XMMATRIX Rotation = XMMatrixRotationQuaternion(Quaternion);
     
-    XMMATRIX Translation = XMMatrixTranslation(Transform.Position.x, Transform.Position.y, Transform.Position.z);
+    const XMMATRIX Translation = XMMatrixTranslation(Transform.Position.x, Transform.Position.y, Transform.Position.z);
     
     TransformationMatrix = Translation * Rotation * Scale;
     
@@ -128,4 +125,27 @@ StaticMeshActorConstantBuffer* StaticMeshActor::GetConstantBuffer() const
 ConstantBufferProxy* StaticMeshActor::GetConstantBufferProxy() const
 {
     return ConstantBufferProxyInstance.get();   
+}
+
+XMMATRIX StaticMeshActor::GetWorldMatrix() const
+{
+    return TransformationMatrix;
+}
+
+void StaticMeshActor::SetWorldMatrix(const XMMATRIX& Matrix)
+{
+    TransformationMatrix = Matrix;
+    
+    if (ConstantBufferInstance)
+    {
+        XMStoreFloat4x4(&ConstantBufferInstance->World, XMMatrixTranspose(TransformationMatrix));
+        
+        if (ConstantBufferProxyInstance->MappedData != nullptr)
+        {
+            memcpy(
+                ConstantBufferProxyInstance->MappedData,
+                ConstantBufferInstance.get(),
+                sizeof(StaticMeshActorConstantBuffer));
+        }
+    }
 }

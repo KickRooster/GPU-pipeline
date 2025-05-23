@@ -17,10 +17,14 @@
 #include "misc/Math.h"
 #include "actor/CameraActor.h"
 #include "actor/StaticMeshActor.h"
+#include "../thirdpatry/ImGuizmo/ImGuizmo.h"
 
-static unsigned long                FenceLastSignaledValue = 0;
-static bool                         SwapChainOccluded = false;
-static UIState State;
+using namespace DirectX;
+
+unsigned long FenceLastSignaledValue = 0;
+bool SwapChainOccluded = false;
+UIState State;
+StaticMeshActor* SelectedActor = nullptr;
 
 void ControlCamera(float DeltaTime, CameraActor* CameraActorInstance)
 {
@@ -58,6 +62,32 @@ void ControlCamera(float DeltaTime, CameraActor* CameraActorInstance)
 	CameraActorInstance->ResponseToUI(&State);
 }
 
+void RenderImGuizmo(const XMMATRIX& View, const XMMATRIX& Projection, XMMATRIX& ObjectMatrix, ImVec2 ViewportPos, ImVec2 ViewportSize)
+{
+	ImGuizmo::BeginFrame();
+	ImGuizmo::SetOrthographic(false);
+	ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+	ImGuizmo::SetRect(ViewportPos.x, ViewportPos.y, ViewportSize.x, ViewportSize.y);
+	
+	static ImGuizmo::OPERATION Operation = ImGuizmo::TRANSLATE;
+	static ImGuizmo::MODE Mode = ImGuizmo::LOCAL;
+	
+	float ViewArr[16], ProjArr[16], ModelArr[16];
+	memcpy(ViewArr, &View, sizeof(float) * 16);
+	memcpy(ProjArr, &Projection, sizeof(float) * 16);
+	memcpy(ModelArr, &ObjectMatrix, sizeof(float) * 16);
+	
+	ImGuizmo::Manipulate(
+		ViewArr,
+		ProjArr,
+		Operation,
+		Mode,
+		ModelArr
+	);
+	
+	memcpy(&ObjectMatrix, ModelArr, sizeof(float) * 16);
+}
+
 // Forward declarations of helper functions
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -85,7 +115,8 @@ int main(int, char**)
 		PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(StaticMeshActorInstance->GetMeshletDataInstance(I), StaticMeshActorInstance->GetMeshletDataProxyInstance(I));
 	}
 	PipelineInterface::GetInstance().CreateConstantBuffer(StaticMeshActorInstance);
-
+	
+	// 创建摄像机Actor
 	CameraActor* CameraActorInstance = Level::GetInstance().InstantiateCameraActor();
 	PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
 	
@@ -174,8 +205,20 @@ int main(int, char**)
 		ImGui_ImplDX12_NewFrame();
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
-
-		//	Editor UI logic begin.
+		
+		ImGuiWindowFlags WindowFlags = ImGuiWindowFlags_NoDocking;
+		const ImGuiViewport* Viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(Viewport->WorkPos);
+		ImGui::SetNextWindowSize(Viewport->WorkSize);
+		ImGui::SetNextWindowViewport(Viewport->ID);
+		WindowFlags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+		WindowFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+		
+		ImGui::Begin("DockSpace", nullptr, WindowFlags);
+		ImGuiID DockspaceID = ImGui::GetID("MainDockSpace");
+		ImGui::DockSpace(DockspaceID, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+		ImGui::End();
+		
 		const unsigned int FrameContextIndex = PipelineInterface::GetInstance().WaitForNextFrameResources();
 		
 		//	After we have submitted the rendering commands for a complete frame to the
@@ -199,9 +242,100 @@ int main(int, char**)
 			//PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
 			PipelineInterface::GetInstance().RenderLevelMeshlet(FrameContextIndex, &Level::GetInstance());
 			ImGui::Image(static_cast<ImTextureID>(PipelineInterface::GetInstance().GetRenderTargetSRVGPUHandle(FrameContextIndex).ptr), ViewportSize);
+			
+			if (SelectedActor != nullptr)
+			{
+				ImVec2 WindowPos = ImGui::GetWindowPos();
+				ImVec2 ContentMin = ImGui::GetWindowContentRegionMin();
+				ImVec2 ViewportPos = ImVec2(WindowPos.x + ContentMin.x, WindowPos.y + ContentMin.y);
+				
+				XMMATRIX ObjectMatrix = SelectedActor->GetWorldMatrix();
+				
+				RenderImGuizmo(
+					CameraActorInstance->GetViewMatrix(),
+					CameraActorInstance->GetProjectionMatrix(),
+					ObjectMatrix,
+					ViewportPos,
+					ViewportSize
+				);
+				
+				XMMATRIX OriginalMatrix = SelectedActor->GetWorldMatrix();
+				if (memcmp(&OriginalMatrix, &ObjectMatrix, sizeof(XMMATRIX)) != 0)
+				{
+					SelectedActor->SetWorldMatrix(ObjectMatrix);
+					
+					XMVECTOR Scale, RotationQuat, Translation;
+					if (XMMatrixDecompose(&Scale, &RotationQuat, &Translation, ObjectMatrix))
+					{
+						XMStoreFloat3(&SelectedActor->Transform.Position, Translation);
+					}
+					SelectedActor->Update(0.0f);
+				}
+			}
 		}
 		ImGui::End();
-		//	Editor UI logic end.
+
+		ImGui::Begin("Outliner");
+		{
+			std::vector<StaticMeshActor*> AllActors = Level::GetInstance().GetStaticMeshActors();
+
+			for (unsigned int I = 0; I < AllActors.size(); ++I)
+			{
+				bool IsSelected = (SelectedActor == AllActors[I]);
+				if (ImGui::Selectable(AllActors[I]->Name.c_str(), IsSelected))
+				{
+					SelectedActor = AllActors[I];
+				}
+			}
+		}
+		ImGui::End();
+		
+		ImGui::Begin("Details");
+		{
+			if (SelectedActor != nullptr)
+			{
+				if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					float Position[3] = { 
+						SelectedActor->Transform.Position.x,
+						SelectedActor->Transform.Position.y,
+						SelectedActor->Transform.Position.z 
+					};
+					
+					float Scale[3] = { 
+						SelectedActor->Transform.Scale.x,
+						SelectedActor->Transform.Scale.y,
+						SelectedActor->Transform.Scale.z 
+					};
+					
+					float Rotation[3] = {0.0f, 0.0f, 0.0f};
+					
+					ImGui::Text("Position"); ImGui::SameLine(100);
+					bool PositionChanged = ImGui::DragFloat3("##Position", Position, 0.1f);
+					
+					ImGui::Text("Rotation"); ImGui::SameLine(100);
+					ImGui::DragFloat3("##Rotation", Rotation, 1.0f);
+					
+					ImGui::Text("Scale"); ImGui::SameLine(100);
+					ImGui::DragFloat3("##Scale", Scale, 0.01f, 0.01f, 100.0f);
+					
+					if (PositionChanged)
+					{
+						SelectedActor->Transform.Position.x = Position[0];
+						SelectedActor->Transform.Position.y = Position[1];
+						SelectedActor->Transform.Position.z = Position[2];
+						
+						SelectedActor->Update(0.0f);
+					}
+				}
+			}
+		}
+		ImGui::End();
+		
+		ImGui::Begin("Content Browser");
+		{
+		}
+		ImGui::End();
 
 		// Rendering
 		ImGui::Render();

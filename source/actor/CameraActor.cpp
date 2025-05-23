@@ -11,6 +11,8 @@ CameraActor::CameraActor()
 
 void CameraActor::ResponseToUI(const UIState* State)
 {
+    //  Translation
+    if (State->RightButtonDown)
     {
         XMVECTOR Look = XMLoadFloat3(&LookDirection);
         XMVECTOR Up = XMLoadFloat3(&UpDirection);
@@ -53,7 +55,8 @@ void CameraActor::ResponseToUI(const UIState* State)
     
         XMStoreFloat3(&Transform.Position, Position);
     }
-    
+
+    //  Rotation
     if (State->RightButtonDown)
     {
         if (State->DeltaX != 0.0f)
@@ -115,4 +118,14 @@ CameraConstantBuffer* CameraActor::GetConstantBuffer() const
 ConstantBufferProxy* CameraActor::GetConstantBufferProxy() const
 {
     return ConstantBufferProxyInstance.get();   
+}
+
+XMMATRIX CameraActor::GetViewMatrix() const
+{
+    return ViewMatrix;
+}
+
+XMMATRIX CameraActor::GetProjectionMatrix() const
+{
+    return ProjectionMatrix;
 }

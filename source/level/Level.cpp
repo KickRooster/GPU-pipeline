@@ -17,6 +17,11 @@ StaticMeshActor* Level::InstantiateStaticMeshActor(const string& Path)
     ActorInstance->Transform.Rotation.x = 0;
     ActorInstance->Transform.Rotation.y = 0;
     ActorInstance->Transform.Rotation.z = 0;
+    
+    const size_t StartPos = Path.find_last_of('\\');
+    const size_t EndPos = Path.find_last_of('.');
+    ActorInstance->Name = Path.substr(StartPos + 1, EndPos - StartPos - 1);
+    
     StaticMeshActors.push_back(std::move(ActorInstance));
     
     return StaticMeshActors.back().get();
