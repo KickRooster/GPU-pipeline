@@ -36,7 +36,7 @@ ErrorCode PipelineInterface::CreateRootSignature()
     }
     
     // 定义根参数 - 添加MeshInfo常量缓冲区
-    CD3DX12_ROOT_PARAMETER1 RootParameters[7] = {};
+    CD3DX12_ROOT_PARAMETER1 RootParameters[8] = {};
     
     // Parameter 0: Camera Constants (b0) - gViewProj矩阵 (相机变换)
     RootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
@@ -58,6 +58,9 @@ ErrorCode PipelineInterface::CreateRootSignature()
     
     // Parameter 6: Triangle Indices Buffer SRV (t3)
     RootParameters[6].InitAsShaderResourceView(3, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    
+    // Parameter 7: MeshletBounds Buffer SRV (t4)
+    RootParameters[7].InitAsShaderResourceView(4, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
     
     D3D12_ROOT_SIGNATURE_FLAGS RootSignatureFlags =
                 D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
@@ -288,7 +291,6 @@ ErrorCode PipelineInterface::CreateMeshShaderPipelinestate()
         return Result;
     }
     
-    // 创建管道状态
     D3DX12_MESH_SHADER_PIPELINE_STATE_DESC PSODesc = {};
     PSODesc.pRootSignature = RootSignature.Get();
     
@@ -991,6 +993,7 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
     const unsigned int MeshletsBufferSize = sizeof(Meshlet) * static_cast<unsigned int>(MeshletDataInstance->Meshlets.size());
     const unsigned int MeshletVerticesBufferSize = sizeof(unsigned int) * static_cast<unsigned int>(MeshletDataInstance->MeshletVertices.size());
     const unsigned int MeshletTrianglesBufferSize = sizeof(unsigned int) * static_cast<unsigned int>(MeshletDataInstance->MeshletIndices.size());
+    const unsigned int MeshletBoundsBufferSize = sizeof(meshopt_Bounds) * static_cast<unsigned int>(MeshletDataInstance->MeshletBounds.size());
     
     CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
     
@@ -1021,6 +1024,15 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletTrianglesBuffer));
     
+    CD3DX12_RESOURCE_DESC MeshletBoundsBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(MeshletBoundsBufferSize);
+    D3DDevice->CreateCommittedResource(
+        &DefaultHeapProperties, 
+        D3D12_HEAP_FLAG_NONE, 
+        &MeshletBoundsBufferDesc, 
+        D3D12_RESOURCE_STATE_COPY_DEST, 
+        nullptr, 
+        IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletBoundsBuffer));
+    
     CD3DX12_HEAP_PROPERTIES UploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
     
     D3DDevice->CreateCommittedResource(
@@ -1047,6 +1059,14 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletTrianglesBufferUpload));
     
+    D3DDevice->CreateCommittedResource(
+        &UploadHeapProperties, 
+        D3D12_HEAP_FLAG_NONE, 
+        &MeshletBoundsBufferDesc, 
+        D3D12_RESOURCE_STATE_GENERIC_READ, 
+        nullptr, 
+        IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletBoundsBufferUpload));
+    
     Meshlet* MeshletDataBegin;
     CD3DX12_RANGE MeshletReadRange(0, 0);
     MeshletDataProxyInstance->MeshletsBufferUpload->Map(0, &MeshletReadRange, reinterpret_cast<void**>(&MeshletDataBegin));
@@ -1072,6 +1092,12 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
     MeshletDataProxyInstance->MeshletTrianglesBufferUpload->Map(0, &TriangleReadRange, reinterpret_cast<void**>(&TriangleDataBegin));
     memcpy(TriangleDataBegin, MeshletDataInstance->MeshletIndices.data(), MeshletTrianglesBufferSize);
     MeshletDataProxyInstance->MeshletTrianglesBufferUpload->Unmap(0, nullptr);
+    
+    meshopt_Bounds* BoundsDataBegin;
+    CD3DX12_RANGE BoundsDataReadRange(0, 0);
+    MeshletDataProxyInstance->MeshletBoundsBufferUpload->Map(0, &BoundsDataReadRange, reinterpret_cast<void**>(&BoundsDataBegin));
+    memcpy(BoundsDataBegin, MeshletDataInstance->MeshletBounds.data(), MeshletBoundsBufferSize);
+    MeshletDataProxyInstance->MeshletBoundsBufferUpload->Unmap(0, nullptr);
     
     FrameContext& FrameContext = FrameContexts[0];
     
@@ -1110,6 +1136,17 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     CommandList->ResourceBarrier(1, &TrianglesBarrier);
+    
+    CommandList->CopyBufferRegion(
+        MeshletDataProxyInstance->MeshletBoundsBuffer.Get(), 0,
+        MeshletDataProxyInstance->MeshletBoundsBufferUpload.Get(), 0,
+        MeshletBoundsBufferSize);
+    
+    CD3DX12_RESOURCE_BARRIER BoundsBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        MeshletDataProxyInstance->MeshletBoundsBuffer.Get(),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    CommandList->ResourceBarrier(1, &BoundsBarrier);
     
     CommandList->Close();
     
@@ -1343,10 +1380,6 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
         
         for (unsigned int SubMeshIndex = 0; SubMeshIndex < LevelInstance->GetStaticMeshActors()[I]->GetSubMeshCount(); ++SubMeshIndex)
         {
-            // 设置MeshInfo常量缓冲区，即使顶点着色器不使用它，也确保根签名一致性
-            const MeshletDataProxy* MeshletDataProxyInstance = LevelInstance->GetStaticMeshActors()[I]->GetMeshletDataProxyInstance(SubMeshIndex);
-            CommandList->SetGraphicsRootConstantBufferView(2, MeshletDataProxyInstance->MeshInfoCBProxy->UploadBuffer->GetGPUVirtualAddress());
-            
             D3D12_VERTEX_BUFFER_VIEW VertexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance(SubMeshIndex)->VertexBufferView;
             CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
             D3D12_INDEX_BUFFER_VIEW IndexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance(SubMeshIndex)->IndexBufferView;
@@ -1420,6 +1453,7 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
             CommandList->SetGraphicsRootShaderResourceView(4, MeshletDataProxyInstance->MeshletsBuffer->GetGPUVirtualAddress());
             CommandList->SetGraphicsRootShaderResourceView(5, MeshletDataProxyInstance->MeshletVerticesBuffer->GetGPUVirtualAddress());
             CommandList->SetGraphicsRootShaderResourceView(6, MeshletDataProxyInstance->MeshletTrianglesBuffer->GetGPUVirtualAddress());
+            CommandList->SetGraphicsRootShaderResourceView(7, MeshletDataProxyInstance->MeshletBoundsBuffer->GetGPUVirtualAddress());
             
             // 使用AS shader启动渲染
             const MeshletData* MeshletDataInstance = StaticMeshActorInstance->GetMeshletDataInstance(SubMeshIndex);

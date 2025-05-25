@@ -1,7 +1,9 @@
-// 添加与AS和MS着色器相同的常量缓冲区声明
 cbuffer cbCamera : register(b0)
 {
     float4x4 gViewProj;
+    float4   gPlanes[6];
+    float3   gViewPosition;
+    float    gPadding;
 };
 
 cbuffer cbStaticMeshActor : register(b1)

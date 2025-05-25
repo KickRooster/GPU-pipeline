@@ -19,11 +19,12 @@ struct MeshletDataProxy
     Microsoft::WRL::ComPtr<ID3D12Resource> MeshletsBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> MeshletVerticesBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> MeshletTrianglesBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> MeshletBoundsBuffer;
     
     Microsoft::WRL::ComPtr<ID3D12Resource> MeshletsBufferUpload;
     Microsoft::WRL::ComPtr<ID3D12Resource> MeshletVerticesBufferUpload;
     Microsoft::WRL::ComPtr<ID3D12Resource> MeshletTrianglesBufferUpload;
+    Microsoft::WRL::ComPtr<ID3D12Resource> MeshletBoundsBufferUpload;
     
-    // 新增：MeshInfo常量缓冲区代理
     std::unique_ptr<ConstantBufferProxy> MeshInfoCBProxy;
 };

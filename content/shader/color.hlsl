@@ -6,7 +6,10 @@
 
 cbuffer cbCamera : register(b0)
 {
-	float4x4 gViewProj; 
+	float4x4 gViewProj;
+	float4   gPlanes[6];        // 视锥体6个平面方程 (左、右、上、下、近、远)
+	float3   gViewPosition;     // 摄像机世界坐标位置
+	float    gPadding;          // 保持16字节对齐
 };
 
 cbuffer cbStaticMeshActor : register(b1)

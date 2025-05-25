@@ -17,6 +17,7 @@
 #include "misc/Math.h"
 #include "actor/CameraActor.h"
 #include "actor/StaticMeshActor.h"
+#include "actor/CullingVisualCameraActor.h"
 #include "../thirdpatry/ImGuizmo/ImGuizmo.h"
 
 using namespace DirectX;
@@ -108,6 +109,7 @@ int main(int, char**)
 	}
 
 	//	Initialize the level manually.
+	//	Static Mesh Actor.
 	const StaticMeshActor* StaticMeshActorInstance = Level::GetInstance().InstantiateStaticMeshActor("D:\\GPU-pipeline\\content\\mesh\\duck.fbx");
 	for (unsigned int I = 0; I < StaticMeshActorInstance->GetSubMeshCount(); ++I)
 	{
@@ -115,10 +117,30 @@ int main(int, char**)
 		PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(StaticMeshActorInstance->GetMeshletDataInstance(I), StaticMeshActorInstance->GetMeshletDataProxyInstance(I));
 	}
 	PipelineInterface::GetInstance().CreateConstantBuffer(StaticMeshActorInstance);
+
+	//	Culling Visual Camera Actor.
+	const StaticMeshActor* CullingCameraActorInstance = Level::GetInstance().InstantiateCullingVisualCameraActor("D:\\GPU-pipeline\\content\\mesh\\camera.fbx");
+	for (unsigned int I = 0; I < CullingCameraActorInstance->GetSubMeshCount(); ++I)
+	{
+		PipelineInterface::GetInstance().CreateMeshProxyBuffer(CullingCameraActorInstance->GetMeshInstance(I), CullingCameraActorInstance->GetMeshProxyInstance(I));
+		PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(CullingCameraActorInstance->GetMeshletDataInstance(I), CullingCameraActorInstance->GetMeshletDataProxyInstance(I));
+	}
+	PipelineInterface::GetInstance().CreateConstantBuffer(CullingCameraActorInstance);
 	
 	// 创建摄像机Actor
 	CameraActor* CameraActorInstance = Level::GetInstance().InstantiateCameraActor();
 	PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
+	
+	// 设置CullingVisualCameraActor为默认的culling camera，并同步初始参数
+	CullingVisualCameraActor* CullingCamera = dynamic_cast<CullingVisualCameraActor*>(const_cast<StaticMeshActor*>(CullingCameraActorInstance));
+	if (CullingCamera)
+	{
+		//CameraActorInstance->SetCullingCamera(CullingCamera);
+		
+		// 同步初始的AspectRatio，避免后续运行时同步
+		CullingCamera->AspectRatio = CameraActorInstance->AspectRatio;
+		CullingCamera->Update(0.0f);
+	}
 	
 	// Show the window
 	::ShowWindow(hwnd, SW_SHOWDEFAULT);
@@ -326,6 +348,73 @@ int main(int, char**)
 						SelectedActor->Transform.Position.z = Position[2];
 						
 						SelectedActor->Update(0.0f);
+					}
+				}
+				
+				// 检查选中的actor是否是CullingVisualCameraActor类型
+				CullingVisualCameraActor* CullingCamera = dynamic_cast<CullingVisualCameraActor*>(SelectedActor);
+				if (CullingCamera != nullptr)
+				{
+					if (ImGui::CollapsingHeader("Culling Visual Camera Actor", ImGuiTreeNodeFlags_DefaultOpen))
+					{
+						// 检查当前是否被设置为culling camera
+						bool IsCullingCamera = false;
+						if (Level::GetInstance().GetCameraActors().size() > 0)
+						{
+							CameraActor* MainCamera = Level::GetInstance().GetCameraActors()[0];
+							IsCullingCamera = (MainCamera->GetCullingCamera() == CullingCamera);
+						}
+						
+						if (ImGui::Checkbox("UseAsCullingCamera", &IsCullingCamera))
+						{
+							// Toggle culling camera设置
+							if (Level::GetInstance().GetCameraActors().size() > 0)
+							{
+								CameraActor* MainCamera = Level::GetInstance().GetCameraActors()[0];
+								if (IsCullingCamera)
+								{
+									MainCamera->SetCullingCamera(CullingCamera);
+								}
+								else
+								{
+									MainCamera->SetCullingCamera(nullptr);
+								}
+							}
+						}
+						
+						// 摄像机参数编辑
+						ImGui::Separator();
+						
+						float FovY = CullingCamera->FovY;
+						ImGui::Text("Field of View"); ImGui::SameLine(100);
+						bool FovChanged = ImGui::DragFloat("##FovY", &FovY, 1.0f, 10.0f, 179.0f, "%.1f°");
+						
+						// AspectRatio - 只读，显示当前值
+						ImGui::Text("Aspect Ratio"); ImGui::SameLine(100);
+						
+						// 使用禁用的按钮来显示居中的AspectRatio值
+						ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+						char AspectRatioText[32];
+						sprintf_s(AspectRatioText, "%.2f", CullingCamera->AspectRatio);
+						ImGui::Button(AspectRatioText, ImVec2(ImGui::CalcItemWidth(), 0));
+						ImGui::PopStyleVar();
+						
+						float NearPlane = CullingCamera->NearPlane;
+						ImGui::Text("Near Plane"); ImGui::SameLine(100);
+						bool NearChanged = ImGui::DragFloat("##NearPlane", &NearPlane, 0.01f, 0.001f, 100.0f, "%.3f");
+						
+						float FarPlane = CullingCamera->FarPlane;
+						ImGui::Text("Far Plane"); ImGui::SameLine(100);
+						bool FarChanged = ImGui::DragFloat("##FarPlane", &FarPlane, 1.0f, 1.0f, 10000.0f, "%.1f");
+						
+						// 如果任何参数发生变化，更新CullingCamera
+						if (FovChanged || NearChanged || FarChanged)
+						{
+							CullingCamera->FovY = FovY;
+							CullingCamera->NearPlane = NearPlane;
+							CullingCamera->FarPlane = FarPlane;
+							CullingCamera->Update(0.0f);
+						}
 					}
 				}
 			}
