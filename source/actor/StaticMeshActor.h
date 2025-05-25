@@ -32,5 +32,7 @@ public:
     MeshletDataProxy* GetMeshletDataProxyInstance(unsigned int Index) const;
     StaticMeshActorConstantBuffer* GetConstantBuffer() const;
     ConstantBufferProxy* GetConstantBufferProxy() const;
+    DirectX::XMMATRIX GetWorldMatrix() const;
+    void SetWorldMatrix(const DirectX::XMMATRIX& Matrix);
     ~StaticMeshActor() override = default;
 };

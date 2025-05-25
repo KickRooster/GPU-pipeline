@@ -13,6 +13,7 @@ class Level : public Singleton<Level>
     
 public:
     StaticMeshActor* InstantiateStaticMeshActor(const std::string& Path);
+    StaticMeshActor* InstantiateCullingVisualCameraActor(const std::string& Path);
     CameraActor* InstantiateCameraActor();
     void Update(float DeletaTime) const;
     std::vector<StaticMeshActor*> GetStaticMeshActors() const;

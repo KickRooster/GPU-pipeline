@@ -17,6 +17,40 @@ StaticMeshActor* Level::InstantiateStaticMeshActor(const string& Path)
     ActorInstance->Transform.Rotation.x = 0;
     ActorInstance->Transform.Rotation.y = 0;
     ActorInstance->Transform.Rotation.z = 0;
+    
+    const size_t StartPos = Path.find_last_of('\\');
+    const size_t EndPos = Path.find_last_of('.');
+    ActorInstance->Name = Path.substr(StartPos + 1, EndPos - StartPos - 1);
+    
+    StaticMeshActors.push_back(std::move(ActorInstance));
+    
+    return StaticMeshActors.back().get();
+}
+
+StaticMeshActor* Level::InstantiateCullingVisualCameraActor(const std::string& Path)
+{
+    unique_ptr<CullingVisualCameraActor> ActorInstance = make_unique<CullingVisualCameraActor>(Path);
+    ActorInstance->Transform.Position.x = 0;
+    ActorInstance->Transform.Position.y = 70;
+    ActorInstance->Transform.Position.z = -100;
+    ActorInstance->Transform.Scale.x = 1.0f;
+    ActorInstance->Transform.Scale.y = 1.0f;
+    ActorInstance->Transform.Scale.z = 1.0f;
+    ActorInstance->Transform.Rotation.x = 0;
+    ActorInstance->Transform.Rotation.y = 0;
+    ActorInstance->Transform.Rotation.z = 0;
+
+    ActorInstance->FovY = 90.f;
+    ActorInstance->AspectRatio = 1.f;
+    ActorInstance->NearPlane = 0.1f;
+    ActorInstance->FarPlane = 1000.0f;
+    ActorInstance->LookDirection = XMFLOAT3(0, 0, 1);
+    ActorInstance->UpDirection = XMFLOAT3(0, 1, 0);
+    
+    const size_t StartPos = Path.find_last_of('\\');
+    const size_t EndPos = Path.find_last_of('.');
+    ActorInstance->Name = Path.substr(StartPos + 1, EndPos - StartPos - 1);
+    
     StaticMeshActors.push_back(std::move(ActorInstance));
     
     return StaticMeshActors.back().get();

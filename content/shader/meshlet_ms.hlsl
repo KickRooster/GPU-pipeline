@@ -1,6 +1,9 @@
 cbuffer cbCamera : register(b0)
 {
     float4x4 gViewProj;
+    float4   gPlanes[6];
+    float3   gViewPosition;
+    float    gPadding;
 };
 
 cbuffer cbStaticMeshActor : register(b1)
@@ -8,7 +11,6 @@ cbuffer cbStaticMeshActor : register(b1)
     float4x4 gWorld;
 };
 
-// 添加MeshInfo常量缓冲区，与AS shader保持一致
 cbuffer cbMeshInfo : register(b2)
 {
     uint gMeshletCount;
@@ -39,7 +41,6 @@ struct Meshlet
     uint TriangleCount;
 };
 
-// Payload结构，从AS接收
 struct Payload
 {
     uint MeshletIndices[32];

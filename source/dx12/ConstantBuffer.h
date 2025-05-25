@@ -5,6 +5,9 @@
 struct CameraConstantBuffer
 {
     DirectX::XMFLOAT4X4 ViewProj = MathTool::GetInstance().Identity4x4();
+    DirectX::XMFLOAT4   Planes[6];
+    DirectX::XMFLOAT3   ViewPosition;
+    float               Padding;
 };
 
 struct StaticMeshActorConstantBuffer

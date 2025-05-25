@@ -4,6 +4,7 @@ using namespace std;
 using namespace DirectX;
 
 CameraActor::CameraActor()
+    :CullingCamera(nullptr)
 {
     ConstantBufferInstance = make_unique<CameraConstantBuffer>();
     ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
@@ -11,6 +12,8 @@ CameraActor::CameraActor()
 
 void CameraActor::ResponseToUI(const UIState* State)
 {
+    //  Translation
+    if (State->RightButtonDown)
     {
         XMVECTOR Look = XMLoadFloat3(&LookDirection);
         XMVECTOR Up = XMLoadFloat3(&UpDirection);
@@ -53,7 +56,8 @@ void CameraActor::ResponseToUI(const UIState* State)
     
         XMStoreFloat3(&Transform.Position, Position);
     }
-    
+
+    //  Rotation
     if (State->RightButtonDown)
     {
         if (State->DeltaX != 0.0f)
@@ -86,6 +90,16 @@ void CameraActor::ResponseToUI(const UIState* State)
     }
 }
 
+void CameraActor::SetCullingCamera(CullingVisualCameraActor* CullingCamera)
+{
+    this->CullingCamera = CullingCamera;    
+}
+
+CullingVisualCameraActor* CameraActor::GetCullingCamera() const
+{
+    return CullingCamera;
+}
+
 void CameraActor::Update(float DeltaTime)
 {
     ViewMatrix = XMMatrixLookToLH(
@@ -94,9 +108,51 @@ void CameraActor::Update(float DeltaTime)
         XMLoadFloat3(&UpDirection));
 
     ProjectionMatrix = XMMatrixPerspectiveFovLH(FovY * XM_PI / 180.f, AspectRatio, NearPlane, FarPlane);
-    XMMATRIX ViewProj = ViewMatrix * ProjectionMatrix;
+    const XMMATRIX ViewProjectionMatrix = ViewMatrix * ProjectionMatrix;
 
-    XMStoreFloat4x4(&ConstantBufferInstance->ViewProj, XMMatrixTranspose(ViewProj));
+    XMStoreFloat4x4(&ConstantBufferInstance->ViewProj, XMMatrixTranspose(ViewProjectionMatrix));
+
+    //  Use Culling Camera for culling if Culling Visual Camera Actor is set.
+    //  if so, CullingCamera's update function must be calling before this function. 
+    const XMMATRIX ViewProjectionTransposeMatrix = CullingCamera ?
+        XMMatrixTranspose(CullingCamera->ViewProjectionMatrix) : XMMatrixTranspose(ViewProjectionMatrix);
+    XMVECTOR Planes[6];
+    
+    // Left: row4 + row1
+    Planes[0] = XMVectorAdd(ViewProjectionTransposeMatrix.r[3], ViewProjectionTransposeMatrix.r[0]);
+    
+    // Right: row4 - row1  
+    Planes[1] = XMVectorSubtract(ViewProjectionTransposeMatrix.r[3], ViewProjectionTransposeMatrix.r[0]);
+    
+    // Top: row4 - row2
+    Planes[2] = XMVectorSubtract(ViewProjectionTransposeMatrix.r[3], ViewProjectionTransposeMatrix.r[1]);
+    
+    // Bottom: row4 + row2
+    Planes[3] = XMVectorAdd(ViewProjectionTransposeMatrix.r[3], ViewProjectionTransposeMatrix.r[1]);
+    
+    // Far: row4 + row3
+    Planes[4] = XMVectorAdd(ViewProjectionTransposeMatrix.r[3], ViewProjectionTransposeMatrix.r[2]);
+    
+    // Near: row4 - row3
+    Planes[5] = XMVectorSubtract(ViewProjectionTransposeMatrix.r[3], ViewProjectionTransposeMatrix.r[2]);
+    
+    // Normalize
+    for (int I = 0; I < 6; ++I)
+    {
+        Planes[I] = XMPlaneNormalize(Planes[I]);
+        XMStoreFloat4(&ConstantBufferInstance->Planes[I], Planes[I]);
+    }
+
+    //  And be same for ViewPosition.
+    if (CullingCamera)
+    {
+        ConstantBufferInstance->ViewPosition = CullingCamera->Transform.Position;
+    }
+    else
+    {
+        ConstantBufferInstance->ViewPosition = Transform.Position;
+    }
+    ConstantBufferInstance->Padding = 0.0f;
     
     if (ConstantBufferProxyInstance->MappedData != nullptr)
     {
@@ -115,4 +171,14 @@ CameraConstantBuffer* CameraActor::GetConstantBuffer() const
 ConstantBufferProxy* CameraActor::GetConstantBufferProxy() const
 {
     return ConstantBufferProxyInstance.get();   
+}
+
+XMMATRIX CameraActor::GetViewMatrix() const
+{
+    return ViewMatrix;
+}
+
+XMMATRIX CameraActor::GetProjectionMatrix() const
+{
+    return ProjectionMatrix;
 }
