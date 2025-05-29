@@ -43,6 +43,7 @@ struct UIState
     bool DDown;
     bool QDown;
     bool EDown;
+    bool RDown;
 
     bool LeftButtonDown;
     bool RightButtonDown;
@@ -53,7 +54,6 @@ struct UIState
 
     float MoveSpeed;
     float RotateSpeed;
-    float DeltaTime;
 };
 
 struct Vertex

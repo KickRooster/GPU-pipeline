@@ -24,7 +24,7 @@ public:
     
 
     CameraActor();
-    void ResponseToUI(const UIState* State);
+    void ResponseToUI(const UIState& State, float DeltaTime);
     void SetCullingCamera(CullingVisualCameraActor* CullingCamera);
     CullingVisualCameraActor* GetCullingCamera() const;
     void Update(float DeltaTime) override;

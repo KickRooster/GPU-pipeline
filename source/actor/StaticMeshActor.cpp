@@ -54,7 +54,7 @@ void StaticMeshActor::Update(float DeltaTime)
     
     const XMMATRIX Translation = XMMatrixTranslation(Transform.Position.x, Transform.Position.y, Transform.Position.z);
     
-    TransformationMatrix = Translation * Rotation * Scale;
+    TransformationMatrix = Scale * Rotation * Translation;
     
     if (ConstantBufferInstance)
     {
@@ -130,22 +130,4 @@ ConstantBufferProxy* StaticMeshActor::GetConstantBufferProxy() const
 XMMATRIX StaticMeshActor::GetWorldMatrix() const
 {
     return TransformationMatrix;
-}
-
-void StaticMeshActor::SetWorldMatrix(const XMMATRIX& Matrix)
-{
-    TransformationMatrix = Matrix;
-    
-    if (ConstantBufferInstance)
-    {
-        XMStoreFloat4x4(&ConstantBufferInstance->World, XMMatrixTranspose(TransformationMatrix));
-        
-        if (ConstantBufferProxyInstance->MappedData != nullptr)
-        {
-            memcpy(
-                ConstantBufferProxyInstance->MappedData,
-                ConstantBufferInstance.get(),
-                sizeof(StaticMeshActorConstantBuffer));
-        }
-    }
 }
