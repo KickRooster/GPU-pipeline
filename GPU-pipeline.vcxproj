@@ -79,12 +79,12 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(ProjectDir)thirdpatry\imGuIZMO.quat\imguizmo_quat;$(ProjectDir)thirdpatry\ImGuizmo;$(IncludePath)</IncludePath>
     <LibraryPath>$(ProjectDir)thirdpatry\assimp\build\lib\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(ProjectDir)thirdpatry\imGuIZMO.quat\imguizmo_quat;$(ProjectDir)thirdpatry\ImGuizmo;$(IncludePath)</IncludePath>
     <LibraryPath>$(ProjectDir)thirdpatry\assimp\build\lib\Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -119,7 +119,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;IMGUIZMO_IMGUI_FOLDER=../imgui/;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
     </ClCompile>
     <Link>
@@ -134,7 +134,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;IMGUIZMO_IMGUI_FOLDER=../imgui/;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
     </ClCompile>
     <Link>
@@ -177,6 +177,7 @@
     <ClCompile Include="thirdpatry\meshoptimizer\src\vertexcodec.cpp" />
     <ClCompile Include="thirdpatry\meshoptimizer\src\vertexfilter.cpp" />
     <ClCompile Include="thirdpatry\meshoptimizer\src\vfetchoptimizer.cpp" />
+    <ClCompile Include="thirdpatry\imGuIZMO.quat\imguizmo_quat\imGuIZMOquat.cpp" />
     <ClCompile Include="thirdpatry\ImGuizmo\ImGuizmo.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -199,6 +200,8 @@
     <ClInclude Include="thirdpatry\imgui\backends\imgui_impl_win32.h" />
     <ClInclude Include="thirdpatry\imgui\backends\imgui_impl_dx12.h" />
     <ClInclude Include="thirdpatry\meshoptimizer\src\meshoptimizer.h" />
+    <ClInclude Include="thirdpatry\imGuIZMO.quat\imguizmo_quat\imGuIZMOquat.h" />
+    <ClInclude Include="thirdpatry\imGuIZMO.quat\imguizmo_quat\vgMath.h" />
     <ClInclude Include="thirdpatry\ImGuizmo\ImGuizmo.h" />
   </ItemGroup>
   <ItemGroup>

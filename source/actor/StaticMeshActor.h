@@ -11,7 +11,7 @@
 class StaticMeshActor : public Actor
 {
 protected:
-    DirectX::XMMATRIX TransformationMatrix;
+    DirectX::XMMATRIX TransformationMatrix;    // SRT order: Scale * Rotation * Translation (UE style)
     
     std::vector<std::unique_ptr<Mesh>> MeshInstances;
     std::vector<std::unique_ptr<MeshProxy>> MeshProxyInstances;
@@ -33,6 +33,5 @@ public:
     StaticMeshActorConstantBuffer* GetConstantBuffer() const;
     ConstantBufferProxy* GetConstantBufferProxy() const;
     DirectX::XMMATRIX GetWorldMatrix() const;
-    void SetWorldMatrix(const DirectX::XMMATRIX& Matrix);
     ~StaticMeshActor() override = default;
 };

@@ -6,6 +6,9 @@
 // - Documentation        https://dearimgui.com/docs (same as your local docs/ folder).
 // - Introduction, links and more at the top of imgui.cpp
 
+// ImGuizmo 需要的定义
+#define IMGUI_DEFINE_MATH_OPERATORS
+
 #include "../imgui/imgui.h"
 #include "../imgui/backends/imgui_impl_win32.h"
 #include "../imgui/backends/imgui_impl_dx12.h"
@@ -18,7 +21,9 @@
 #include "actor/CameraActor.h"
 #include "actor/StaticMeshActor.h"
 #include "actor/CullingVisualCameraActor.h"
+// 使用修改后的 ImGuizmo
 #include "../thirdpatry/ImGuizmo/ImGuizmo.h"
+#include "../thirdpatry/imGuIZMO.quat/imguizmo_quat/imGuIZMOquat.h"
 
 using namespace DirectX;
 
@@ -26,16 +31,18 @@ unsigned long FenceLastSignaledValue = 0;
 bool SwapChainOccluded = false;
 UIState State;
 StaticMeshActor* SelectedActor = nullptr;
+ImGuizmo::OPERATION GizmoOperation = ImGuizmo::TRANSLATE;
 
-void ControlCamera(float DeltaTime, CameraActor* CameraActorInstance)
+void RefreshInput(UIState& OutState)
 {
-	State.WDown = ImGui::IsKeyDown(ImGuiKey_W);
-	State.SDown = ImGui::IsKeyDown(ImGuiKey_S);
-	State.ADown = ImGui::IsKeyDown(ImGuiKey_A);
-	State.DDown = ImGui::IsKeyDown(ImGuiKey_D);
-	State.QDown = ImGui::IsKeyDown(ImGuiKey_Q);
-	State.EDown = ImGui::IsKeyDown(ImGuiKey_E);
-
+	OutState.WDown = ImGui::IsKeyDown(ImGuiKey_W);
+	OutState.SDown = ImGui::IsKeyDown(ImGuiKey_S);
+	OutState.ADown = ImGui::IsKeyDown(ImGuiKey_A);
+	OutState.DDown = ImGui::IsKeyDown(ImGuiKey_D);
+	OutState.QDown = ImGui::IsKeyDown(ImGuiKey_Q);
+	OutState.EDown = ImGui::IsKeyDown(ImGuiKey_E);
+	OutState.RDown = ImGui::IsKeyDown(ImGuiKey_R);
+	
 	if (State.MoveSpeed == 0)
 	{
 		State.MoveSpeed = 0.008f;
@@ -57,36 +64,6 @@ void ControlCamera(float DeltaTime, CameraActor* CameraActorInstance)
 	State.DeltaX = ImGui::GetIO().MouseDelta.x;
 	State.DeltaY = ImGui::GetIO().MouseDelta.y;
 	State.RotateSpeed = 0.000087f;
-
-	State.DeltaTime = DeltaTime;
-
-	CameraActorInstance->ResponseToUI(&State);
-}
-
-void RenderImGuizmo(const XMMATRIX& View, const XMMATRIX& Projection, XMMATRIX& ObjectMatrix, ImVec2 ViewportPos, ImVec2 ViewportSize)
-{
-	ImGuizmo::BeginFrame();
-	ImGuizmo::SetOrthographic(false);
-	ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
-	ImGuizmo::SetRect(ViewportPos.x, ViewportPos.y, ViewportSize.x, ViewportSize.y);
-	
-	static ImGuizmo::OPERATION Operation = ImGuizmo::TRANSLATE;
-	static ImGuizmo::MODE Mode = ImGuizmo::LOCAL;
-	
-	float ViewArr[16], ProjArr[16], ModelArr[16];
-	memcpy(ViewArr, &View, sizeof(float) * 16);
-	memcpy(ProjArr, &Projection, sizeof(float) * 16);
-	memcpy(ModelArr, &ObjectMatrix, sizeof(float) * 16);
-	
-	ImGuizmo::Manipulate(
-		ViewArr,
-		ProjArr,
-		Operation,
-		Mode,
-		ModelArr
-	);
-	
-	memcpy(&ObjectMatrix, ModelArr, sizeof(float) * 16);
 }
 
 // Forward declarations of helper functions
@@ -110,7 +87,7 @@ int main(int, char**)
 
 	//	Initialize the level manually.
 	//	Static Mesh Actor.
-	const StaticMeshActor* StaticMeshActorInstance = Level::GetInstance().InstantiateStaticMeshActor("D:\\GPU-pipeline\\content\\mesh\\duck.fbx");
+	const StaticMeshActor* StaticMeshActorInstance = Level::GetInstance().InstantiateStaticMeshActor("D:\\GPU-pipeline\\content\\mesh\\jeep1.fbx");
 	for (unsigned int I = 0; I < StaticMeshActorInstance->GetSubMeshCount(); ++I)
 	{
 		PipelineInterface::GetInstance().CreateMeshProxyBuffer(StaticMeshActorInstance->GetMeshInstance(I), StaticMeshActorInstance->GetMeshProxyInstance(I));
@@ -119,7 +96,7 @@ int main(int, char**)
 	PipelineInterface::GetInstance().CreateConstantBuffer(StaticMeshActorInstance);
 
 	//	Culling Visual Camera Actor.
-	const StaticMeshActor* CullingCameraActorInstance = Level::GetInstance().InstantiateCullingVisualCameraActor("D:\\GPU-pipeline\\content\\mesh\\camera.fbx");
+	StaticMeshActor* CullingCameraActorInstance = Level::GetInstance().InstantiateCullingVisualCameraActor("D:\\GPU-pipeline\\content\\mesh\\camera.fbx");
 	for (unsigned int I = 0; I < CullingCameraActorInstance->GetSubMeshCount(); ++I)
 	{
 		PipelineInterface::GetInstance().CreateMeshProxyBuffer(CullingCameraActorInstance->GetMeshInstance(I), CullingCameraActorInstance->GetMeshProxyInstance(I));
@@ -130,17 +107,6 @@ int main(int, char**)
 	// 创建摄像机Actor
 	CameraActor* CameraActorInstance = Level::GetInstance().InstantiateCameraActor();
 	PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
-	
-	// 设置CullingVisualCameraActor为默认的culling camera，并同步初始参数
-	CullingVisualCameraActor* CullingCamera = dynamic_cast<CullingVisualCameraActor*>(const_cast<StaticMeshActor*>(CullingCameraActorInstance));
-	if (CullingCamera)
-	{
-		//CameraActorInstance->SetCullingCamera(CullingCamera);
-		
-		// 同步初始的AspectRatio，避免后续运行时同步
-		CullingCamera->AspectRatio = CameraActorInstance->AspectRatio;
-		CullingCamera->Update(0.0f);
-	}
 	
 	// Show the window
 	::ShowWindow(hwnd, SW_SHOWDEFAULT);
@@ -228,6 +194,8 @@ int main(int, char**)
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 		
+		RefreshInput(State);
+		
 		ImGuiWindowFlags WindowFlags = ImGuiWindowFlags_NoDocking;
 		const ImGuiViewport* Viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(Viewport->WorkPos);
@@ -252,50 +220,6 @@ int main(int, char**)
 		{
 			return 0;
 		}
-		
-		ImGui::Begin("Scene View");
-		{
-			float DeltaTime = 1000.0f / io.Framerate;
-			ControlCamera(DeltaTime, CameraActorInstance);
-			ImVec2 ViewportSize = ImGui::GetContentRegionAvail();
-			PipelineInterface::GetInstance().UpdateViewport(FrameContextIndex, ViewportSize);
-			CameraActorInstance->AspectRatio = ViewportSize.x / ViewportSize.y;
-			Level::GetInstance().Update(DeltaTime);
-			//PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
-			PipelineInterface::GetInstance().RenderLevelMeshlet(FrameContextIndex, &Level::GetInstance());
-			ImGui::Image(static_cast<ImTextureID>(PipelineInterface::GetInstance().GetRenderTargetSRVGPUHandle(FrameContextIndex).ptr), ViewportSize);
-			
-			if (SelectedActor != nullptr)
-			{
-				ImVec2 WindowPos = ImGui::GetWindowPos();
-				ImVec2 ContentMin = ImGui::GetWindowContentRegionMin();
-				ImVec2 ViewportPos = ImVec2(WindowPos.x + ContentMin.x, WindowPos.y + ContentMin.y);
-				
-				XMMATRIX ObjectMatrix = SelectedActor->GetWorldMatrix();
-				
-				RenderImGuizmo(
-					CameraActorInstance->GetViewMatrix(),
-					CameraActorInstance->GetProjectionMatrix(),
-					ObjectMatrix,
-					ViewportPos,
-					ViewportSize
-				);
-				
-				XMMATRIX OriginalMatrix = SelectedActor->GetWorldMatrix();
-				if (memcmp(&OriginalMatrix, &ObjectMatrix, sizeof(XMMATRIX)) != 0)
-				{
-					SelectedActor->SetWorldMatrix(ObjectMatrix);
-					
-					XMVECTOR Scale, RotationQuat, Translation;
-					if (XMMatrixDecompose(&Scale, &RotationQuat, &Translation, ObjectMatrix))
-					{
-						XMStoreFloat3(&SelectedActor->Transform.Position, Translation);
-					}
-					SelectedActor->Update(0.0f);
-				}
-			}
-		}
-		ImGui::End();
 
 		ImGui::Begin("Outliner");
 		{
@@ -311,88 +235,85 @@ int main(int, char**)
 			}
 		}
 		ImGui::End();
-		
+
 		ImGui::Begin("Details");
 		{
 			if (SelectedActor != nullptr)
 			{
 				if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					float Position[3] = { 
-						SelectedActor->Transform.Position.x,
-						SelectedActor->Transform.Position.y,
-						SelectedActor->Transform.Position.z 
-					};
-					
-					float Scale[3] = { 
-						SelectedActor->Transform.Scale.x,
-						SelectedActor->Transform.Scale.y,
-						SelectedActor->Transform.Scale.z 
-					};
-					
-					float Rotation[3] = {0.0f, 0.0f, 0.0f};
-					
-					ImGui::Text("Position"); ImGui::SameLine(100);
-					bool PositionChanged = ImGui::DragFloat3("##Position", Position, 0.1f);
+					ImGui::Text("Location"); ImGui::SameLine(100);
+					float Position[3] = { SelectedActor->Transform.Position.x, SelectedActor->Transform.Position.y, SelectedActor->Transform.Position.z };
+					if (ImGui::DragFloat3("##Location", Position, 0.1f, -FLT_MAX, FLT_MAX, "%.2f"))
+					{
+						SelectedActor->Transform.Position = { Position[0], Position[1], Position[2] };
+					}
 					
 					ImGui::Text("Rotation"); ImGui::SameLine(100);
-					ImGui::DragFloat3("##Rotation", Rotation, 1.0f);
+					XMVECTOR QuatVector = XMLoadFloat4(&SelectedActor->Transform.Rotation);
+					XMMATRIX RotationMatrix = XMMatrixRotationQuaternion(QuatVector);
+					XMFLOAT4X4 RotMatrix4x4;
+					XMStoreFloat4x4(&RotMatrix4x4, RotationMatrix);
+					
+					float Pitch = asinf(-RotMatrix4x4._32);
+					float Yaw = atan2f(RotMatrix4x4._31, RotMatrix4x4._33);
+					float Roll = atan2f(RotMatrix4x4._12, RotMatrix4x4._22);
+					
+					float RotationDegrees[3] = { 
+						XMConvertToDegrees(Pitch), 
+						XMConvertToDegrees(Yaw), 
+						XMConvertToDegrees(Roll) 
+					};
+					
+					if (ImGui::DragFloat3("##Rotation", RotationDegrees, 1.0f, -180.0f, 180.0f, "%.1f°"))
+					{
+						float PitchRad = XMConvertToRadians(RotationDegrees[0]);
+						float YawRad = XMConvertToRadians(RotationDegrees[1]);
+						float RollRad = XMConvertToRadians(RotationDegrees[2]);
+						
+						XMMATRIX NewRotationMatrix = XMMatrixRotationRollPitchYaw(PitchRad, YawRad, RollRad);
+						XMVECTOR NewQuaternion = XMQuaternionRotationMatrix(NewRotationMatrix);
+						XMStoreFloat4(&SelectedActor->Transform.Rotation, NewQuaternion);
+					}
 					
 					ImGui::Text("Scale"); ImGui::SameLine(100);
-					ImGui::DragFloat3("##Scale", Scale, 0.01f, 0.01f, 100.0f);
-					
-					if (PositionChanged)
+					float Scale[3] = { SelectedActor->Transform.Scale.x, SelectedActor->Transform.Scale.y, SelectedActor->Transform.Scale.z };
+					if (ImGui::DragFloat3("##Scale", Scale, 0.01f, 0.001f, FLT_MAX, "%.3f"))
 					{
-						SelectedActor->Transform.Position.x = Position[0];
-						SelectedActor->Transform.Position.y = Position[1];
-						SelectedActor->Transform.Position.z = Position[2];
-						
-						SelectedActor->Update(0.0f);
+						SelectedActor->Transform.Scale = { Scale[0], Scale[1], Scale[2] };
 					}
 				}
 				
-				// 检查选中的actor是否是CullingVisualCameraActor类型
 				CullingVisualCameraActor* CullingCamera = dynamic_cast<CullingVisualCameraActor*>(SelectedActor);
 				if (CullingCamera != nullptr)
 				{
 					if (ImGui::CollapsingHeader("Culling Visual Camera Actor", ImGuiTreeNodeFlags_DefaultOpen))
 					{
-						// 检查当前是否被设置为culling camera
-						bool IsCullingCamera = false;
-						if (Level::GetInstance().GetCameraActors().size() > 0)
-						{
-							CameraActor* MainCamera = Level::GetInstance().GetCameraActors()[0];
-							IsCullingCamera = (MainCamera->GetCullingCamera() == CullingCamera);
-						}
+						bool IsCullingCamera = (CameraActorInstance->GetCullingCamera() == CullingCamera);
 						
 						if (ImGui::Checkbox("UseAsCullingCamera", &IsCullingCamera))
 						{
-							// Toggle culling camera设置
 							if (Level::GetInstance().GetCameraActors().size() > 0)
 							{
-								CameraActor* MainCamera = Level::GetInstance().GetCameraActors()[0];
 								if (IsCullingCamera)
 								{
-									MainCamera->SetCullingCamera(CullingCamera);
+									CameraActorInstance->SetCullingCamera(CullingCamera);
 								}
 								else
 								{
-									MainCamera->SetCullingCamera(nullptr);
+									CameraActorInstance->SetCullingCamera(nullptr);
 								}
 							}
 						}
 						
-						// 摄像机参数编辑
 						ImGui::Separator();
 						
 						float FovY = CullingCamera->FovY;
 						ImGui::Text("Field of View"); ImGui::SameLine(100);
 						bool FovChanged = ImGui::DragFloat("##FovY", &FovY, 1.0f, 10.0f, 179.0f, "%.1f°");
 						
-						// AspectRatio - 只读，显示当前值
 						ImGui::Text("Aspect Ratio"); ImGui::SameLine(100);
 						
-						// 使用禁用的按钮来显示居中的AspectRatio值
 						ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
 						char AspectRatioText[32];
 						sprintf_s(AspectRatioText, "%.2f", CullingCamera->AspectRatio);
@@ -407,13 +328,11 @@ int main(int, char**)
 						ImGui::Text("Far Plane"); ImGui::SameLine(100);
 						bool FarChanged = ImGui::DragFloat("##FarPlane", &FarPlane, 1.0f, 1.0f, 10000.0f, "%.1f");
 						
-						// 如果任何参数发生变化，更新CullingCamera
 						if (FovChanged || NearChanged || FarChanged)
 						{
 							CullingCamera->FovY = FovY;
 							CullingCamera->NearPlane = NearPlane;
 							CullingCamera->FarPlane = FarPlane;
-							CullingCamera->Update(0.0f);
 						}
 					}
 				}
@@ -425,7 +344,90 @@ int main(int, char**)
 		{
 		}
 		ImGui::End();
-
+		
+		ImGui::Begin("Scene View");
+		{
+			float DeltaTime = 1000.0f / io.Framerate;
+			CameraActorInstance->ResponseToUI(State, DeltaTime); 
+			ImVec2 ViewportSize = ImGui::GetContentRegionAvail();
+			PipelineInterface::GetInstance().UpdateViewport(FrameContextIndex, ViewportSize);
+			CameraActorInstance->AspectRatio = ViewportSize.x / ViewportSize.y;
+			static_cast<CullingVisualCameraActor*>(CullingCameraActorInstance)->AspectRatio = CameraActorInstance->AspectRatio;
+			Level::GetInstance().Update(DeltaTime);
+			//PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
+			PipelineInterface::GetInstance().RenderLevelMeshlet(FrameContextIndex, &Level::GetInstance());
+			ImGui::Image(static_cast<ImTextureID>(PipelineInterface::GetInstance().GetRenderTargetSRVGPUHandle(FrameContextIndex).ptr), ViewportSize);
+			
+			XMMATRIX ViewMatrix = CameraActorInstance->GetViewMatrix();
+			XMMATRIX ViewMatrixInv = XMMatrixInverse(nullptr, ViewMatrix);
+			XMMATRIX ProjectionMatrix = CameraActorInstance->GetProjectionMatrix();
+			XMFLOAT4X4 ViewMatrix4x4;
+			XMFLOAT4X4 ViewMatrixInv4x;
+			XMFLOAT4X4 ProjectionMatrix4x4;
+			XMStoreFloat4x4(&ViewMatrix4x4, ViewMatrix);
+			XMStoreFloat4x4(&ViewMatrixInv4x, ViewMatrixInv);
+			XMStoreFloat4x4(&ProjectionMatrix4x4, ProjectionMatrix);
+			
+			const float AxisIndicatorSize = std::min(ViewportSize.x, ViewportSize.y) * 0.2f;
+			ImVec2 WindowPos = ImGui::GetWindowPos();
+			ImVec2 ContentMin = ImGui::GetWindowContentRegionMin();
+			ImVec2 AxisIndicatorPos = ImVec2(
+				WindowPos.x + ContentMin.x + ViewportSize.x - AxisIndicatorSize,
+				WindowPos.y + ContentMin.y
+			);
+			
+			ImGuizmo::BeginFrame();
+			ImGuizmo::ViewManipulate(&ViewMatrixInv4x.m[0][0], 10.0f, AxisIndicatorPos, 
+				ImVec2(AxisIndicatorSize, AxisIndicatorSize), 0x00000000);
+			
+			if (SelectedActor != nullptr)
+			{
+				//if (ImGui::IsWindowFocused())
+				{
+					if (State.WDown && !State.RightButtonDown)
+					{
+						GizmoOperation = ImGuizmo::TRANSLATE;
+					}
+					else if (State.EDown && !State.RightButtonDown)
+					{
+						GizmoOperation = ImGuizmo::ROTATE;
+					}
+					else if (State.RDown && !State.RightButtonDown)
+					{
+						GizmoOperation = ImGuizmo::SCALE;
+					}
+				}
+				
+				ImVec2 ImagePos = ImVec2(WindowPos.x + ContentMin.x, WindowPos.y + ContentMin.y);
+				ImVec2 ImageSize = ViewportSize;
+				
+				ImGuizmo::SetRect(ImagePos.x, ImagePos.y, ImageSize.x, ImageSize.y);
+				ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+				ImGuizmo::AllowAxisFlip(false);
+				
+				XMFLOAT4X4 ObjectMatrix4x4;
+				XMStoreFloat4x4(&ObjectMatrix4x4, SelectedActor->GetWorldMatrix());
+				
+				if (ImGuizmo::Manipulate(&ViewMatrix4x4.m[0][0], &ProjectionMatrix4x4.m[0][0], 
+					GizmoOperation, ImGuizmo::LOCAL, &ObjectMatrix4x4.m[0][0]))
+				{
+					XMMATRIX TranslatedObjectMatrix = XMLoadFloat4x4(&ObjectMatrix4x4);
+					
+					XMVECTOR Scale;
+					XMVECTOR Rotation;
+					XMVECTOR Translation;
+					
+					if (XMMatrixDecompose(&Scale, &Rotation, &Translation, TranslatedObjectMatrix))
+					{
+						XMStoreFloat3(&SelectedActor->Transform.Position, Translation);
+						XMStoreFloat4(&SelectedActor->Transform.Rotation, Rotation);
+						XMStoreFloat3(&SelectedActor->Transform.Scale, Scale);
+					}
+				}
+			}
+		}
+		ImGui::End();
+		
 		// Rendering
 		ImGui::Render();
 		PipelineInterface::GetInstance().InsertIMGUIRenderTargetBarrier(D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);

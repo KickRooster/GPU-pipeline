@@ -10,10 +10,10 @@ CameraActor::CameraActor()
     ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
 }
 
-void CameraActor::ResponseToUI(const UIState* State)
+void CameraActor::ResponseToUI(const UIState& State, float DeltaTime)
 {
     //  Translation
-    if (State->RightButtonDown)
+    if (State.RightButtonDown)
     {
         XMVECTOR Look = XMLoadFloat3(&LookDirection);
         XMVECTOR Up = XMLoadFloat3(&UpDirection);
@@ -27,42 +27,42 @@ void CameraActor::ResponseToUI(const UIState* State)
         XMVECTOR Position = XMLoadFloat3(&Transform.Position);
         XMVECTOR Right = XMVector3Cross(Up, Look);
 
-        if (State->WDown)
+        if (State.WDown)
         {
-            Position = XMVectorAdd(Position, XMVectorScale(Look, State->MoveSpeed * State->DeltaTime));
+            Position = XMVectorAdd(Position, XMVectorScale(Look, State.MoveSpeed * DeltaTime));
         }
-        if (State->SDown)
+        if (State.SDown)
         {
-            Position = XMVectorSubtract(Position, XMVectorScale(Look, State->MoveSpeed * State->DeltaTime));
-        }
-    
-        if (State->ADown)
-        {
-            Position = XMVectorSubtract(Position, XMVectorScale(Right, State->MoveSpeed * State->DeltaTime));
-        }
-        if (State->DDown)
-        {
-            Position = XMVectorAdd(Position, XMVectorScale(Right, State->MoveSpeed * State->DeltaTime));
+            Position = XMVectorSubtract(Position, XMVectorScale(Look, State.MoveSpeed * DeltaTime));
         }
     
-        if (State->QDown)
+        if (State.ADown)
         {
-            Position = XMVectorSubtract(Position, XMVectorScale(Up, State->MoveSpeed * State->DeltaTime));
+            Position = XMVectorSubtract(Position, XMVectorScale(Right, State.MoveSpeed * DeltaTime));
         }
-        if (State->EDown)
+        if (State.DDown)
         {
-            Position = XMVectorAdd(Position, XMVectorScale(Up, State->MoveSpeed * State->DeltaTime));
+            Position = XMVectorAdd(Position, XMVectorScale(Right, State.MoveSpeed * DeltaTime));
+        }
+    
+        if (State.QDown)
+        {
+            Position = XMVectorSubtract(Position, XMVectorScale(Up, State.MoveSpeed * DeltaTime));
+        }
+        if (State.EDown)
+        {
+            Position = XMVectorAdd(Position, XMVectorScale(Up, State.MoveSpeed * DeltaTime));
         }
     
         XMStoreFloat3(&Transform.Position, Position);
     }
 
     //  Rotation
-    if (State->RightButtonDown)
+    if (State.RightButtonDown)
     {
-        if (State->DeltaX != 0.0f)
+        if (State.DeltaX != 0.0f)
         {
-            XMMATRIX RotY = XMMatrixRotationY(State->DeltaX * State->RotateSpeed * State->DeltaTime);
+            XMMATRIX RotY = XMMatrixRotationY(State.DeltaX * State.RotateSpeed * DeltaTime);
         
             XMVECTOR Look = XMLoadFloat3(&LookDirection);
             Look = XMVector3TransformNormal(Look, RotY);
@@ -73,13 +73,13 @@ void CameraActor::ResponseToUI(const UIState* State)
             XMStoreFloat3(&UpDirection, Up);
         }
 
-        if (State->DeltaY != 0.0f)
+        if (State.DeltaY != 0.0f)
         {
             XMVECTOR Look = XMLoadFloat3(&LookDirection);
             XMVECTOR Up = XMLoadFloat3(&UpDirection);
             XMVECTOR Right = XMVector3Cross(Up, Look);
         
-            XMMATRIX RotX = XMMatrixRotationAxis(Right, State->DeltaY * State->RotateSpeed * State->DeltaTime);
+            XMMATRIX RotX = XMMatrixRotationAxis(Right, State.DeltaY * State.RotateSpeed * DeltaTime);
         
             Look = XMVector3TransformNormal(Look, RotX);
             XMStoreFloat3(&LookDirection, Look);

@@ -10,3 +10,6 @@
 [submodule "thirdpatry/ImGuizmo"]
 	path = thirdpatry/ImGuizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo.git
+[submodule "thirdpatry/imGuIZMO.quat"]
+	path = thirdpatry/imGuIZMO.quat
+	url = https://github.com/BrutPitt/imGuIZMO.quat.git
