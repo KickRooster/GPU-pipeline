@@ -23,6 +23,7 @@
 #include "actor/CullingVisualCameraActor.h"
 // 使用修改后的 ImGuizmo
 #include "../thirdpatry/ImGuizmo/ImGuizmo.h"
+#include "../thirdpatry/imGuIZMO.quat/imguizmo_quat/imGuIZMOquat.h"
 
 using namespace DirectX;
 
@@ -357,6 +358,28 @@ int main(int, char**)
 			PipelineInterface::GetInstance().RenderLevelMeshlet(FrameContextIndex, &Level::GetInstance());
 			ImGui::Image(static_cast<ImTextureID>(PipelineInterface::GetInstance().GetRenderTargetSRVGPUHandle(FrameContextIndex).ptr), ViewportSize);
 			
+			XMMATRIX ViewMatrix = CameraActorInstance->GetViewMatrix();
+			XMMATRIX ViewMatrixInv = XMMatrixInverse(nullptr, ViewMatrix);
+			XMMATRIX ProjectionMatrix = CameraActorInstance->GetProjectionMatrix();
+			XMFLOAT4X4 ViewMatrix4x4;
+			XMFLOAT4X4 ViewMatrixInv4x;
+			XMFLOAT4X4 ProjectionMatrix4x4;
+			XMStoreFloat4x4(&ViewMatrix4x4, ViewMatrix);
+			XMStoreFloat4x4(&ViewMatrixInv4x, ViewMatrixInv);
+			XMStoreFloat4x4(&ProjectionMatrix4x4, ProjectionMatrix);
+			
+			const float AxisIndicatorSize = std::min(ViewportSize.x, ViewportSize.y) * 0.2f;
+			ImVec2 WindowPos = ImGui::GetWindowPos();
+			ImVec2 ContentMin = ImGui::GetWindowContentRegionMin();
+			ImVec2 AxisIndicatorPos = ImVec2(
+				WindowPos.x + ContentMin.x + ViewportSize.x - AxisIndicatorSize,
+				WindowPos.y + ContentMin.y
+			);
+			
+			ImGuizmo::BeginFrame();
+			ImGuizmo::ViewManipulate(&ViewMatrixInv4x.m[0][0], 10.0f, AxisIndicatorPos, 
+				ImVec2(AxisIndicatorSize, AxisIndicatorSize), 0x00000000);
+			
 			if (SelectedActor != nullptr)
 			{
 				//if (ImGui::IsWindowFocused())
@@ -375,28 +398,15 @@ int main(int, char**)
 					}
 				}
 				
-				ImVec2 WindowPos = ImGui::GetWindowPos();
-				ImVec2 ContentMin = ImGui::GetWindowContentRegionMin();
-				
 				ImVec2 ImagePos = ImVec2(WindowPos.x + ContentMin.x, WindowPos.y + ContentMin.y);
 				ImVec2 ImageSize = ViewportSize;
-
-				ImGuizmo::BeginFrame();
+				
 				ImGuizmo::SetRect(ImagePos.x, ImagePos.y, ImageSize.x, ImageSize.y);
 				ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
 				ImGuizmo::AllowAxisFlip(false);
 				
-				XMMATRIX ViewMatrix = CameraActorInstance->GetViewMatrix();
-				XMMATRIX ProjectionMatrix = CameraActorInstance->GetProjectionMatrix();
-
-				XMFLOAT4X4 ViewMatrix4x4;
-				XMFLOAT4X4 ProjectionMatrix4x4;
-				XMStoreFloat4x4(&ViewMatrix4x4, ViewMatrix);
-				XMStoreFloat4x4(&ProjectionMatrix4x4, ProjectionMatrix);
-				
-				XMMATRIX ObjectMatrix = SelectedActor->GetWorldMatrix();
 				XMFLOAT4X4 ObjectMatrix4x4;
-				XMStoreFloat4x4(&ObjectMatrix4x4, ObjectMatrix);
+				XMStoreFloat4x4(&ObjectMatrix4x4, SelectedActor->GetWorldMatrix());
 				
 				if (ImGuizmo::Manipulate(&ViewMatrix4x4.m[0][0], &ProjectionMatrix4x4.m[0][0], 
 					GizmoOperation, ImGuizmo::LOCAL, &ObjectMatrix4x4.m[0][0]))
