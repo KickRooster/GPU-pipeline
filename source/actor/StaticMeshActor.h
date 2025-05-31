@@ -12,7 +12,6 @@ class StaticMeshActor : public Actor
 {
 protected:
     DirectX::XMMATRIX TransformationMatrix;    // SRT order: Scale * Rotation * Translation (UE style)
-    DirectX::XMMATRIX TransformationMatrixTRS;
     
     std::vector<std::unique_ptr<Mesh>> MeshInstances;
     std::vector<std::unique_ptr<MeshProxy>> MeshProxyInstances;

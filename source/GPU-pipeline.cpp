@@ -30,6 +30,7 @@ unsigned long FenceLastSignaledValue = 0;
 bool SwapChainOccluded = false;
 UIState State;
 StaticMeshActor* SelectedActor = nullptr;
+ImGuizmo::OPERATION GizmoOperation = ImGuizmo::TRANSLATE;
 
 void RefreshInput(UIState& OutState)
 {
@@ -192,8 +193,6 @@ int main(int, char**)
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 		
-		// ImGuizmo 帧开始
-		ImGuizmo::BeginFrame();
 		RefreshInput(State);
 		
 		ImGuiWindowFlags WindowFlags = ImGuiWindowFlags_NoDocking;
@@ -244,35 +243,44 @@ int main(int, char**)
 				{
 					ImGui::Text("Location"); ImGui::SameLine(100);
 					float Position[3] = { SelectedActor->Transform.Position.x, SelectedActor->Transform.Position.y, SelectedActor->Transform.Position.z };
-					ImGui::DragFloat3("##Location", Position, 0.1f, -FLT_MAX, FLT_MAX, "%.2f");
+					if (ImGui::DragFloat3("##Location", Position, 0.1f, -FLT_MAX, FLT_MAX, "%.2f"))
+					{
+						SelectedActor->Transform.Position = { Position[0], Position[1], Position[2] };
+					}
 					
 					ImGui::Text("Rotation"); ImGui::SameLine(100);
-					// 使用DirectX Math将quaternion转换为欧拉角显示
 					XMVECTOR QuatVector = XMLoadFloat4(&SelectedActor->Transform.Rotation);
+					XMMATRIX RotationMatrix = XMMatrixRotationQuaternion(QuatVector);
+					XMFLOAT4X4 RotMatrix4x4;
+					XMStoreFloat4x4(&RotMatrix4x4, RotationMatrix);
 					
-					// 使用DirectX Math将quaternion转换为旋转矩阵，然后提取欧拉角
-					XMMATRIX RotMatrix = XMMatrixRotationQuaternion(QuatVector);
+					float Pitch = asinf(-RotMatrix4x4._32);
+					float Yaw = atan2f(RotMatrix4x4._31, RotMatrix4x4._33);
+					float Roll = atan2f(RotMatrix4x4._12, RotMatrix4x4._22);
 					
-					// 从旋转矩阵提取欧拉角 (按ZYX顺序)
-					XMFLOAT4X4 matrix;
-					XMStoreFloat4x4(&matrix, RotMatrix);
-					
-					float Pitch = asinf(-matrix._32);
-					float Yaw = atan2f(matrix._31, matrix._33);
-					float Roll = atan2f(matrix._12, matrix._22);
-					
-					// 转换为度数并显示
 					float RotationDegrees[3] = { 
 						XMConvertToDegrees(Pitch), 
 						XMConvertToDegrees(Yaw), 
 						XMConvertToDegrees(Roll) 
 					};
 					
-					ImGui::DragFloat3("##Rotation", RotationDegrees, 1.0f, -180.0f, 180.0f, "%.1f°");
+					if (ImGui::DragFloat3("##Rotation", RotationDegrees, 1.0f, -180.0f, 180.0f, "%.1f°"))
+					{
+						float PitchRad = XMConvertToRadians(RotationDegrees[0]);
+						float YawRad = XMConvertToRadians(RotationDegrees[1]);
+						float RollRad = XMConvertToRadians(RotationDegrees[2]);
+						
+						XMMATRIX NewRotationMatrix = XMMatrixRotationRollPitchYaw(PitchRad, YawRad, RollRad);
+						XMVECTOR NewQuaternion = XMQuaternionRotationMatrix(NewRotationMatrix);
+						XMStoreFloat4(&SelectedActor->Transform.Rotation, NewQuaternion);
+					}
 					
 					ImGui::Text("Scale"); ImGui::SameLine(100);
 					float Scale[3] = { SelectedActor->Transform.Scale.x, SelectedActor->Transform.Scale.y, SelectedActor->Transform.Scale.z };
-					ImGui::DragFloat3("##Scale", Scale, 0.01f, 0.001f, FLT_MAX, "%.3f");
+					if (ImGui::DragFloat3("##Scale", Scale, 0.01f, 0.001f, FLT_MAX, "%.3f"))
+					{
+						SelectedActor->Transform.Scale = { Scale[0], Scale[1], Scale[2] };
+					}
 				}
 				
 				CullingVisualCameraActor* CullingCamera = dynamic_cast<CullingVisualCameraActor*>(SelectedActor);
@@ -351,19 +359,17 @@ int main(int, char**)
 			
 			if (SelectedActor != nullptr)
 			{
-				static ImGuizmo::OPERATION GizmoOperation = ImGuizmo::TRANSLATE;
-				
-				if (ImGui::IsWindowFocused())
+				//if (ImGui::IsWindowFocused())
 				{
-					if (State.WDown)
+					if (State.WDown && !State.RightButtonDown)
 					{
 						GizmoOperation = ImGuizmo::TRANSLATE;
 					}
-					else if (State.EDown)
+					else if (State.EDown && !State.RightButtonDown)
 					{
 						GizmoOperation = ImGuizmo::ROTATE;
 					}
-					else if (State.RDown)
+					else if (State.RDown && !State.RightButtonDown)
 					{
 						GizmoOperation = ImGuizmo::SCALE;
 					}
@@ -371,15 +377,13 @@ int main(int, char**)
 				
 				ImVec2 WindowPos = ImGui::GetWindowPos();
 				ImVec2 ContentMin = ImGui::GetWindowContentRegionMin();
-				ImVec2 ContentMax = ImGui::GetWindowContentRegionMax();
 				
 				ImVec2 ImagePos = ImVec2(WindowPos.x + ContentMin.x, WindowPos.y + ContentMin.y);
 				ImVec2 ImageSize = ViewportSize;
-				
+
+				ImGuizmo::BeginFrame();
 				ImGuizmo::SetRect(ImagePos.x, ImagePos.y, ImageSize.x, ImageSize.y);
 				ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
-				
-				// 禁用坐标轴翻转，保持固定方向
 				ImGuizmo::AllowAxisFlip(false);
 				
 				XMMATRIX ViewMatrix = CameraActorInstance->GetViewMatrix();
