@@ -9,6 +9,7 @@ cbuffer cbCamera : register(b0)
 cbuffer cbStaticMeshActor : register(b1)
 {
     float4x4 gWorld;
+    float4x4 gWorldInvTranspose;
 };
 
 cbuffer cbMeshInfo : register(b2)
@@ -34,6 +35,8 @@ float4 PS(VertexOut input) : SV_TARGET
         float(meshletIndex & 7) / 8);
 
     color = max(color, float3(0.2, 0.1, 0.3));
+    
+    color = abs(input.Normal);
 
     return float4(color, 1.0);
 }

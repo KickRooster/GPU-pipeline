@@ -9,6 +9,7 @@ cbuffer cbCamera : register(b0)
 cbuffer cbStaticMeshActor : register(b1)
 {
     float4x4 gWorld;
+    float4x4 gWorldInvTranspose;
 };
 
 cbuffer cbMeshInfo : register(b2)
@@ -73,8 +74,7 @@ VertexOut GetVertexAttributes(uint meshletIndex, uint vertexIndex)
 
     float4 posW = mul(float4(v.Position, 1), gWorld);
     
-    float3x3 worldInvTranspose = transpose((float3x3)gWorld);
-    float3 normalW = normalize(mul(v.Normal, worldInvTranspose));
+    float3 normalW = normalize(mul(v.Normal, (float3x3)gWorldInvTranspose));
     
     VertexOut vout;
     vout.PositionHS = mul(posW, gViewProj);

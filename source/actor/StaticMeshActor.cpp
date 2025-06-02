@@ -60,6 +60,10 @@ void StaticMeshActor::Update(float DeltaTime)
     {
         XMStoreFloat4x4(&ConstantBufferInstance->World, XMMatrixTranspose(TransformationMatrix));
         
+        XMMATRIX WorldInverse = XMMatrixInverse(nullptr, TransformationMatrix);
+        XMMATRIX WorldInvTranspose = XMMatrixTranspose(WorldInverse);
+        XMStoreFloat4x4(&ConstantBufferInstance->WorldInvTranspose, XMMatrixTranspose(WorldInvTranspose));
+        
         if (ConstantBufferProxyInstance->MappedData != nullptr)
         {
             memcpy(
