@@ -9,9 +9,9 @@ cbuffer cbCamera : register(b0)
 cbuffer cbStaticMeshActor : register(b1)
 {
     float4x4 gWorld;
+    float4x4 gWorldInvTranspose;
 };
 
-// 添加meshlet信息常量缓冲区
 cbuffer cbMeshInfo : register(b2)
 {
     uint gMeshletCount;
@@ -30,7 +30,6 @@ struct BoundsData
     uint   padding;           // 4 bytes padding for cone_axis_s8[3] + cone_cutoff_s8
 };
 
-// Meshlet结构定义
 struct Meshlet
 {
     uint VertexOffset;
@@ -47,14 +46,12 @@ struct Vertex
     float2 UV0;
 };
 
-// 添加与MS shader相同的资源绑定声明
 StructuredBuffer<Vertex>     Vertices            : register(t0);
 StructuredBuffer<Meshlet>    Meshlets            : register(t1);
 StructuredBuffer<uint>       UniqueVertexIndices : register(t2);
 StructuredBuffer<uint>       MeshletTriangles    : register(t3);
 StructuredBuffer<BoundsData> MeshletBounds       : register(t4);
 
-// 定义传递给MS的payload结构
 struct Payload
 {
     uint MeshletIndices[32];
@@ -89,19 +86,21 @@ bool IsVisible(BoundsData b, float4x4 world, float scale, float3 viewPos)
     if (IsConeDegenerate(b))
         return true; // Cone is degenerate - spread is wider than a hemisphere
 
-    // Transform cone axis to world space
-    float3 axis = normalize(mul(float4(b.cone_axis, 0), world)).xyz;
-
-    // Transform cone apex to world space and account for scaling
-    float3 apex = mul(float4(b.cone_apex, 1), world).xyz;
-
-    // Calculate view direction from apex to camera
-    float3 view = normalize(viewPos - apex);
-
-    // The cone cutoff in meshoptimizer stores sin(angle) for the normal cone
-    // For backface culling, we test against the negative axis direction
-    // If dot(view, -axis) > cone_cutoff, all triangles in this meshlet are backfacing
-    if (dot(view, -axis) > b.cone_cutoff)
+    // Transform cone axis to world space (no need to normalize here, will normalize in the formula)
+    float3 axis = mul(float4(b.cone_axis, 0), world).xyz;
+    
+    // Use meshoptimizer's recommended formula that uses bounding sphere center
+    // instead of cone apex for better numerical stability
+    float3 centerToCamera = viewPos - center.xyz;
+    float distanceToCenter = length(centerToCamera);
+    
+    // Avoid division by zero when camera is at sphere center
+    if (distanceToCenter < 1e-6)
+        return true;
+    
+    // meshoptimizer's formula: dot(center - camera_position, cone_axis) >= cone_cutoff * length(center - camera_position) + radius
+    // Rearranged: dot(camera_position - center, cone_axis) <= -cone_cutoff * distance - radius
+    if (dot(centerToCamera, normalize(axis)) <= -b.cone_cutoff * distanceToCenter - radius)
     {
         return false; // All triangles are backfacing, cull this meshlet
     }
@@ -118,24 +117,20 @@ void main(
 {
     bool visible = false;
     
-    // 检查是否在有效的meshlet范围内
     if (dtid < gMeshletCount)
     {
-        // 临时使用固定scale来排除scale计算问题
+        //  XXX:    Unsupport scaling now.
         float scale = 1.0f;
         
-        // 执行真正的可见性测试
         visible = IsVisible(MeshletBounds[dtid], gWorld, scale, gViewPosition);
     }
 
-    // 将可见的meshlet索引压缩到export payload数组中
     if (visible)
     {
         uint index = WavePrefixCountBits(visible);
         s_Payload.MeshletIndices[index] = dtid;
     }
     
-    // 计算可见的meshlet总数
     uint visibleCount = WaveActiveCountBits(visible);
     
     // 分发所需数量的MS线程组来渲染可见的meshlets

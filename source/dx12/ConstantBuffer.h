@@ -13,6 +13,7 @@ struct CameraConstantBuffer
 struct StaticMeshActorConstantBuffer
 {
     DirectX::XMFLOAT4X4 World = MathTool::GetInstance().Identity4x4();
+    DirectX::XMFLOAT4X4 WorldInvTranspose = MathTool::GetInstance().Identity4x4();  // 世界矩阵的逆转置，用于法线变换
 };
 
 struct MeshInfoConstantBuffer

@@ -7,14 +7,15 @@
 cbuffer cbCamera : register(b0)
 {
 	float4x4 gViewProj;
-	float4   gPlanes[6];        // 视锥体6个平面方程 (左、右、上、下、近、远)
-	float3   gViewPosition;     // 摄像机世界坐标位置
-	float    gPadding;          // 保持16字节对齐
+	float4   gPlanes[6];
+	float3   gViewPosition;
+	float    gPadding;
 };
 
 cbuffer cbStaticMeshActor : register(b1)
 {
 	float4x4 gWorld;
+	float4x4 gWorldInvTranspose;
 };
 
 struct VertexIn
@@ -38,8 +39,7 @@ VertexOut VS(VertexIn vin)
 	
 	float4 posW = mul(float4(vin.PosL, 1.0f), gWorld);
 	
-	float3x3 worldInvTranspose = transpose((float3x3)gWorld);
-	vout.NormalW = normalize(mul(vin.Normal, worldInvTranspose));
+	vout.NormalW = normalize(mul(vin.Normal, (float3x3)gWorldInvTranspose));
 	
 	vout.PosH = mul(posW, gViewProj);
 	

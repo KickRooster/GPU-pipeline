@@ -87,7 +87,7 @@ int main(int, char**)
 
 	//	Initialize the level manually.
 	//	Static Mesh Actor.
-	const StaticMeshActor* StaticMeshActorInstance = Level::GetInstance().InstantiateStaticMeshActor("D:\\GPU-pipeline\\content\\mesh\\jeep1.fbx");
+	const StaticMeshActor* StaticMeshActorInstance = Level::GetInstance().InstantiateStaticMeshActor("D:\\GPU-pipeline\\content\\mesh\\sponza.obj");
 	for (unsigned int I = 0; I < StaticMeshActorInstance->GetSubMeshCount(); ++I)
 	{
 		PipelineInterface::GetInstance().CreateMeshProxyBuffer(StaticMeshActorInstance->GetMeshInstance(I), StaticMeshActorInstance->GetMeshProxyInstance(I));
@@ -96,7 +96,7 @@ int main(int, char**)
 	PipelineInterface::GetInstance().CreateConstantBuffer(StaticMeshActorInstance);
 
 	//	Culling Visual Camera Actor.
-	StaticMeshActor* CullingCameraActorInstance = Level::GetInstance().InstantiateCullingVisualCameraActor("D:\\GPU-pipeline\\content\\mesh\\camera.fbx");
+	StaticMeshActor* CullingCameraActorInstance = Level::GetInstance().InstantiateCullingVisualCameraActor("D:\\GPU-pipeline\\content\\mesh\\jeep1.fbx");
 	for (unsigned int I = 0; I < CullingCameraActorInstance->GetSubMeshCount(); ++I)
 	{
 		PipelineInterface::GetInstance().CreateMeshProxyBuffer(CullingCameraActorInstance->GetMeshInstance(I), CullingCameraActorInstance->GetMeshProxyInstance(I));

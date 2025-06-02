@@ -40,10 +40,10 @@ StaticMeshActor* Level::InstantiateCullingVisualCameraActor(const std::string& P
     ActorInstance->Transform.Rotation.y = 0;
     ActorInstance->Transform.Rotation.z = 0;
 
-    ActorInstance->FovY = 90.f;
+    ActorInstance->FovY = 120.f;
     ActorInstance->AspectRatio = 1.f;
     ActorInstance->NearPlane = 0.1f;
-    ActorInstance->FarPlane = 1000.0f;
+    ActorInstance->FarPlane = 10000.0f;
     ActorInstance->LookDirection = XMFLOAT3(0, 0, 1);
     ActorInstance->UpDirection = XMFLOAT3(0, 1, 0);
     
@@ -59,10 +59,10 @@ StaticMeshActor* Level::InstantiateCullingVisualCameraActor(const std::string& P
 CameraActor* Level::InstantiateCameraActor()
 {
     unique_ptr<CameraActor> ActorInstance = make_unique<CameraActor>();
-    ActorInstance->FovY = 90.f;
+    ActorInstance->FovY = 120.f;
     ActorInstance->AspectRatio = 1.f;
     ActorInstance->NearPlane = 0.1f;
-    ActorInstance->FarPlane = 1000.0f;
+    ActorInstance->FarPlane = 10000.0f;
     ActorInstance->Transform.Position.x = 0;
     ActorInstance->Transform.Position.y = 0;
     ActorInstance->Transform.Position.z = -5.f;
