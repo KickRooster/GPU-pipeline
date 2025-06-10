@@ -3,11 +3,14 @@
 #include <vector>
 #include <assimp/scene.h>
 #include "meshoptimizer.h"
+#include <DirectXMath.h>
 
 struct Mesh
 {
+    std::string Name;
     std::vector<Vertex> Vertices;
     std::vector<unsigned int> Indices;
+    DirectX::XMFLOAT4X4 Local2WorldMatrix;
 };
 
 struct MeshletDataForMeshOptimizer

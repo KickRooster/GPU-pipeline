@@ -3,8 +3,12 @@
 using namespace std;
 using namespace DirectX;
 
-CullingVisualCameraActor::CullingVisualCameraActor(const std::string& Path)
-    :StaticMeshActor(Path)
+CullingVisualCameraActor::CullingVisualCameraActor(std::unique_ptr<Mesh> InMeshInstance, std::unique_ptr<MeshProxy> InMeshProxyInstance, std::unique_ptr<MeshletData> InMeshletDataInstance, std::unique_ptr<MeshletDataProxy> InMeshletDataProxyInstance)
+:StaticMeshActor(
+    move(InMeshInstance),
+    move(InMeshProxyInstance),
+    move(InMeshletDataInstance),
+    move(InMeshletDataProxyInstance))
 {
 }
 

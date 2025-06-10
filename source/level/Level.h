@@ -12,8 +12,8 @@ class Level : public Singleton<Level>
     std::vector<std::unique_ptr<CameraActor>> CameraActors;
     
 public:
-    StaticMeshActor* InstantiateStaticMeshActor(const std::string& Path);
-    StaticMeshActor* InstantiateCullingVisualCameraActor(const std::string& Path);
+    int InstantiateStaticMeshActors(const std::string& Path);
+    StaticMeshActor* InstantiateCullingVisualCameraActor();
     CameraActor* InstantiateCameraActor();
     void Update(float DeletaTime) const;
     std::vector<StaticMeshActor*> GetStaticMeshActors() const;

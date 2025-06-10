@@ -3,23 +3,28 @@
 using namespace std;
 using namespace DirectX;
 
-void MeshLoader::ProcessNode(aiNode* Node, const aiScene* Scene, vector<Mesh>& OutMeshes)
+void MeshLoader::ProcessNode(aiNode* Node, const aiScene* Scene, vector<Mesh>& OutMeshes, const XMMATRIX& ParentTransform)
 {
-    for (unsigned int I = 0; I < Node->mNumMeshes; ++I)
+    const XMMATRIX NodeTransform = MathTool::GetInstance().AssimpMatrixToXMMatrix(Node->mTransformation);
+    const XMMATRIX WorldTransform = ParentTransform * NodeTransform;
+    
+    for (unsigned int I = 0; I < Node->mNumMeshes; I++)
     {
-        aiMesh* Mesh = Scene->mMeshes[Node->mMeshes[I]];
-        ProcessMesh(Mesh, Scene, OutMeshes);
+        aiMesh* AssimpMesh = Scene->mMeshes[Node->mMeshes[I]];
+        ProcessMesh(AssimpMesh, Scene, OutMeshes, WorldTransform);
     }
-
-    for (unsigned int I = 0; I < Node->mNumChildren; ++I)
+    
+    for (unsigned int I = 0; I < Node->mNumChildren; I++)
     {
-        ProcessNode(Node->mChildren[I], Scene, OutMeshes);
+        ProcessNode(Node->mChildren[I], Scene, OutMeshes, WorldTransform);
     }
 }
 
-void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, vector<Mesh>& OutMeshes)
+void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, vector<Mesh>& OutMeshes, const XMMATRIX& NodeTransform)
 {
     Mesh OutMesh;
+
+    XMStoreFloat4x4(&OutMesh.Local2WorldMatrix, NodeTransform);
     
     for (unsigned int I = 0; I < AssimpMesh->mNumVertices; ++I)
     {
@@ -74,27 +79,16 @@ void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, vector<Me
         }
     }
 
-    OutMeshes.push_back(OutMesh);
+    OutMesh.Name = AssimpMesh->mName.C_Str();
 
-    // if (Mesh->mMaterialIndex >= 0u)
-    // {
-    //     aiMaterial* material = Scene->mMaterials[Mesh->mMaterialIndex];
-    //
-    //     std::vector<Texture> diffuseMaps = LoadMaterialTextures(material, 
-    //         aiTextureType_DIFFUSE, "texture_diffuse");
-    //     textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
-    //
-    //     std::vector<Texture> specularMaps = LoadMaterialTextures(material, 
-    //         aiTextureType_SPECULAR, "texture_specular");
-    //     textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
-    // }
+    OutMeshes.push_back(OutMesh);
 }
 
 ErrorCode MeshLoader::LoadMesh(const std::string& Path, vector<Mesh>& OutMeshes)
 {
     Assimp::Importer Importer;
 
-    unsigned int PostProcessFlags = 
+    constexpr unsigned int PostProcessFlags = 
         aiProcess_Triangulate |
         aiProcess_MakeLeftHanded |
         aiProcess_FlipWindingOrder |
@@ -109,68 +103,8 @@ ErrorCode MeshLoader::LoadMesh(const std::string& Path, vector<Mesh>& OutMeshes)
         return ErrorCode::MeshDataIncomplete;
     }
 
-    ProcessNode(Scene->mRootNode, Scene, OutMeshes);
+    ProcessNode(Scene->mRootNode, Scene, OutMeshes, XMMatrixIdentity());
 
-    return ErrorCode::OK;
-}
-
-ErrorCode MeshLoader::LoadCubeMesh(std::vector<Mesh>& OutMeshes)
-{
-    Mesh CubeMesh;
-    
-    Vertex v0, v1, v2, v3, v4, v5, v6, v7;
-    
-    v0.Position = XMFLOAT3(-0.5f, -0.5f, -0.5f);
-    v1.Position = XMFLOAT3( 0.5f, -0.5f, -0.5f);
-    v2.Position = XMFLOAT3( 0.5f, -0.5f,  0.5f);
-    v3.Position = XMFLOAT3(-0.5f, -0.5f,  0.5f);
-    
-    v4.Position = XMFLOAT3(-0.5f,  0.5f, -0.5f);
-    v5.Position = XMFLOAT3( 0.5f,  0.5f, -0.5f);
-    v6.Position = XMFLOAT3( 0.5f,  0.5f,  0.5f);
-    v7.Position = XMFLOAT3(-0.5f,  0.5f,  0.5f);
-    
-    v0.Normal = XMFLOAT3(0.0f, -1.0f, 0.0f);
-    v1.Normal = XMFLOAT3(0.0f, -1.0f, 0.0f);
-    v2.Normal = XMFLOAT3(0.0f, -1.0f, 0.0f);
-    v3.Normal = XMFLOAT3(0.0f, -1.0f, 0.0f);
-    
-    v4.Normal = XMFLOAT3(0.0f, 1.0f, 0.0f);
-    v5.Normal = XMFLOAT3(0.0f, 1.0f, 0.0f);
-    v6.Normal = XMFLOAT3(0.0f, 1.0f, 0.0f);
-    v7.Normal = XMFLOAT3(0.0f, 1.0f, 0.0f);
-    
-    XMFLOAT4 color = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-    XMFLOAT2 uv0 = XMFLOAT2(0.0f, 0.0f);
-    
-    for (Vertex* v : {&v0, &v1, &v2, &v3, &v4, &v5, &v6, &v7})
-    {
-        v->Color = color;
-        v->UV0 = uv0;
-    }
-    
-    CubeMesh.Vertices = {v0, v1, v2, v3, v4, v5, v6, v7};
-    
-    CubeMesh.Indices.push_back(0); CubeMesh.Indices.push_back(1); CubeMesh.Indices.push_back(2);
-    CubeMesh.Indices.push_back(0); CubeMesh.Indices.push_back(2); CubeMesh.Indices.push_back(3);
-
-    CubeMesh.Indices.push_back(4); CubeMesh.Indices.push_back(6); CubeMesh.Indices.push_back(5);
-    CubeMesh.Indices.push_back(4); CubeMesh.Indices.push_back(7); CubeMesh.Indices.push_back(6);
-    
-    CubeMesh.Indices.push_back(3); CubeMesh.Indices.push_back(2); CubeMesh.Indices.push_back(6);
-    CubeMesh.Indices.push_back(3); CubeMesh.Indices.push_back(6); CubeMesh.Indices.push_back(7);
-    
-    CubeMesh.Indices.push_back(0); CubeMesh.Indices.push_back(5); CubeMesh.Indices.push_back(1);
-    CubeMesh.Indices.push_back(0); CubeMesh.Indices.push_back(4); CubeMesh.Indices.push_back(5);
-    
-    CubeMesh.Indices.push_back(0); CubeMesh.Indices.push_back(3); CubeMesh.Indices.push_back(7);
-    CubeMesh.Indices.push_back(0); CubeMesh.Indices.push_back(7); CubeMesh.Indices.push_back(4);
-    
-    CubeMesh.Indices.push_back(1); CubeMesh.Indices.push_back(5); CubeMesh.Indices.push_back(6);
-    CubeMesh.Indices.push_back(1); CubeMesh.Indices.push_back(6); CubeMesh.Indices.push_back(2);
-    
-    OutMeshes.push_back(CubeMesh);
-    
     return ErrorCode::OK;
 }
 

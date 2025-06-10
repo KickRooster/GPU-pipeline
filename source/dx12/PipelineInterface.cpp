@@ -1378,18 +1378,15 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
         const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = LevelInstance->GetStaticMeshActors()[I]->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
         CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
         
-        for (unsigned int SubMeshIndex = 0; SubMeshIndex < LevelInstance->GetStaticMeshActors()[I]->GetSubMeshCount(); ++SubMeshIndex)
-        {
-            D3D12_VERTEX_BUFFER_VIEW VertexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance(SubMeshIndex)->VertexBufferView;
-            CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
-            D3D12_INDEX_BUFFER_VIEW IndexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance(SubMeshIndex)->IndexBufferView;
-            CommandList->IASetIndexBuffer(&IndexBufferView);
-            CommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        D3D12_VERTEX_BUFFER_VIEW VertexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance()->VertexBufferView;
+        CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
+        D3D12_INDEX_BUFFER_VIEW IndexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance()->IndexBufferView;
+        CommandList->IASetIndexBuffer(&IndexBufferView);
+        CommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-            CommandList->DrawIndexedInstanced(
-                static_cast<UINT>(LevelInstance->GetStaticMeshActors()[I]->GetMeshInstance(SubMeshIndex)->Indices.size()),
-                1, 0, 0, 0);
-        }
+        CommandList->DrawIndexedInstanced(
+            static_cast<UINT>(LevelInstance->GetStaticMeshActors()[I]->GetMeshInstance()->Indices.size()),
+            1, 0, 0, 0);
     }
     
     Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -1440,26 +1437,23 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
         const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = StaticMeshActorInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
         CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
         
-        for (unsigned int SubMeshIndex = 0; SubMeshIndex < StaticMeshActorInstance->GetSubMeshCount(); ++SubMeshIndex)
-        {
-            const MeshProxy* MeshProxyInstance = StaticMeshActorInstance->GetMeshProxyInstance(SubMeshIndex);
-            const MeshletDataProxy* MeshletDataProxyInstance = StaticMeshActorInstance->GetMeshletDataProxyInstance(SubMeshIndex);
+        const MeshProxy* MeshProxyInstance = StaticMeshActorInstance->GetMeshProxyInstance();
+        const MeshletDataProxy* MeshletDataProxyInstance = StaticMeshActorInstance->GetMeshletDataProxyInstance();
             
-            // 设置MeshInfo常量缓冲区
-            CommandList->SetGraphicsRootConstantBufferView(2, MeshletDataProxyInstance->MeshInfoCBProxy->UploadBuffer->GetGPUVirtualAddress());
+        // 设置MeshInfo常量缓冲区
+        CommandList->SetGraphicsRootConstantBufferView(2, MeshletDataProxyInstance->MeshInfoCBProxy->UploadBuffer->GetGPUVirtualAddress());
             
-            // 设置SRV资源，与shader声明顺序保持一致
-            CommandList->SetGraphicsRootShaderResourceView(3, MeshProxyInstance->VertexBuffer->GetGPUVirtualAddress());
-            CommandList->SetGraphicsRootShaderResourceView(4, MeshletDataProxyInstance->MeshletsBuffer->GetGPUVirtualAddress());
-            CommandList->SetGraphicsRootShaderResourceView(5, MeshletDataProxyInstance->MeshletVerticesBuffer->GetGPUVirtualAddress());
-            CommandList->SetGraphicsRootShaderResourceView(6, MeshletDataProxyInstance->MeshletTrianglesBuffer->GetGPUVirtualAddress());
-            CommandList->SetGraphicsRootShaderResourceView(7, MeshletDataProxyInstance->MeshletBoundsBuffer->GetGPUVirtualAddress());
+        // 设置SRV资源，与shader声明顺序保持一致
+        CommandList->SetGraphicsRootShaderResourceView(3, MeshProxyInstance->VertexBuffer->GetGPUVirtualAddress());
+        CommandList->SetGraphicsRootShaderResourceView(4, MeshletDataProxyInstance->MeshletsBuffer->GetGPUVirtualAddress());
+        CommandList->SetGraphicsRootShaderResourceView(5, MeshletDataProxyInstance->MeshletVerticesBuffer->GetGPUVirtualAddress());
+        CommandList->SetGraphicsRootShaderResourceView(6, MeshletDataProxyInstance->MeshletTrianglesBuffer->GetGPUVirtualAddress());
+        CommandList->SetGraphicsRootShaderResourceView(7, MeshletDataProxyInstance->MeshletBoundsBuffer->GetGPUVirtualAddress());
             
-            // 使用AS shader启动渲染
-            const MeshletData* MeshletDataInstance = StaticMeshActorInstance->GetMeshletDataInstance(SubMeshIndex);
-            const unsigned int ASGroupCount = (static_cast<unsigned int>(MeshletDataInstance->Meshlets.size()) + 32 - 1) / 32;
-            CommandList->DispatchMesh(ASGroupCount, 1, 1);
-        }
+        // 使用AS shader启动渲染
+        const MeshletData* MeshletDataInstance = StaticMeshActorInstance->GetMeshletDataInstance();
+        const unsigned int ASGroupCount = (static_cast<unsigned int>(MeshletDataInstance->Meshlets.size()) + 32 - 1) / 32;
+        CommandList->DispatchMesh(ASGroupCount, 1, 1);
     }
 
     Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;

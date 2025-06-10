@@ -13,23 +13,26 @@ class StaticMeshActor : public Actor
 protected:
     DirectX::XMMATRIX TransformationMatrix;    // SRT order: Scale * Rotation * Translation (UE style)
     
-    std::vector<std::unique_ptr<Mesh>> MeshInstances;
-    std::vector<std::unique_ptr<MeshProxy>> MeshProxyInstances;
+    std::unique_ptr<Mesh> MeshInstance;
+    std::unique_ptr<MeshProxy> MeshProxyInstance;
 
-    std::vector<std::unique_ptr<MeshletData>> MeshletDataInstances;
-    std::vector<std::unique_ptr<MeshletDataProxy>> MeshletDataProxyInstances;
+    std::unique_ptr<MeshletData> MeshletDataInstance;
+    std::unique_ptr<MeshletDataProxy> MeshletDataProxyInstance;
 
     std::unique_ptr<StaticMeshActorConstantBuffer> ConstantBufferInstance;
     std::unique_ptr<ConstantBufferProxy> ConstantBufferProxyInstance;
 
 public:
-    StaticMeshActor(const std::string& Path);
+    StaticMeshActor(
+        std::unique_ptr<Mesh> InMeshInstance,
+        std::unique_ptr<MeshProxy> InMeshProxyInstance,
+        std::unique_ptr<MeshletData> InMeshletDataInstance,
+        std::unique_ptr<MeshletDataProxy> InMeshletDataProxyInstance);
     void Update(float DeltaTime) override;
-    unsigned int GetSubMeshCount() const;
-    Mesh* GetMeshInstance(unsigned int Index) const;
-    MeshProxy* GetMeshProxyInstance(unsigned int Index) const;
-    MeshletData* GetMeshletDataInstance(unsigned int Index) const;
-    MeshletDataProxy* GetMeshletDataProxyInstance(unsigned int Index) const;
+    Mesh* GetMeshInstance() const;
+    MeshProxy* GetMeshProxyInstance() const;
+    MeshletData* GetMeshletDataInstance() const;
+    MeshletDataProxy* GetMeshletDataProxyInstance() const;
     StaticMeshActorConstantBuffer* GetConstantBuffer() const;
     ConstantBufferProxy* GetConstantBufferProxy() const;
     DirectX::XMMATRIX GetWorldMatrix() const;
