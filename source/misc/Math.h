@@ -1,6 +1,7 @@
 #pragma once
 #include "Base.h"
 #include "DesignPatterns.h"
+#include <assimp/matrix4x4.h>
 
 class MathTool : public Singleton<MathTool>
 {
@@ -19,6 +20,16 @@ public:
 
         return I;
     };
+
+    DirectX::XMMATRIX AssimpMatrixToXMMatrix(const aiMatrix4x4& AssimpMatrix)
+    {
+        return DirectX::XMMATRIX(
+            AssimpMatrix.a1, AssimpMatrix.b1, AssimpMatrix.c1, AssimpMatrix.d1,
+            AssimpMatrix.a2, AssimpMatrix.b2, AssimpMatrix.c2, AssimpMatrix.d2,
+            AssimpMatrix.a3, AssimpMatrix.b3, AssimpMatrix.c3, AssimpMatrix.d3,
+            AssimpMatrix.a4, AssimpMatrix.b4, AssimpMatrix.c4, AssimpMatrix.d4
+        );
+    }
 
     unsigned int CalcConstantBufferByteSize(unsigned int ByteSize) const
     {

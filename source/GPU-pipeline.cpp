@@ -86,25 +86,14 @@ int main(int, char**)
 	}
 
 	//	Initialize the level manually.
-	//	Static Mesh Actor.
-	const StaticMeshActor* StaticMeshActorInstance = Level::GetInstance().InstantiateStaticMeshActor("D:\\GPU-pipeline\\content\\mesh\\sponza.obj");
-	for (unsigned int I = 0; I < StaticMeshActorInstance->GetSubMeshCount(); ++I)
-	{
-		PipelineInterface::GetInstance().CreateMeshProxyBuffer(StaticMeshActorInstance->GetMeshInstance(I), StaticMeshActorInstance->GetMeshProxyInstance(I));
-		PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(StaticMeshActorInstance->GetMeshletDataInstance(I), StaticMeshActorInstance->GetMeshletDataProxyInstance(I));
-	}
-	PipelineInterface::GetInstance().CreateConstantBuffer(StaticMeshActorInstance);
 
 	//	Culling Visual Camera Actor.
-	StaticMeshActor* CullingCameraActorInstance = Level::GetInstance().InstantiateCullingVisualCameraActor("D:\\GPU-pipeline\\content\\mesh\\jeep1.fbx");
-	for (unsigned int I = 0; I < CullingCameraActorInstance->GetSubMeshCount(); ++I)
-	{
-		PipelineInterface::GetInstance().CreateMeshProxyBuffer(CullingCameraActorInstance->GetMeshInstance(I), CullingCameraActorInstance->GetMeshProxyInstance(I));
-		PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(CullingCameraActorInstance->GetMeshletDataInstance(I), CullingCameraActorInstance->GetMeshletDataProxyInstance(I));
-	}
-	PipelineInterface::GetInstance().CreateConstantBuffer(CullingCameraActorInstance);
+	StaticMeshActor* CullingCameraActorInstance = Level::GetInstance().InstantiateCullingVisualCameraActor();
 	
-	// 创建摄像机Actor
+	//	Static Mesh Actors.
+	Level::GetInstance().InstantiateStaticMeshActors("D:\\GPU-pipeline\\content\\mesh\\sponza.obj");
+	
+	// Camera Actor.
 	CameraActor* CameraActorInstance = Level::GetInstance().InstantiateCameraActor();
 	PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
 	
@@ -228,7 +217,9 @@ int main(int, char**)
 			for (unsigned int I = 0; I < AllActors.size(); ++I)
 			{
 				bool IsSelected = (SelectedActor == AllActors[I]);
-				if (ImGui::Selectable(AllActors[I]->Name.c_str(), IsSelected))
+				
+				std::string UniqueLabel = AllActors[I]->Name + "##" + std::to_string(I);
+				if (ImGui::Selectable(UniqueLabel.c_str(), IsSelected))
 				{
 					SelectedActor = AllActors[I];
 				}
