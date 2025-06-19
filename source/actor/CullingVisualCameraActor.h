@@ -14,7 +14,6 @@ public:
 
     CullingVisualCameraActor(
         std::unique_ptr<Mesh> InMeshInstance,
-        std::unique_ptr<MeshProxy> InMeshProxyInstance,
         std::vector<std::unique_ptr<MeshletData>> InMeshletDataInstances,
         std::vector<std::unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances);
     

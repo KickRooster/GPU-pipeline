@@ -14,7 +14,6 @@ protected:
     DirectX::XMMATRIX TransformationMatrix;    // SRT order: Scale * Rotation * Translation (UE style)
     
     std::unique_ptr<Mesh> MeshInstance;
-    std::unique_ptr<MeshProxy> MeshProxyInstance;
 
     std::vector<std::unique_ptr<MeshletData>> MeshletDataInstances;
     std::vector<std::unique_ptr<MeshletDataProxy>> MeshletDataProxyInstances;
@@ -25,13 +24,10 @@ protected:
 public:
     StaticMeshActor(
         std::unique_ptr<Mesh> InMeshInstance,
-        std::unique_ptr<MeshProxy> InMeshProxyInstance,
         std::vector<std::unique_ptr<MeshletData>> InMeshletDataInstances,
         std::vector<std::unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances);
     
     void Update(float DeltaTime) override;
-    Mesh* GetMeshInstance() const;
-    MeshProxy* GetMeshProxyInstance() const;
     const std::vector<std::unique_ptr<MeshletData>>& GetMeshletDataInstances() const;
     const std::vector<std::unique_ptr<MeshletDataProxy>>& GetMeshletDataProxyInstances() const;
     

@@ -14,7 +14,6 @@ int Level::InstantiateStaticMeshActors(const string& Path)
     MeshLoader::GetInstance().LoadMesh(Path, Meshes);
 
     vector<unique_ptr<Mesh>> MeshInstances;
-    vector<unique_ptr<MeshProxy>> MeshProxyInstances;
     
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
@@ -25,9 +24,6 @@ int Level::InstantiateStaticMeshActors(const string& Path)
         MeshInstance->Name = Meshes[I].Name;
         MeshInstance->BoundingSphere = Meshes[I].BoundingSphere;
         MeshInstances.push_back(move(MeshInstance));
-        
-        unique_ptr<MeshProxy> MeshProxyInstance = make_unique<MeshProxy>();
-        MeshProxyInstances.push_back(move(MeshProxyInstance));
     }
 
     map<int, vector<unique_ptr<MeshletData>>> MeshletDatasMap;
@@ -55,8 +51,6 @@ int Level::InstantiateStaticMeshActors(const string& Path)
 
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
-        //PipelineInterface::GetInstance().CreateMeshProxyBuffer(MeshInstances[I].get(), MeshProxyInstances[I].get());
-        
         for (size_t LODIndex = 0; LODIndex < MeshletDatasMap[I].size(); ++LODIndex)
         {
             PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(
@@ -68,7 +62,6 @@ int Level::InstantiateStaticMeshActors(const string& Path)
         
         unique_ptr<StaticMeshActor> ActorInstance = make_unique<StaticMeshActor>(
             move(MeshInstances[I]),
-            move(MeshProxyInstances[I]),
             move(MeshletDatasMap[I]),
             move(MeshletDataProxiesMap[I]));
 
@@ -104,7 +97,6 @@ StaticMeshActor* Level::InstantiateCullingVisualCameraActor()
     MeshInstance->Indices = Meshes[0].Indices;
     MeshInstance->Local2WorldMatrix = Meshes[0].Local2WorldMatrix;
     MeshInstance->Name = Meshes[0].Name;
-    unique_ptr<MeshProxy> MeshProxyInstance = make_unique<MeshProxy>();
     
     vector<MeshLODData> LODDatasForCamera;
     MeshLoader::GetInstance().GenerateWholeMeshLODData(Meshes[0], MeshLODSettings::GetInstance(), LODDatasForCamera);
@@ -119,8 +111,6 @@ StaticMeshActor* Level::InstantiateCullingVisualCameraActor()
         MeshletDataProxyInstances[Index] = make_unique<MeshletDataProxy>();
     }
 
-    //PipelineInterface::GetInstance().CreateMeshProxyBuffer(MeshInstance.get(), MeshProxyInstance.get());
-    
     for (size_t Index = 0; Index < MeshletDatas.size(); ++Index)
     {
         PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(
@@ -132,7 +122,6 @@ StaticMeshActor* Level::InstantiateCullingVisualCameraActor()
 
     unique_ptr<CullingVisualCameraActor> ActorInstance = make_unique<CullingVisualCameraActor>(
         move(MeshInstance),
-        move(MeshProxyInstance),
         move(MeshletDatas),
         move(MeshletDataProxyInstances));
 
