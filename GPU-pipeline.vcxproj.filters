@@ -19,6 +19,10 @@
     <Filter Include="ImGUISource">
       <UniqueIdentifier>{996d87e3-1b5f-445c-bbae-f1f1a57c4a66}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{8B820417-5E85-4A1D-9F67-8DB2C6A3B2F1}</UniqueIdentifier>
+      <Extensions>hlsl;fx;fxh;cso</Extensions>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="source\actor\CameraActor.cpp">
@@ -122,5 +126,17 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="content\shader\meshlet_as.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="content\shader\meshlet_ms.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="content\shader\meshlet_ps.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="content\shader\color.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

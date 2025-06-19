@@ -25,6 +25,7 @@
 #include "../thirdpatry/ImGuizmo/ImGuizmo.h"
 #include "../thirdpatry/imGuIZMO.quat/imguizmo_quat/imGuIZMOquat.h"
 
+using namespace std;
 using namespace DirectX;
 
 unsigned long FenceLastSignaledValue = 0;
@@ -212,13 +213,13 @@ int main(int, char**)
 
 		ImGui::Begin("Outliner");
 		{
-			std::vector<StaticMeshActor*> AllActors = Level::GetInstance().GetStaticMeshActors();
+			vector<StaticMeshActor*> AllActors = Level::GetInstance().GetStaticMeshActors();
 
 			for (unsigned int I = 0; I < AllActors.size(); ++I)
 			{
 				bool IsSelected = (SelectedActor == AllActors[I]);
 				
-				std::string UniqueLabel = AllActors[I]->Name + "##" + std::to_string(I);
+				string UniqueLabel = AllActors[I]->Name + "##" + to_string(I);
 				if (ImGui::Selectable(UniqueLabel.c_str(), IsSelected))
 				{
 					SelectedActor = AllActors[I];
@@ -359,7 +360,7 @@ int main(int, char**)
 			XMStoreFloat4x4(&ViewMatrixInv4x, ViewMatrixInv);
 			XMStoreFloat4x4(&ProjectionMatrix4x4, ProjectionMatrix);
 			
-			const float AxisIndicatorSize = std::min(ViewportSize.x, ViewportSize.y) * 0.2f;
+			const float AxisIndicatorSize = min(ViewportSize.x, ViewportSize.y) * 0.2f;
 			ImVec2 WindowPos = ImGui::GetWindowPos();
 			ImVec2 ContentMin = ImGui::GetWindowContentRegionMin();
 			ImVec2 AxisIndicatorPos = ImVec2(

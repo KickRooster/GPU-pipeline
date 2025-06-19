@@ -3,61 +3,74 @@
 #include "../actor/StaticMeshActor.h"
 #include "../mesh/MeshLoader.h"
 #include "../dx12/PipelineInterface.h"
+#include <map>
 
 using namespace std;
 using namespace DirectX;
 
-int Level::InstantiateStaticMeshActors(const std::string& Path)
+int Level::InstantiateStaticMeshActors(const string& Path)
 {
     vector<Mesh> Meshes;
     MeshLoader::GetInstance().LoadMesh(Path, Meshes);
 
-    vector<MeshletDataForMeshOptimizer> MeshletDatas;
-    MeshLoader::GetInstance().GenerateMeshletData(Meshes, MeshletDatas);
-
-    std::vector<std::unique_ptr<Mesh>> MeshInstances;
-    std::vector<std::unique_ptr<MeshProxy>> MeshProxyInstances;
+    vector<unique_ptr<Mesh>> MeshInstances;
+    vector<unique_ptr<MeshProxy>> MeshProxyInstances;
     
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
         unique_ptr<Mesh> MeshInstance = make_unique<Mesh>();
         MeshInstance->Vertices = Meshes[I].Vertices;
         MeshInstance->Indices = Meshes[I].Indices;
-        MeshInstances.push_back(std::move(MeshInstance));
+        MeshInstance->Local2WorldMatrix = Meshes[I].Local2WorldMatrix;
+        MeshInstance->Name = Meshes[I].Name;
+        MeshInstance->BoundingSphere = Meshes[I].BoundingSphere;
+        MeshInstances.push_back(move(MeshInstance));
         
         unique_ptr<MeshProxy> MeshProxyInstance = make_unique<MeshProxy>();
-        MeshProxyInstances.push_back(std::move(MeshProxyInstance));
+        MeshProxyInstances.push_back(move(MeshProxyInstance));
     }
 
-    std::vector<std::unique_ptr<MeshletData>> MeshletDataInstances;
-    std::vector<std::unique_ptr<MeshletDataProxy>> MeshletDataProxyInstances;
+    map<int, vector<unique_ptr<MeshletData>>> MeshletDatasMap;
+    map<int, vector<unique_ptr<MeshletDataProxy>>> MeshletDataProxiesMap;
+    map<int, vector<MeshLODData>> MeshLODDatasMap;
     
-    for (unsigned int I = 0; I < MeshletDatas.size(); ++I)
+    for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
-        unique_ptr<MeshletData> MeshletDataInstance = make_unique<MeshletData>();
-        MeshletDataInstance->Meshlets = MeshletDatas[I].Meshlets;
-        MeshletDataInstance->MeshletVertices = MeshletDatas[I].MeshletVertices;
-        for (unsigned int J = 0; J < MeshletDatas[I].MeshletIndices.size(); ++J)
-        {
-            MeshletDataInstance->MeshletIndices.push_back(static_cast<unsigned int>(MeshletDatas[I].MeshletIndices[J]));
-        }
-        MeshletDataInstance->MeshletBounds = MeshletDatas[I].MeshletBounds;
-        MeshletDataInstances.push_back(std::move(MeshletDataInstance));
+        vector<MeshLODData> LODDatas;
+        MeshLoader::GetInstance().GenerateWholeMeshLODData(Meshes[I], MeshLODSettings::GetInstance(), LODDatas);
+
+        vector<unique_ptr<MeshletData>> MeshletDatas;
+        MeshLoader::GetInstance().GenerateWholeMeshletData(LODDatas, MeshletDatas);
         
-        unique_ptr<MeshletDataProxy> MeshletDataProxyInstance = make_unique<MeshletDataProxy>();
-        MeshletDataProxyInstances.push_back(std::move(MeshletDataProxyInstance));
+        vector<unique_ptr<MeshletDataProxy>> MeshletDataProxies;
+        for (size_t Index = 0; Index < MeshletDatas.size(); ++Index)
+        {
+            MeshletDataProxies.emplace_back(make_unique<MeshletDataProxy>());
+        }
+        
+        MeshletDatasMap.emplace(I, move(MeshletDatas));
+        MeshletDataProxiesMap.emplace(I, move(MeshletDataProxies));
+        MeshLODDatasMap.emplace(I, move(LODDatas));
     }
 
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
-        PipelineInterface::GetInstance().CreateMeshProxyBuffer(MeshInstances[I].get(), MeshProxyInstances[I].get());
-        PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(MeshletDataInstances[I].get(), MeshletDataProxyInstances[I].get());
+        //PipelineInterface::GetInstance().CreateMeshProxyBuffer(MeshInstances[I].get(), MeshProxyInstances[I].get());
+        
+        for (size_t LODIndex = 0; LODIndex < MeshletDatasMap[I].size(); ++LODIndex)
+        {
+            PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(
+                MeshLODDatasMap[I][LODIndex].Vertices,
+                MeshletDatasMap[I][LODIndex].get(), 
+                MeshletDataProxiesMap[I][LODIndex].get()
+                );
+        }
         
         unique_ptr<StaticMeshActor> ActorInstance = make_unique<StaticMeshActor>(
             move(MeshInstances[I]),
             move(MeshProxyInstances[I]),
-            move(MeshletDataInstances[I]),
-            move(MeshletDataProxyInstances[I]));
+            move(MeshletDatasMap[I]),
+            move(MeshletDataProxiesMap[I]));
 
         ActorInstance->Transform.Position.x = 0;
         ActorInstance->Transform.Position.y = 0;
@@ -80,45 +93,54 @@ int Level::InstantiateStaticMeshActors(const std::string& Path)
 
 StaticMeshActor* Level::InstantiateCullingVisualCameraActor()
 {
-    //  XXX:    Hard recorded file path, and it only has 1 sub mesh by default.
-    const string CameraPath = "D:\\GPU-pipeline\\content\\mesh\\jeep1.fbx";
+    //  XXX:    Hard recorded file path, and it must has 1 sub mesh only.
+    const string CameraPath = "D:\\GPU-pipeline\\content\\mesh\\duck.fbx";
 
     vector<Mesh> Meshes;
     MeshLoader::GetInstance().LoadMesh(CameraPath, Meshes);
 
-    vector<MeshletDataForMeshOptimizer> MeshletDatas;
-    MeshLoader::GetInstance().GenerateMeshletData(Meshes, MeshletDatas);
-
     unique_ptr<Mesh> MeshInstance = make_unique<Mesh>();
     MeshInstance->Vertices = Meshes[0].Vertices;
     MeshInstance->Indices = Meshes[0].Indices;
+    MeshInstance->Local2WorldMatrix = Meshes[0].Local2WorldMatrix;
+    MeshInstance->Name = Meshes[0].Name;
     unique_ptr<MeshProxy> MeshProxyInstance = make_unique<MeshProxy>();
     
-    unique_ptr<MeshletData> MeshletDataInstance = make_unique<MeshletData>();
-    MeshletDataInstance->Meshlets = MeshletDatas[0].Meshlets;
-    MeshletDataInstance->MeshletVertices = MeshletDatas[0].MeshletVertices;
-    for (unsigned int J = 0; J < MeshletDatas[0].MeshletIndices.size(); ++J)
+    vector<MeshLODData> LODDatasForCamera;
+    MeshLoader::GetInstance().GenerateWholeMeshLODData(Meshes[0], MeshLODSettings::GetInstance(), LODDatasForCamera);
+
+    vector<unique_ptr<MeshletData>> MeshletDatas;
+    MeshLoader::GetInstance().GenerateWholeMeshletData(LODDatasForCamera, MeshletDatas);
+    
+    vector<unique_ptr<MeshletDataProxy>> MeshletDataProxyInstances;
+    MeshletDataProxyInstances.resize(MeshletDatas.size());
+    for (size_t Index = 0; Index < MeshletDatas.size(); ++Index)
     {
-        MeshletDataInstance->MeshletIndices.push_back(static_cast<unsigned int>(MeshletDatas[0].MeshletIndices[J]));
+        MeshletDataProxyInstances[Index] = make_unique<MeshletDataProxy>();
     }
-    MeshletDataInstance->MeshletBounds = MeshletDatas[0].MeshletBounds;
+
+    //PipelineInterface::GetInstance().CreateMeshProxyBuffer(MeshInstance.get(), MeshProxyInstance.get());
     
-    unique_ptr<MeshletDataProxy> MeshletDataProxyInstance = make_unique<MeshletDataProxy>();
-    
-    PipelineInterface::GetInstance().CreateMeshProxyBuffer(MeshInstance.get(), MeshProxyInstance.get());
-    PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(MeshletDataInstance.get(), MeshletDataProxyInstance.get());
+    for (size_t Index = 0; Index < MeshletDatas.size(); ++Index)
+    {
+        PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(
+        LODDatasForCamera[Index].Vertices,
+            MeshletDatas[Index].get(), 
+            MeshletDataProxyInstances[Index].get()
+            );
+    }
 
     unique_ptr<CullingVisualCameraActor> ActorInstance = make_unique<CullingVisualCameraActor>(
-        std::move(MeshInstance),
-        std::move(MeshProxyInstance),
-        std::move(MeshletDataInstance),
-        std::move(MeshletDataProxyInstance));
+        move(MeshInstance),
+        move(MeshProxyInstance),
+        move(MeshletDatas),
+        move(MeshletDataProxyInstances));
 
     PipelineInterface::GetInstance().CreateConstantBuffer(static_cast<StaticMeshActor*>(ActorInstance.get()));
     
-    ActorInstance->Transform.Position.x = 0;
-    ActorInstance->Transform.Position.y = 70;
-    ActorInstance->Transform.Position.z = -100;
+    ActorInstance->Transform.Position.x = 25;
+    ActorInstance->Transform.Position.y = 500;
+    ActorInstance->Transform.Position.z = 30;
     ActorInstance->Transform.Scale.x = 1.0f;
     ActorInstance->Transform.Scale.y = 1.0f;
     ActorInstance->Transform.Scale.z = 1.0f;
@@ -135,7 +157,7 @@ StaticMeshActor* Level::InstantiateCullingVisualCameraActor()
     const size_t EndPos = CameraPath.find_last_of('.');
     ActorInstance->Name = CameraPath.substr(StartPos + 1, EndPos - StartPos - 1);
     
-    StaticMeshActors.push_back(std::move(ActorInstance));
+    StaticMeshActors.push_back(move(ActorInstance));
     
     return StaticMeshActors.back().get();
 }
@@ -152,7 +174,7 @@ CameraActor* Level::InstantiateCameraActor()
     ActorInstance->Transform.Position.z = -5.f;
     ActorInstance->LookDirection = XMFLOAT3(0, 0, 1);
     ActorInstance->UpDirection = XMFLOAT3(0, 1, 0);
-    CameraActors.push_back(std::move(ActorInstance));
+    CameraActors.push_back(move(ActorInstance));
 
     return CameraActors.back().get();
 }

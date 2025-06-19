@@ -16,9 +16,9 @@ protected:
     std::unique_ptr<Mesh> MeshInstance;
     std::unique_ptr<MeshProxy> MeshProxyInstance;
 
-    std::unique_ptr<MeshletData> MeshletDataInstance;
-    std::unique_ptr<MeshletDataProxy> MeshletDataProxyInstance;
-
+    std::vector<std::unique_ptr<MeshletData>> MeshletDataInstances;
+    std::vector<std::unique_ptr<MeshletDataProxy>> MeshletDataProxyInstances;
+    
     std::unique_ptr<StaticMeshActorConstantBuffer> ConstantBufferInstance;
     std::unique_ptr<ConstantBufferProxy> ConstantBufferProxyInstance;
 
@@ -26,13 +26,15 @@ public:
     StaticMeshActor(
         std::unique_ptr<Mesh> InMeshInstance,
         std::unique_ptr<MeshProxy> InMeshProxyInstance,
-        std::unique_ptr<MeshletData> InMeshletDataInstance,
-        std::unique_ptr<MeshletDataProxy> InMeshletDataProxyInstance);
+        std::vector<std::unique_ptr<MeshletData>> InMeshletDataInstances,
+        std::vector<std::unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances);
+    
     void Update(float DeltaTime) override;
     Mesh* GetMeshInstance() const;
     MeshProxy* GetMeshProxyInstance() const;
-    MeshletData* GetMeshletDataInstance() const;
-    MeshletDataProxy* GetMeshletDataProxyInstance() const;
+    const std::vector<std::unique_ptr<MeshletData>>& GetMeshletDataInstances() const;
+    const std::vector<std::unique_ptr<MeshletDataProxy>>& GetMeshletDataProxyInstances() const;
+    
     StaticMeshActorConstantBuffer* GetConstantBuffer() const;
     ConstantBufferProxy* GetConstantBufferProxy() const;
     DirectX::XMMATRIX GetWorldMatrix() const;
