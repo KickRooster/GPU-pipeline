@@ -8,12 +8,10 @@ using namespace DirectX;
 
 StaticMeshActor::StaticMeshActor(
     unique_ptr<Mesh> InMeshInstance,
-    unique_ptr<MeshProxy> InMeshProxyInstance,
     vector<unique_ptr<MeshletData>> InMeshletDataInstances,
     vector<unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances)
     :
     MeshInstance(move(InMeshInstance)),
-    MeshProxyInstance(move(InMeshProxyInstance)),
     MeshletDataInstances(move(InMeshletDataInstances)),
     MeshletDataProxyInstances(move(InMeshletDataProxyInstances))
 {
@@ -71,16 +69,6 @@ void StaticMeshActor::Update(float DeltaTime)
                 sizeof(StaticMeshActorConstantBuffer));
         }
     }
-}
-
-Mesh* StaticMeshActor::GetMeshInstance() const
-{
-    return MeshInstance.get();    
-}
-
-MeshProxy* StaticMeshActor::GetMeshProxyInstance() const
-{
-    return MeshProxyInstance.get();    
 }
 
 const vector<unique_ptr<MeshletData>>& StaticMeshActor::GetMeshletDataInstances() const

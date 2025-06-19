@@ -222,58 +222,6 @@ ErrorCode PipelineInterface::CompileShaderDXC(const wstring& ShaderPath, const w
     }
 }
 
-ErrorCode PipelineInterface::CreateVertexShaderPipelinestate()
-{
-    ComPtr<ID3DBlob> VertexShader;
-    ComPtr<ID3DBlob> PixelShader;
-
-    wstring ShaderPath = L"D:\\GPU-pipeline\\content\\shader\\color.hlsl";
-    
-    ErrorCode Result = CompileShaderFXC(ShaderPath, "VS", "vs_5_0", VertexShader);
-    if (Result != ErrorCode::OK)
-    {
-        return Result;
-    }
-    
-    Result = CompileShaderFXC(ShaderPath, "PS", "ps_5_0", PixelShader);
-    if (Result != ErrorCode::OK)
-    {
-        return Result;
-    }
-
-    D3D12_INPUT_ELEMENT_DESC InputElementDescs[] =
-        {
-        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
-        };
-    
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC PSODesc = {};
-    PSODesc.InputLayout = { InputElementDescs, _countof(InputElementDescs) };
-    PSODesc.pRootSignature = RootSignature.Get();
-    PSODesc.VS = CD3DX12_SHADER_BYTECODE(VertexShader.Get());
-    PSODesc.PS = CD3DX12_SHADER_BYTECODE(PixelShader.Get());
-    PSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    PSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    
-    PSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-    PSODesc.DepthStencilState.DepthEnable = TRUE;
-    PSODesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-    PSODesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
-    PSODesc.DepthStencilState.StencilEnable = FALSE;
-    
-    PSODesc.SampleMask = UINT_MAX;
-    PSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    PSODesc.NumRenderTargets = 1;
-    PSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-    PSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    PSODesc.SampleDesc.Count = 1;
-    D3DDevice->CreateGraphicsPipelineState(&PSODesc, IID_PPV_ARGS(&VertexShaderPipelineState));
-
-    return ErrorCode::OK;
-}
-
 ErrorCode PipelineInterface::CreateMeshShaderPipelinestate()
 {
     ComPtr<IDxcBlob> AmplificationShader;
@@ -674,12 +622,6 @@ void PipelineInterface::CleanUp()
         RootSignature = nullptr;
     }
 
-    if (VertexShaderPipelineState)
-    {
-        VertexShaderPipelineState->Release();
-        VertexShaderPipelineState = nullptr;
-    }
-
     if (MeshShaderPipelineState)
     {
         MeshShaderPipelineState->Release();
@@ -924,100 +866,6 @@ D3D12_GPU_DESCRIPTOR_HANDLE PipelineInterface::GetRenderTargetSRVGPUHandle(unsig
 //     ShapeProxyInstance->VertexBufferView.StrideInBytes = sizeof(Vertex);
 //     ShapeProxyInstance->VertexBufferView.SizeInBytes = VertexBufferSize;
 // }
-
-void PipelineInterface::CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProxy* MeshProxyInstance)
-{
-    const unsigned int VertexBufferSize = sizeof(Vertex) * static_cast<unsigned int>(MeshInstance->Vertices.size());
-    const unsigned int IndexBufferSize = sizeof(unsigned int) * static_cast<unsigned int>(MeshInstance->Indices.size());
-    
-    //  Create vertex buffer on default heap
-    CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
-    CD3DX12_RESOURCE_DESC VertexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(VertexBufferSize);
-    D3DDevice->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &VertexBufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&MeshProxyInstance->VertexBuffer));
-
-    //  Create index buffer on default heap
-    CD3DX12_RESOURCE_DESC IndexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(IndexBufferSize);
-    D3DDevice->CreateCommittedResource(&DefaultHeapProperties, D3D12_HEAP_FLAG_NONE, &IndexBufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&MeshProxyInstance->IndexBuffer));
-
-    //  Create vertex buffer on upload heap
-    CD3DX12_HEAP_PROPERTIES UploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
-    D3DDevice->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &VertexBufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&MeshProxyInstance->VertexBufferUpload));
-
-    //  Create index buffer on upload heap
-    D3DDevice->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &IndexBufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&MeshProxyInstance->IndexBufferUpload));
-    
-    //  Copy data to vertex buffer for uploading
-    unsigned int* VertexDataBegin;
-    CD3DX12_RANGE VertexReadRange(0, 0);        // We do not intend to read from this resource on the CPU.
-    MeshProxyInstance->VertexBufferUpload->Map(0, &VertexReadRange, reinterpret_cast<void**>(&VertexDataBegin));
-    memcpy(VertexDataBegin, MeshInstance->Vertices.data(), VertexBufferSize);
-    MeshProxyInstance->VertexBufferUpload->Unmap(0, nullptr);
-
-    //  Copy data to index buffer for uploading
-    unsigned int* IndexDataBegin;
-    CD3DX12_RANGE IndexReadRange = CD3DX12_RANGE(0, 0);        // We do not intend to read from this resource on the CPU.
-    MeshProxyInstance->IndexBufferUpload->Map(0, &IndexReadRange, reinterpret_cast<void**>(&IndexDataBegin));
-    memcpy(IndexDataBegin, MeshInstance->Indices.data(), IndexBufferSize);
-    MeshProxyInstance->IndexBufferUpload->Unmap(0, nullptr);
-    
-    FrameContext& FrameContext = FrameContexts[0];
-    
-    //  Reset command list for initializing resource, any command list is okay
-    FrameContext.CommandAllocator->Reset();
-    CommandList->Reset(FrameContext.CommandAllocator.Get(), nullptr);
-    
-    //  Record copy command
-    CommandList->CopyBufferRegion(
-        MeshProxyInstance->VertexBuffer.Get(), 0,
-        MeshProxyInstance->VertexBufferUpload.Get(), 0,
-        VertexBufferSize);
-    
-    //  Insert a barrier
-    CD3DX12_RESOURCE_BARRIER BufferBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        MeshProxyInstance->VertexBuffer.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-    CommandList->ResourceBarrier(1, &BufferBarrier);
-
-    //  Record copy command
-    CommandList->CopyBufferRegion(
-        MeshProxyInstance->IndexBuffer.Get(), 0,
-        MeshProxyInstance->IndexBufferUpload.Get(), 0,
-        IndexBufferSize);
-    
-    //  Insert a barrier
-    BufferBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        MeshProxyInstance->IndexBuffer.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_INDEX_BUFFER);
-    CommandList->ResourceBarrier(1, &BufferBarrier);
-    
-    //  Close command list
-    CommandList->Close();
-    
-    //  Execute command list
-    ID3D12GraphicsCommandList* CommandListPointer = CommandList.Get();
-    D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&CommandListPointer);
-    
-    //  Wait for it completion on GPU
-    UINT64 FenceValue = 1;
-    D3DCommandQueue->Signal(Fence.Get(), FenceValue);
-    if (Fence->GetCompletedValue() < FenceValue)
-    {
-        Fence->SetEventOnCompletion(FenceValue, FenceEvent);
-        WaitForSingleObject(FenceEvent, INFINITE);
-    }
-    
-    //  Initialize vertex buffer view, we will use it later when using it
-    MeshProxyInstance->VertexBufferView.BufferLocation = MeshProxyInstance->VertexBuffer->GetGPUVirtualAddress();
-    MeshProxyInstance->VertexBufferView.StrideInBytes = sizeof(Vertex);
-    MeshProxyInstance->VertexBufferView.SizeInBytes = VertexBufferSize;
-
-    //  Initialize index buffer view, we will use it later when using it
-    MeshProxyInstance->IndexBufferView.BufferLocation = MeshProxyInstance->IndexBuffer->GetGPUVirtualAddress();
-    MeshProxyInstance->IndexBufferView.Format = DXGI_FORMAT_R32_UINT;
-    MeshProxyInstance->IndexBufferView.SizeInBytes = IndexBufferSize;
-}
 
 void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Vertices, const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance)
 {
@@ -1373,64 +1221,6 @@ void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 Ne
     {
         bResizedLastFrame = false;
     }
-}
-
-void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance)
-{
-    D3D12_RESOURCE_BARRIER Barrier = {};
-    Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    Barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    Barrier.Transition.pResource = FrameContexts[FrameContextIndex].RenderTarget.Get();
-    Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-    CommandList->ResourceBarrier(1, &Barrier);
-    CommandList->OMSetRenderTargets(1, &FrameContexts[FrameContextIndex].RenderTargetCPUDescriptorHandle, false, &FrameContexts[FrameContextIndex].DepthStencilCPUDescriptorHandle);
-
-    ID3D12DescriptorHeap* RawHeap = D3DSRVCBVDescHeap.Get();
-    CommandList->SetDescriptorHeaps(1, &RawHeap);
-    
-    const float ClearColor[] = { 0, 0, 0, 1.0f };
-    CommandList->ClearRenderTargetView(FrameContexts[FrameContextIndex].RenderTargetCPUDescriptorHandle, ClearColor, 0, nullptr);
-
-    CommandList->ClearDepthStencilView(FrameContexts[FrameContextIndex].DepthStencilCPUDescriptorHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
-    
-    CD3DX12_VIEWPORT ViewPort = CD3DX12_VIEWPORT(0.f, 0.f, ViewportSize.x, ViewportSize.y);
-    CD3DX12_RECT ScissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(ViewportSize.x), static_cast<LONG>(ViewportSize.y));
-    CommandList->RSSetViewports(1, &ViewPort);
-    CommandList->RSSetScissorRects(1, &ScissorRect);
-
-    CommandList->SetGraphicsRootSignature(RootSignature.Get());
-    CommandList->SetPipelineState(VertexShaderPipelineState.Get());
-
-    if (LevelInstance->GetCameraActors().size() > 0)
-    {
-        const CameraActor* CameraActorInstance = LevelInstance->GetCameraActors()[0];
-
-        const D3D12_GPU_VIRTUAL_ADDRESS CameraConstantBufferAddress = CameraActorInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
-        CommandList->SetGraphicsRootConstantBufferView(0, CameraConstantBufferAddress);
-    }
-
-    for (int I = 0; I < static_cast<int>(LevelInstance->GetStaticMeshActors().size()); ++I)
-    {
-        const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = LevelInstance->GetStaticMeshActors()[I]->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
-        CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
-        
-        D3D12_VERTEX_BUFFER_VIEW VertexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance()->VertexBufferView;
-        CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
-        D3D12_INDEX_BUFFER_VIEW IndexBufferView = LevelInstance->GetStaticMeshActors()[I]->GetMeshProxyInstance()->IndexBufferView;
-        CommandList->IASetIndexBuffer(&IndexBufferView);
-        CommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-        CommandList->DrawIndexedInstanced(
-            static_cast<UINT>(LevelInstance->GetStaticMeshActors()[I]->GetMeshInstance()->Indices.size()),
-            1, 0, 0, 0);
-    }
-    
-    Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    CommandList->ResourceBarrier(1, &Barrier);
 }
 
 void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const Level* LevelInstance)

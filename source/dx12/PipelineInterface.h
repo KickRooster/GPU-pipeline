@@ -109,7 +109,6 @@ class PipelineInterface : public Singleton<PipelineInterface>
     unsigned int FrameIndex = 0;
     
     Microsoft::WRL::ComPtr<ID3D12RootSignature> RootSignature;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> VertexShaderPipelineState;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> MeshShaderPipelineState;
 
     DirectX::XMFLOAT2 ViewportSize = DirectX::XMFLOAT2(0, 0);
@@ -119,7 +118,6 @@ public:
     ErrorCode CreateRootSignature();
     ErrorCode CompileShaderFXC(const std::wstring& ShaderPath, const std::string& EntryPoint, const std::string& TargetProfile, Microsoft::WRL::ComPtr<ID3DBlob>& OutShaderBlob) const;
     ErrorCode CompileShaderDXC(const std::wstring& ShaderPath, const std::wstring& EntryPoint, const std::wstring& TargetProfile, Microsoft::WRL::ComPtr<IDxcBlob>& OutShaderBlob) const;
-    ErrorCode CreateVertexShaderPipelinestate();
     ErrorCode CreateMeshShaderPipelinestate();
     ErrorCode Initialize(HWND hWnd);
     void CleanUp();
@@ -140,11 +138,9 @@ public:
     IDXGISwapChain3* GetSwapChain();
     void UpdateFrameContextFenceValue(unsigned int FrameContextIndex, unsigned long FenceValue);
     D3D12_GPU_DESCRIPTOR_HANDLE GetRenderTargetSRVGPUHandle(unsigned int FrameContextIndex) const;
-    void CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProxy* MeshProxyInstance);
     void CreateMeshletDataProxyBuffer(const std::vector<Vertex>& Vertices, const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance);
     void CreateConstantBuffer(const CameraActor* CameraActorInstance);
     void CreateConstantBuffer(const StaticMeshActor* ActorInstance);
     void UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);
-    void RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance);
     void RenderLevelMeshlet(unsigned int FrameContextIndex, const Level* LevelInstance);
 };

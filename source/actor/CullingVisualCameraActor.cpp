@@ -5,12 +5,10 @@ using namespace DirectX;
 
 CullingVisualCameraActor::CullingVisualCameraActor(
     unique_ptr<Mesh> InMeshInstance,
-    unique_ptr<MeshProxy> InMeshProxyInstance,
     vector<unique_ptr<MeshletData>> InMeshletDataInstances,
     vector<unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances)
 :StaticMeshActor(
     move(InMeshInstance),
-    move(InMeshProxyInstance),
     move(InMeshletDataInstances),
     move(InMeshletDataProxyInstances))
 {

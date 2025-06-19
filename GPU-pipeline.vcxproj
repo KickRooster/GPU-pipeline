@@ -209,7 +209,6 @@
     <None Include="content\shader\meshlet_as.hlsl" />
     <None Include="content\shader\meshlet_ms.hlsl" />
     <None Include="content\shader\meshlet_ps.hlsl" />
-    <None Include="content\shader\color.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\actor\CameraActor.h" />
