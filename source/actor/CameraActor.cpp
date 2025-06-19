@@ -1,4 +1,5 @@
 #include "CameraActor.h"
+#include "../mesh/MeshLoader.h"
 
 using namespace std;
 using namespace DirectX;
@@ -152,7 +153,9 @@ void CameraActor::Update(float DeltaTime)
     {
         ConstantBufferInstance->ViewPosition = Transform.Position;
     }
-    ConstantBufferInstance->Padding = 0.0f;
+    
+    ConstantBufferInstance->RecipTanHalfFovy = 1.0f / tanf((FovY * XM_PI / 180.f) * 0.5f);
+    ConstantBufferInstance->LODCount = MeshLODSettings::GetInstance().NumLODs;
     
     if (ConstantBufferProxyInstance->MappedData != nullptr)
     {

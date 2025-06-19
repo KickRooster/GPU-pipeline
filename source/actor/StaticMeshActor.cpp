@@ -6,15 +6,24 @@
 using namespace std;
 using namespace DirectX;
 
-StaticMeshActor::StaticMeshActor(std::unique_ptr<Mesh> InMeshInstance, std::unique_ptr<MeshProxy> InMeshProxyInstance, std::unique_ptr<MeshletData> InMeshletDataInstance, std::unique_ptr<MeshletDataProxy> InMeshletDataProxyInstance)
+StaticMeshActor::StaticMeshActor(
+    unique_ptr<Mesh> InMeshInstance,
+    unique_ptr<MeshProxy> InMeshProxyInstance,
+    vector<unique_ptr<MeshletData>> InMeshletDataInstances,
+    vector<unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances)
     :
     MeshInstance(move(InMeshInstance)),
     MeshProxyInstance(move(InMeshProxyInstance)),
-    MeshletDataInstance(move(InMeshletDataInstance)),
-    MeshletDataProxyInstance(move(InMeshletDataProxyInstance))
+    MeshletDataInstances(move(InMeshletDataInstances)),
+    MeshletDataProxyInstances(move(InMeshletDataProxyInstances))
 {
     ConstantBufferInstance = make_unique<StaticMeshActorConstantBuffer>();
     ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
+    
+    for (size_t I = 0; I < MeshletDataInstances.size(); ++I)
+    {
+        ConstantBufferInstance->MeshletCounts[I] = static_cast<unsigned int>(MeshletDataInstances[I]->Meshlets.size());
+    }
     
     if (MeshInstance)
     {
@@ -45,9 +54,14 @@ void StaticMeshActor::Update(float DeltaTime)
     {
         XMStoreFloat4x4(&ConstantBufferInstance->World, XMMatrixTranspose(TransformationMatrix));
         
-        XMMATRIX WorldInverse = XMMatrixInverse(nullptr, TransformationMatrix);
-        XMMATRIX WorldInvTranspose = XMMatrixTranspose(WorldInverse);
+        const XMMATRIX WorldInverse = XMMatrixInverse(nullptr, TransformationMatrix);
+        const XMMATRIX WorldInvTranspose = XMMatrixTranspose(WorldInverse);
         XMStoreFloat4x4(&ConstantBufferInstance->WorldInvTranspose, XMMatrixTranspose(WorldInvTranspose));
+        
+        if (MeshInstance)
+        {
+            ConstantBufferInstance->BoundingSphere = MeshInstance->BoundingSphere;
+        }
         
         if (ConstantBufferProxyInstance->MappedData != nullptr)
         {
@@ -69,14 +83,14 @@ MeshProxy* StaticMeshActor::GetMeshProxyInstance() const
     return MeshProxyInstance.get();    
 }
 
-MeshletData* StaticMeshActor::GetMeshletDataInstance() const
+const vector<unique_ptr<MeshletData>>& StaticMeshActor::GetMeshletDataInstances() const
 {
-    return MeshletDataInstance.get();    
+    return MeshletDataInstances;
 }
 
-MeshletDataProxy* StaticMeshActor::GetMeshletDataProxyInstance() const
+const vector<unique_ptr<MeshletDataProxy>>& StaticMeshActor::GetMeshletDataProxyInstances() const
 {
-    return MeshletDataProxyInstance.get();    
+    return MeshletDataProxyInstances;
 }
 
 StaticMeshActorConstantBuffer* StaticMeshActor::GetConstantBuffer() const

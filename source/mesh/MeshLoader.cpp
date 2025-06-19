@@ -1,4 +1,5 @@
 #include "MeshLoader.h"
+#include "../misc/Math.h"
 
 using namespace std;
 using namespace DirectX;
@@ -80,11 +81,100 @@ void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, vector<Me
     }
 
     OutMesh.Name = AssimpMesh->mName.C_Str();
+    
+    vector<float> Positions;
+    Positions.reserve(OutMesh.Vertices.size() * 3);
+    for (const auto& Vertex : OutMesh.Vertices)
+    {
+        Positions.push_back(Vertex.Position.x);
+        Positions.push_back(Vertex.Position.y);
+        Positions.push_back(Vertex.Position.z);
+    }
+    
+    meshopt_Bounds SphereBounds = meshopt_computeSphereBounds(
+        Positions.data(),
+        OutMesh.Vertices.size(),
+        sizeof(float) * 3,
+        nullptr,
+        0);
+    
+    OutMesh.BoundingSphere.x = SphereBounds.center[0];
+    OutMesh.BoundingSphere.y = SphereBounds.center[1]; 
+    OutMesh.BoundingSphere.z = SphereBounds.center[2];
+    OutMesh.BoundingSphere.w = SphereBounds.radius;
 
     OutMeshes.push_back(OutMesh);
 }
 
-ErrorCode MeshLoader::LoadMesh(const std::string& Path, vector<Mesh>& OutMeshes)
+void MeshLoader::GenerateMeshletData(const vector<Vertex>& Vertices, const vector<unsigned int>& Indices, MeshletData& OutMeshletData) const
+{
+    constexpr size_t MaxVertexCountPerMeshlet = 64;
+    constexpr size_t MaxTriangleCountPerMeshlet = 124;
+    constexpr float ConeWeight = 0.25f;
+    
+    MeshletDataForMeshOptimizer NativeMeshletData;
+    
+    const size_t MaxMeshletCount = meshopt_buildMeshletsBound(
+        Indices.size(), MaxVertexCountPerMeshlet, MaxTriangleCountPerMeshlet);
+
+    NativeMeshletData.Meshlets.resize(MaxMeshletCount);
+    NativeMeshletData.MeshletVertices.resize(MaxMeshletCount * MaxVertexCountPerMeshlet);
+    NativeMeshletData.MeshletIndices.resize(MaxMeshletCount * MaxTriangleCountPerMeshlet * 3);
+    
+    const size_t MeshletCount = meshopt_buildMeshlets(
+        NativeMeshletData.Meshlets.data(),
+        NativeMeshletData.MeshletVertices.data(),
+        NativeMeshletData.MeshletIndices.data(),
+        Indices.data(),
+        Indices.size(),
+        &Vertices[0].Position.x,
+        Vertices.size(),
+        sizeof(Vertex),
+        MaxVertexCountPerMeshlet,
+        MaxTriangleCountPerMeshlet,
+        ConeWeight);
+
+    const meshopt_Meshlet& LastMeshlet = NativeMeshletData.Meshlets[MeshletCount - 1];
+    NativeMeshletData.MeshletVertices.resize(LastMeshlet.vertex_offset + LastMeshlet.vertex_count);
+    NativeMeshletData.MeshletIndices.resize(LastMeshlet.triangle_offset + ((LastMeshlet.triangle_count * 3 + 3) & ~3));
+    NativeMeshletData.Meshlets.resize(MeshletCount);
+
+    for (size_t J = 0; J < NativeMeshletData.Meshlets.size(); ++J)
+    {
+        const meshopt_Meshlet& CurrentMeshlet = NativeMeshletData.Meshlets[J];
+        meshopt_optimizeMeshlet(
+            &NativeMeshletData.MeshletVertices[CurrentMeshlet.vertex_offset],
+            &NativeMeshletData.MeshletIndices[CurrentMeshlet.triangle_offset],
+            CurrentMeshlet.triangle_count,
+            CurrentMeshlet.vertex_count);
+    }
+
+    for (size_t J = 0; J < NativeMeshletData.Meshlets.size(); ++J)
+    {
+        const meshopt_Meshlet& CurrentMeshlet = NativeMeshletData.Meshlets[J];
+        meshopt_Bounds Bounds = meshopt_computeMeshletBounds(
+                &NativeMeshletData.MeshletVertices[CurrentMeshlet.vertex_offset],
+                &NativeMeshletData.MeshletIndices[CurrentMeshlet.triangle_offset],
+                CurrentMeshlet.triangle_count,
+                &Vertices[0].Position.x,
+                Vertices.size(),
+                sizeof(Vertex));
+        NativeMeshletData.MeshletBounds.push_back(Bounds);
+    }
+    
+    OutMeshletData.Meshlets = move(NativeMeshletData.Meshlets);
+    OutMeshletData.MeshletVertices = move(NativeMeshletData.MeshletVertices);
+    
+    OutMeshletData.MeshletIndices.resize(NativeMeshletData.MeshletIndices.size());
+    for (size_t I = 0; I < NativeMeshletData.MeshletIndices.size(); ++I)
+    {
+        OutMeshletData.MeshletIndices[I] = static_cast<unsigned int>(NativeMeshletData.MeshletIndices[I]);
+    }
+    
+    OutMeshletData.MeshletBounds = move(NativeMeshletData.MeshletBounds);
+}
+
+ErrorCode MeshLoader::LoadMesh(const string& Path, vector<Mesh>& OutMeshes)
 {
     Assimp::Importer Importer;
 
@@ -108,68 +198,117 @@ ErrorCode MeshLoader::LoadMesh(const std::string& Path, vector<Mesh>& OutMeshes)
     return ErrorCode::OK;
 }
 
-ErrorCode MeshLoader::GenerateMeshletData(const std::vector<Mesh>& Meshes, std::vector<MeshletDataForMeshOptimizer>& OutMeshletData) const
+void MeshLoader::GenerateWholeMeshLODData(const Mesh& Mesh, const MeshLODSettings& Settings, vector<MeshLODData>& OutLODDatas) const
 {
-    for (unsigned int I = 0; I < Meshes.size(); ++I)
+    constexpr float ScreenPercentages[] = {1.0f, 0.5f, 0.25f, 0.125f};
+    constexpr float TargetRetainPercentages[] = {1.0f, 0.75f, 0.5f, 0.25f};
+    
+    const size_t OriginalTriCount = Mesh.Indices.size() / 3;
+    
+    for (int I = 0; I < Settings.NumLODs; ++I)
     {
-        MeshletDataForMeshOptimizer MeshletDataInstance;
-    
-        constexpr size_t MaxVertexCountPerMeshlet = 64;
-        constexpr size_t MaxTriangleCountPerMeshlet = 124;
-        constexpr float ConeWeight = 0.25f;
+        MeshLODData LodLevel;
         
-        const size_t MaxMeshletCount = meshopt_buildMeshletsBound(
-            Meshes[I].Indices.size(), MaxVertexCountPerMeshlet, MaxTriangleCountPerMeshlet);
-    
-        MeshletDataInstance.Meshlets.resize(MaxMeshletCount);
-        MeshletDataInstance.MeshletVertices.resize(MaxMeshletCount * MaxVertexCountPerMeshlet);
-        MeshletDataInstance.MeshletIndices.resize(MaxMeshletCount * MaxTriangleCountPerMeshlet * 3);
-        
-        const size_t MeshletCount = meshopt_buildMeshlets(
-            MeshletDataInstance.Meshlets.data(),
-            MeshletDataInstance.MeshletVertices.data(),
-            MeshletDataInstance.MeshletIndices.data(),
-            Meshes[I].Indices.data(),
-            Meshes[I].Indices.size(),
-            &Meshes[I].Vertices[0].Position.x,
-            Meshes[I].Vertices.size(),
-            sizeof(Vertex),
-            MaxVertexCountPerMeshlet,
-            MaxTriangleCountPerMeshlet,
-            ConeWeight);
-
-        const meshopt_Meshlet& LastMeshlet = MeshletDataInstance.Meshlets[MeshletCount - 1];
-        MeshletDataInstance.MeshletVertices.resize(LastMeshlet.vertex_offset + LastMeshlet.vertex_count);
-        MeshletDataInstance.MeshletIndices.resize(LastMeshlet.triangle_offset + ((LastMeshlet.triangle_count * 3 + 3) & ~3));
-        MeshletDataInstance.Meshlets.resize(MeshletCount);
-
-        //  For optimal performance, it is recommended to further optimize each meshlet in isolation for better triangle and vertex locality.
-        for (size_t J = 0; J < MeshletDataInstance.Meshlets.size(); ++J)
+        if (I == 0)
         {
-            const meshopt_Meshlet& CurrentMeshlet = MeshletDataInstance.Meshlets[J];
-            meshopt_optimizeMeshlet(
-                &MeshletDataInstance.MeshletVertices[CurrentMeshlet.vertex_offset],
-                &MeshletDataInstance.MeshletIndices[CurrentMeshlet.triangle_offset],
-                CurrentMeshlet.triangle_count,
-                CurrentMeshlet.vertex_count);
+            LodLevel.Vertices = Mesh.Vertices;
+            LodLevel.Indices = Mesh.Indices;
         }
-
-        //  Generate extra data for each meshlet that can be saved and used at runtime to perform cluster culling.
-        for (size_t J = 0; J < MeshletDataInstance.Meshlets.size(); ++J)
+        else
         {
-            const meshopt_Meshlet& CurrentMeshlet = MeshletDataInstance.Meshlets[J];
-            meshopt_Bounds Bounds = meshopt_computeMeshletBounds(
-                    &MeshletDataInstance.MeshletVertices[CurrentMeshlet.vertex_offset],
-                    &MeshletDataInstance.MeshletIndices[CurrentMeshlet.triangle_offset],
-                    CurrentMeshlet.triangle_count,
-                    &Meshes[I].Vertices[0].Position.x,
-                    Meshes[I].Vertices.size(),
-                    sizeof(Vertex));
-            MeshletDataInstance.MeshletBounds.push_back(Bounds);
+            const float TargetRetainPercentage = TargetRetainPercentages[I];
+            size_t TargetTriCount = static_cast<size_t>(OriginalTriCount * TargetRetainPercentage);
+            
+            size_t MinTriCount = max(static_cast<size_t>(4), OriginalTriCount / 100); // 至少保留1%的三角形
+            TargetTriCount = max(TargetTriCount, MinTriCount);
+            
+            const size_t TargetIndexCount = TargetTriCount * 3;
+            
+            // 使用业界标准的error threshold
+            const float TargetError = 1e-2f;
+            
+            const vector<unsigned int>* SourceIndices = &Mesh.Indices;
+            
+            if (SourceIndices->size() <= TargetIndexCount)
+            {
+                LodLevel.Vertices = Mesh.Vertices;
+                LodLevel.Indices = *SourceIndices;
+            }
+            else
+            {
+                vector<unsigned int> SimplifiedIndices(SourceIndices->size());
+                
+                const size_t SimplifiedSize = meshopt_simplifySloppy(
+                    SimplifiedIndices.data(),
+                    SourceIndices->data(),
+                    SourceIndices->size(),
+                    &Mesh.Vertices[0].Position.x,
+                    Mesh.Vertices.size(),
+                    sizeof(Vertex),
+                    TargetIndexCount,
+                    TargetError);
+                
+                if (SimplifiedSize == 0)
+                {
+                    const vector<unsigned int>* FallbackIndices = (I == 1) ? &Mesh.Indices : &OutLODDatas[I-1].Indices;
+                    const vector<Vertex>* FallbackVertices = (I == 1) ? &Mesh.Vertices : &OutLODDatas[I-1].Vertices;
+                    
+                    LodLevel.Vertices = *FallbackVertices;
+                    LodLevel.Indices = *FallbackIndices;
+                }
+                else
+                {
+                    SimplifiedIndices.resize(SimplifiedSize);
+                    
+                    meshopt_optimizeVertexCache(
+                        SimplifiedIndices.data(),
+                        SimplifiedIndices.data(),
+                        SimplifiedIndices.size(),
+                        Mesh.Vertices.size());
+                        
+                    meshopt_optimizeOverdraw(
+                        SimplifiedIndices.data(),
+                        SimplifiedIndices.data(),
+                        SimplifiedIndices.size(),
+                        &Mesh.Vertices[0].Position.x,
+                        Mesh.Vertices.size(),
+                        sizeof(Vertex),
+                        1.05f);
+                    
+                    LodLevel.Vertices.resize(Mesh.Vertices.size());
+                    vector<unsigned int> RemappedIndices = SimplifiedIndices;
+                    
+                    const size_t OptimizedVertexCount = meshopt_optimizeVertexFetch(
+                        LodLevel.Vertices.data(),
+                        RemappedIndices.data(),
+                        RemappedIndices.size(),
+                        &Mesh.Vertices[0],
+                        Mesh.Vertices.size(),
+                        sizeof(Vertex));
+                    
+                    LodLevel.Vertices.resize(OptimizedVertexCount);
+                    LodLevel.Indices = RemappedIndices;
+                }
+            }
         }
         
-        OutMeshletData.push_back(MeshletDataInstance);
+        LodLevel.ScreenSizePercentage = ScreenPercentages[I];
+        LodLevel.ReductionPercentage = 1.0f - TargetRetainPercentages[I];
+        LodLevel.MaxDeviation = (I > 0) ? 1e-2f : 0.0f;
+        LodLevel.WeldingThreshold = 0.0f;
+        LodLevel.bLockBoundaries = Settings.bEnableBoundaryProtection;
+        LodLevel.bLockUVBoundaries = Settings.bEnableBoundaryProtection;
+        LodLevel.MinTriangleCount = (I > 0) ? static_cast<int>(max(static_cast<size_t>(4), OriginalTriCount / 100)) : static_cast<int>(OriginalTriCount);
+
+        OutLODDatas.push_back(LodLevel);
     }
+}
 
-    return ErrorCode::OK;
+void MeshLoader::GenerateWholeMeshletData(const vector<MeshLODData>& LODDatas, vector<unique_ptr<MeshletData>>& OutMeshletDatas) const
+{
+    for (size_t LodIndex = 0; LodIndex < LODDatas.size(); ++LodIndex)
+    {
+        OutMeshletDatas.emplace_back(make_unique<MeshletData>());
+        GenerateMeshletData(LODDatas[LodIndex].Vertices, LODDatas[LodIndex].Indices, *OutMeshletDatas[LodIndex]);
+    }
 }

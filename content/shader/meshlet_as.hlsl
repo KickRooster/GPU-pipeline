@@ -3,21 +3,18 @@ cbuffer cbCamera : register(b0)
     float4x4 gViewProj;
     float4   gPlanes[6];
     float3   gViewPosition;
-    float    gPadding;     
+    float    gRecipTanHalfFovy;  // 1.0f / tanf(fovy * 0.5f)
+    uint     gLODCount;
 };
 
 cbuffer cbStaticMeshActor : register(b1)
 {
     float4x4 gWorld;
     float4x4 gWorldInvTranspose;
+    float4   gBoundingSphere;    // xyz = center, w = radius
+    uint     gMeshletCounts[4];
 };
 
-cbuffer cbMeshInfo : register(b2)
-{
-    uint gMeshletCount;
-};
-
-// Bounds data structure exactly matching meshopt_Bounds memory layout
 struct BoundsData
 {
     float3 center;            // center[3]
@@ -46,15 +43,74 @@ struct Vertex
     float2 UV0;
 };
 
-StructuredBuffer<Vertex>     Vertices            : register(t0);
-StructuredBuffer<Meshlet>    Meshlets            : register(t1);
-StructuredBuffer<uint>       UniqueVertexIndices : register(t2);
-StructuredBuffer<uint>       MeshletTriangles    : register(t3);
-StructuredBuffer<BoundsData> MeshletBounds       : register(t4);
+StructuredBuffer<Vertex>     LOD0_Vertices            : register(t0);
+StructuredBuffer<Meshlet>    LOD0_Meshlets            : register(t1);
+StructuredBuffer<uint>       LOD0_UniqueVertexIndices : register(t2);
+StructuredBuffer<uint>       LOD0_MeshletTriangles    : register(t3);
+StructuredBuffer<BoundsData> LOD0_MeshletBounds       : register(t4);
+
+StructuredBuffer<Vertex>     LOD1_Vertices            : register(t5);
+StructuredBuffer<Meshlet>    LOD1_Meshlets            : register(t6);
+StructuredBuffer<uint>       LOD1_UniqueVertexIndices : register(t7);
+StructuredBuffer<uint>       LOD1_MeshletTriangles    : register(t8);
+StructuredBuffer<BoundsData> LOD1_MeshletBounds       : register(t9);
+
+StructuredBuffer<Vertex>     LOD2_Vertices            : register(t10);
+StructuredBuffer<Meshlet>    LOD2_Meshlets            : register(t11);
+StructuredBuffer<uint>       LOD2_UniqueVertexIndices : register(t12);
+StructuredBuffer<uint>       LOD2_MeshletTriangles    : register(t13);
+StructuredBuffer<BoundsData> LOD2_MeshletBounds       : register(t14);
+
+StructuredBuffer<Vertex>     LOD3_Vertices            : register(t15);
+StructuredBuffer<Meshlet>    LOD3_Meshlets            : register(t16);
+StructuredBuffer<uint>       LOD3_UniqueVertexIndices : register(t17);
+StructuredBuffer<uint>       LOD3_MeshletTriangles    : register(t18);
+StructuredBuffer<BoundsData> LOD3_MeshletBounds       : register(t19);
+
+BoundsData GetMeshletBounds(uint lodIndex, uint meshletIndex)
+{
+    if (lodIndex == 0)
+    {
+        return LOD0_MeshletBounds[meshletIndex];
+    }
+    
+    if (lodIndex == 1)
+    {
+        return LOD1_MeshletBounds[meshletIndex];
+    }
+    
+    if (lodIndex == 2)
+    {
+        return LOD2_MeshletBounds[meshletIndex];
+    }
+
+    return LOD3_MeshletBounds[meshletIndex];
+}
+
+// Microsoft DynamicLOD style LOD computation
+uint ComputeLOD(float3 center, float radius, float3 viewPos, float recipTanHalfFovy)
+{
+    float3 v = viewPos - center;
+    float distance = length(v);
+    
+    // Avoid division by zero and numerical issues
+    if (distance <= radius)
+        return 0; // Camera is inside the bounding sphere, use highest detail
+    
+    // Microsoft's formula: size = recipTanHalfFovy * r / sqrt(dot(v, v) - r * r)
+    float size = recipTanHalfFovy * radius / sqrt(distance * distance - radius * radius);
+    
+    // Map screen size to LOD level (adjusted for better transitions)
+    if (size > 0.5) return 0;      // Large on screen -> red (LOD 0) 
+    if (size > 0.25) return 1;     // Medium-large -> green (LOD 1)
+    if (size > 0.1) return 2;      // Medium -> blue (LOD 2)
+    return 3;                      // Small -> yellow (LOD 3)
+}
 
 struct Payload
 {
     uint MeshletIndices[32];
+    uint LODLevel;  // Pass LOD level to mesh shader
 };
 
 // The groupshared payload data to export to dispatched mesh shader threadgroups
@@ -115,14 +171,19 @@ void main(
     uint3 gtid : SV_GroupThreadID,
     uint dtid : SV_DispatchThreadID)
 {
-    bool visible = false;
+    bool visible = true;
     
-    if (dtid < gMeshletCount)
+    // Compute LOD based on screen-space coverage (Microsoft DynamicLOD style)
+    float3 worldCenter = mul(float4(gBoundingSphere.xyz, 1), gWorld).xyz;
+    uint lodIndex = ComputeLOD(worldCenter, gBoundingSphere.w, gViewPosition, gRecipTanHalfFovy);
+    
+    if (dtid < gMeshletCounts[lodIndex])
     {
         //  XXX:    Unsupport scaling now.
         float scale = 1.0f;
         
-        visible = IsVisible(MeshletBounds[dtid], gWorld, scale, gViewPosition);
+        // 通过函数获取对应LOD的bounds数据
+        visible = IsVisible(GetMeshletBounds(lodIndex, dtid), gWorld, scale, gViewPosition);
     }
 
     if (visible)
@@ -133,7 +194,8 @@ void main(
     
     uint visibleCount = WaveActiveCountBits(visible);
     
-    // 分发所需数量的MS线程组来渲染可见的meshlets
-    // 注意：虽然每个线程都执行这行代码，但系统会处理成只有一次实际的dispatch
+    // Pass LOD level to mesh shader
+    s_Payload.LODLevel = lodIndex;
+    
     DispatchMesh(visibleCount, 1, 1, s_Payload);
 } 

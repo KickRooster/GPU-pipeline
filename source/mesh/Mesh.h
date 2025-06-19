@@ -11,6 +11,7 @@ struct Mesh
     std::vector<Vertex> Vertices;
     std::vector<unsigned int> Indices;
     DirectX::XMFLOAT4X4 Local2WorldMatrix;
+    DirectX::XMFLOAT4 BoundingSphere;
 };
 
 struct MeshletDataForMeshOptimizer

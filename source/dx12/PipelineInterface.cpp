@@ -3,11 +3,11 @@
 #include "../actor/CameraActor.h"
 #include "../actor/StaticMeshActor.h"
 #include "../mesh/Mesh.h"
+#include "../mesh/MeshLoader.h"
 #include <d3dcompiler.h>
 #include <dxcapi.h>
 #include <iostream>
 #include <string>
-#include <Windows.h>
 
 #ifndef DX12_ENABLE_DEBUG_LAYER
 #define DX12_ENABLE_DEBUG_LAYER 1
@@ -35,32 +35,43 @@ ErrorCode PipelineInterface::CreateRootSignature()
         FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
     }
     
-    // 定义根参数 - 添加MeshInfo常量缓冲区
-    CD3DX12_ROOT_PARAMETER1 RootParameters[8] = {};
+    // 扩展根签名：支持4级LOD的所有资源传递
+    // 2个CBV + 4级LOD×5个SRV = 22个参数
+    CD3DX12_ROOT_PARAMETER1 RootParameters[22] = {};
     
-    // Parameter 0: Camera Constants (b0) - gViewProj矩阵 (相机变换)
+    // Parameter 0: Camera Constants (b0)
     RootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
     
-    // Parameter 1: Object Constants (b1) - gWorld矩阵 (对象变换)
+    // Parameter 1: Actor Constants (b1)
     RootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
     
-    // Parameter 2: MeshInfo Constants (b2) - meshlet数量信息
-    RootParameters[2].InitAsConstantBufferView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+    // LOD 0 资源 (参数 2-6, 寄存器 t0-t4)
+    RootParameters[2].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 Vertices
+    RootParameters[3].InitAsShaderResourceView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 Meshlets
+    RootParameters[4].InitAsShaderResourceView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 UniqueVertexIndices
+    RootParameters[5].InitAsShaderResourceView(3, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 MeshletTriangles
+    RootParameters[6].InitAsShaderResourceView(4, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 MeshletBounds
     
-    // Parameter 3: Vertex Buffer SRV (t0)
-    RootParameters[3].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    // LOD 1 资源 (参数 7-11, 寄存器 t5-t9)
+    RootParameters[7].InitAsShaderResourceView(5, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);    // LOD1 Vertices
+    RootParameters[8].InitAsShaderResourceView(6, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);    // LOD1 Meshlets
+    RootParameters[9].InitAsShaderResourceView(7, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);    // LOD1 UniqueVertexIndices
+    RootParameters[10].InitAsShaderResourceView(8, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);  // LOD1 MeshletTriangles
+    RootParameters[11].InitAsShaderResourceView(9, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);  // LOD1 MeshletBounds
     
-    // Parameter 4: Meshlets Buffer SRV (t1)
-    RootParameters[4].InitAsShaderResourceView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    // LOD 2 资源 (参数 12-16, 寄存器 t10-t14)
+    RootParameters[12].InitAsShaderResourceView(10, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 Vertices
+    RootParameters[13].InitAsShaderResourceView(11, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 Meshlets
+    RootParameters[14].InitAsShaderResourceView(12, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 UniqueVertexIndices
+    RootParameters[15].InitAsShaderResourceView(13, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 MeshletTriangles
+    RootParameters[16].InitAsShaderResourceView(14, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 MeshletBounds
     
-    // Parameter 5: Vertex Indices Buffer SRV (t2)
-    RootParameters[5].InitAsShaderResourceView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
-    
-    // Parameter 6: Triangle Indices Buffer SRV (t3)
-    RootParameters[6].InitAsShaderResourceView(3, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
-    
-    // Parameter 7: MeshletBounds Buffer SRV (t4)
-    RootParameters[7].InitAsShaderResourceView(4, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    // LOD 3 资源 (参数 17-21, 寄存器 t15-t19)
+    RootParameters[17].InitAsShaderResourceView(15, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 Vertices
+    RootParameters[18].InitAsShaderResourceView(16, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 Meshlets
+    RootParameters[19].InitAsShaderResourceView(17, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 UniqueVertexIndices
+    RootParameters[20].InitAsShaderResourceView(18, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 MeshletTriangles
+    RootParameters[21].InitAsShaderResourceView(19, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 MeshletBounds
     
     D3D12_ROOT_SIGNATURE_FLAGS RootSignatureFlags =
                 D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
@@ -89,7 +100,7 @@ ErrorCode PipelineInterface::CreateRootSignature()
     return ErrorCode::OK;
 }
 
-ErrorCode PipelineInterface::CompileShaderFXC(const std::wstring& ShaderPath, const std::string& EntryPoint, const std::string& TargetProfile, ComPtr<ID3DBlob>& OutShaderBlob) const
+ErrorCode PipelineInterface::CompileShaderFXC(const wstring& ShaderPath, const string& EntryPoint, const string& TargetProfile, ComPtr<ID3DBlob>& OutShaderBlob) const
 {
 #ifdef DX12_ENABLE_DEBUG_LAYER
     UINT CompileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
@@ -159,7 +170,7 @@ ErrorCode PipelineInterface::CompileShaderDXC(const wstring& ShaderPath, const w
         return ErrorCode::ShaderLoadFailed;
     }
     
-    std::vector<LPCWSTR> Arguments;
+    vector<LPCWSTR> Arguments;
     Arguments.push_back(L"-E");
     Arguments.push_back(EntryPoint.c_str());
     Arguments.push_back(L"-T");
@@ -216,7 +227,7 @@ ErrorCode PipelineInterface::CreateVertexShaderPipelinestate()
     ComPtr<ID3DBlob> VertexShader;
     ComPtr<ID3DBlob> PixelShader;
 
-    std::wstring ShaderPath = L"D:\\GPU-pipeline\\content\\shader\\color.hlsl";
+    wstring ShaderPath = L"D:\\GPU-pipeline\\content\\shader\\color.hlsl";
     
     ErrorCode Result = CompileShaderFXC(ShaderPath, "VS", "vs_5_0", VertexShader);
     if (Result != ErrorCode::OK)
@@ -285,7 +296,7 @@ ErrorCode PipelineInterface::CreateMeshShaderPipelinestate()
         return Result;
     }
 
-    Result = CompileShaderDXC(PixelShaderPath, L"PS", L"ps_6_0", PixelShader);
+    Result = CompileShaderDXC(PixelShaderPath, L"main", L"ps_6_0", PixelShader);
     if (Result != ErrorCode::OK)
     {
         return Result;
@@ -464,7 +475,7 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
             GPUHandle.ptr += IncrementSize;
         }
 
-        D3DSRVDescriptorHeapAllocator.Create(D3DDevice.Get(), D3DSRVCBVDescHeap.Get(), FrameNumInFlight + 1);
+        D3DSRVDescriptorHeapAllocator.Create(D3DDevice.Get(), D3DSRVCBVDescHeap.Get(), FrameNumInFlight);
     }
 
     D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
@@ -541,11 +552,11 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         return Result;
     }
 
-    Result = CreateVertexShaderPipelinestate();
-    if (Result != ErrorCode::OK)
-    {
-        return Result;
-    }
+    //Result = CreateVertexShaderPipelinestate();
+    //if (Result != ErrorCode::OK)
+    //{
+    //    return Result;
+    //}
 
     Result = CreateMeshShaderPipelinestate();
     if (Result != ErrorCode::OK)
@@ -631,11 +642,19 @@ void PipelineInterface::CleanUp()
         D3DRTVDescHeap = nullptr;
     }
 
+    if (D3DDSDescHeap)
+    {
+        D3DDSDescHeap->Release();
+        D3DDSDescHeap = nullptr;
+    }
+
     if (D3DSRVCBVDescHeap)
     {
         D3DSRVCBVDescHeap->Release();
         D3DSRVCBVDescHeap = nullptr;
     }
+
+    D3DSRVDescriptorHeapAllocator.Destroy();
 
     if (Fence)
     {
@@ -649,16 +668,28 @@ void PipelineInterface::CleanUp()
         FenceEvent = nullptr;
     }
 
-    if (D3DDevice)
-    {
-        D3DDevice->Release();
-        D3DDevice = nullptr;
-    }
-
     if (RootSignature)
     {
         RootSignature->Release();
         RootSignature = nullptr;
+    }
+
+    if (VertexShaderPipelineState)
+    {
+        VertexShaderPipelineState->Release();
+        VertexShaderPipelineState = nullptr;
+    }
+
+    if (MeshShaderPipelineState)
+    {
+        MeshShaderPipelineState->Release();
+        MeshShaderPipelineState = nullptr;
+    }
+
+    if (D3DDevice)
+    {
+        D3DDevice->Release();
+        D3DDevice = nullptr;
     }
 
 #ifdef DX12_ENABLE_DEBUG_LAYER
@@ -988,14 +1019,24 @@ void PipelineInterface::CreateMeshProxyBuffer(const Mesh* MeshInstance, MeshProx
     MeshProxyInstance->IndexBufferView.SizeInBytes = IndexBufferSize;
 }
 
-void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance)
+void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Vertices, const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance)
 {
+    const unsigned int VertexBufferSize = sizeof(Vertex) * static_cast<unsigned int>(Vertices.size());
     const unsigned int MeshletsBufferSize = sizeof(Meshlet) * static_cast<unsigned int>(MeshletDataInstance->Meshlets.size());
     const unsigned int MeshletVerticesBufferSize = sizeof(unsigned int) * static_cast<unsigned int>(MeshletDataInstance->MeshletVertices.size());
     const unsigned int MeshletTrianglesBufferSize = sizeof(unsigned int) * static_cast<unsigned int>(MeshletDataInstance->MeshletIndices.size());
     const unsigned int MeshletBoundsBufferSize = sizeof(meshopt_Bounds) * static_cast<unsigned int>(MeshletDataInstance->MeshletBounds.size());
     
     CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
+    
+    CD3DX12_RESOURCE_DESC VertexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(VertexBufferSize);
+    D3DDevice->CreateCommittedResource(
+        &DefaultHeapProperties, 
+        D3D12_HEAP_FLAG_NONE, 
+        &VertexBufferDesc, 
+        D3D12_RESOURCE_STATE_COPY_DEST, 
+        nullptr, 
+        IID_PPV_ARGS(&MeshletDataProxyInstance->VertexBuffer));
     
     CD3DX12_RESOURCE_DESC MeshletsBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(MeshletsBufferSize);
     D3DDevice->CreateCommittedResource(
@@ -1038,6 +1079,14 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
     D3DDevice->CreateCommittedResource(
         &UploadHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
+        &VertexBufferDesc, 
+        D3D12_RESOURCE_STATE_GENERIC_READ, 
+        nullptr, 
+        IID_PPV_ARGS(&MeshletDataProxyInstance->VertexBufferUpload));
+    
+    D3DDevice->CreateCommittedResource(
+        &UploadHeapProperties, 
+        D3D12_HEAP_FLAG_NONE, 
         &MeshletsBufferDesc, 
         D3D12_RESOURCE_STATE_GENERIC_READ, 
         nullptr, 
@@ -1067,6 +1116,12 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletBoundsBufferUpload));
     
+    Vertex* VertexDataBegin;
+    CD3DX12_RANGE VertexReadRange(0, 0);
+    MeshletDataProxyInstance->VertexBufferUpload->Map(0, &VertexReadRange, reinterpret_cast<void**>(&VertexDataBegin));
+    memcpy(VertexDataBegin, Vertices.data(), VertexBufferSize);
+    MeshletDataProxyInstance->VertexBufferUpload->Unmap(0, nullptr);
+    
     Meshlet* MeshletDataBegin;
     CD3DX12_RANGE MeshletReadRange(0, 0);
     MeshletDataProxyInstance->MeshletsBufferUpload->Map(0, &MeshletReadRange, reinterpret_cast<void**>(&MeshletDataBegin));
@@ -1081,10 +1136,10 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
     
     MeshletDataProxyInstance->MeshletsBufferUpload->Unmap(0, nullptr);
     
-    unsigned int* VertexDataBegin;
-    CD3DX12_RANGE VertexReadRange(0, 0);
-    MeshletDataProxyInstance->MeshletVerticesBufferUpload->Map(0, &VertexReadRange, reinterpret_cast<void**>(&VertexDataBegin));
-    memcpy(VertexDataBegin, MeshletDataInstance->MeshletVertices.data(), MeshletVerticesBufferSize);
+    unsigned int* MeshletVerticesDataBegin;
+    CD3DX12_RANGE MeshletVerticesReadRange(0, 0);
+    MeshletDataProxyInstance->MeshletVerticesBufferUpload->Map(0, &MeshletVerticesReadRange, reinterpret_cast<void**>(&MeshletVerticesDataBegin));
+    memcpy(MeshletVerticesDataBegin, MeshletDataInstance->MeshletVertices.data(), MeshletVerticesBufferSize);
     MeshletDataProxyInstance->MeshletVerticesBufferUpload->Unmap(0, nullptr);
     
     unsigned int* TriangleDataBegin;
@@ -1103,6 +1158,17 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
     
     FrameContext.CommandAllocator->Reset();
     CommandList->Reset(FrameContext.CommandAllocator.Get(), nullptr);
+    
+    CommandList->CopyBufferRegion(
+        MeshletDataProxyInstance->VertexBuffer.Get(), 0,
+        MeshletDataProxyInstance->VertexBufferUpload.Get(), 0,
+        VertexBufferSize);
+    
+    CD3DX12_RESOURCE_BARRIER VertexBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        MeshletDataProxyInstance->VertexBuffer.Get(),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    CommandList->ResourceBarrier(1, &VertexBarrier);
     
     CommandList->CopyBufferRegion(
         MeshletDataProxyInstance->MeshletsBuffer.Get(), 0,
@@ -1160,31 +1226,6 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const MeshletData* MeshletD
         Fence->SetEventOnCompletion(FenceValue, FenceEvent);
         WaitForSingleObject(FenceEvent, INFINITE);
     }
-    
-    // 最后创建MeshInfo常量缓冲区，与其在MeshletDataProxy中定义的位置保持一致
-    MeshletDataProxyInstance->MeshInfoCBProxy = std::make_unique<ConstantBufferProxy>();
-    
-    // 直接在这里创建常量缓冲区
-    const unsigned int ConstantBufferSize = (sizeof(MeshInfoConstantBuffer) + 255) & ~255; // 256字节对齐
-    
-    CD3DX12_RESOURCE_DESC MeshInfoBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(ConstantBufferSize);
-    D3DDevice->CreateCommittedResource(
-        &UploadHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &MeshInfoBufferDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&MeshletDataProxyInstance->MeshInfoCBProxy->UploadBuffer));
-    
-    // 复制数据到常量缓冲区
-    MeshInfoConstantBuffer MeshInfoCB;
-    MeshInfoCB.MeshletCount = static_cast<unsigned int>(MeshletDataInstance->Meshlets.size());
-    
-    void* MappedData = nullptr;
-    CD3DX12_RANGE ReadRange(0, 0); // 我们不打算从CPU读取此资源
-    MeshletDataProxyInstance->MeshInfoCBProxy->UploadBuffer->Map(0, &ReadRange, &MappedData);
-    memcpy(MappedData, &MeshInfoCB, sizeof(MeshInfoConstantBuffer));
-    MeshletDataProxyInstance->MeshInfoCBProxy->UploadBuffer->Unmap(0, nullptr);
 }
 
 void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInstance)
@@ -1204,8 +1245,6 @@ void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInsta
             IID_PPV_ARGS(&BufferProxy->UploadBuffer));
 
     BufferProxy->UploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&BufferProxy->MappedData));
-
-    //  XXX:    We will change to use DescriptorTable in the feature.
 }
 
 void PipelineInterface::CreateConstantBuffer(const StaticMeshActor* ActorInstance)
@@ -1261,7 +1300,7 @@ void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 Ne
             &RenderTargetDesc,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
             &ClearValue,
-            IID_PPV_ARGS(&FrameContexts[FrameContextIndex].RenderTarget));
+            IID_PPV_ARGS(FrameContexts[FrameContextIndex].RenderTarget.GetAddressOf()));
 
         D3DDevice->CreateRenderTargetView(FrameContexts[FrameContextIndex].RenderTarget.Get(), nullptr, FrameContexts[FrameContextIndex].RenderTargetCPUDescriptorHandle);
 
@@ -1437,22 +1476,26 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
         const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = StaticMeshActorInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
         CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
         
-        const MeshProxy* MeshProxyInstance = StaticMeshActorInstance->GetMeshProxyInstance();
-        const MeshletDataProxy* MeshletDataProxyInstance = StaticMeshActorInstance->GetMeshletDataProxyInstance();
-            
-        // 设置MeshInfo常量缓冲区
-        CommandList->SetGraphicsRootConstantBufferView(2, MeshletDataProxyInstance->MeshInfoCBProxy->UploadBuffer->GetGPUVirtualAddress());
-            
-        // 设置SRV资源，与shader声明顺序保持一致
-        CommandList->SetGraphicsRootShaderResourceView(3, MeshProxyInstance->VertexBuffer->GetGPUVirtualAddress());
-        CommandList->SetGraphicsRootShaderResourceView(4, MeshletDataProxyInstance->MeshletsBuffer->GetGPUVirtualAddress());
-        CommandList->SetGraphicsRootShaderResourceView(5, MeshletDataProxyInstance->MeshletVerticesBuffer->GetGPUVirtualAddress());
-        CommandList->SetGraphicsRootShaderResourceView(6, MeshletDataProxyInstance->MeshletTrianglesBuffer->GetGPUVirtualAddress());
-        CommandList->SetGraphicsRootShaderResourceView(7, MeshletDataProxyInstance->MeshletBoundsBuffer->GetGPUVirtualAddress());
-            
-        // 使用AS shader启动渲染
-        const MeshletData* MeshletDataInstance = StaticMeshActorInstance->GetMeshletDataInstance();
-        const unsigned int ASGroupCount = (static_cast<unsigned int>(MeshletDataInstance->Meshlets.size()) + 32 - 1) / 32;
+        const auto& MeshletDataProxyInstances = StaticMeshActorInstance->GetMeshletDataProxyInstances();
+        const auto& MeshletDataInstances = StaticMeshActorInstance->GetMeshletDataInstances();
+
+        //  XXX:    We have hard record the number of LODs.
+        for (int lodLevel = 0; lodLevel < MeshLODSettings::GetInstance().NumLODs; ++lodLevel)
+        {
+            if (MeshletDataProxyInstances.size() > lodLevel && MeshletDataProxyInstances[lodLevel])
+            {
+                const auto& ProxyInstance = MeshletDataProxyInstances[lodLevel];
+                const int BaseParamIndex = 2 + lodLevel * 5;
+                
+                CommandList->SetGraphicsRootShaderResourceView(BaseParamIndex + 0, ProxyInstance->VertexBuffer->GetGPUVirtualAddress());
+                CommandList->SetGraphicsRootShaderResourceView(BaseParamIndex + 1, ProxyInstance->MeshletsBuffer->GetGPUVirtualAddress());
+                CommandList->SetGraphicsRootShaderResourceView(BaseParamIndex + 2, ProxyInstance->MeshletVerticesBuffer->GetGPUVirtualAddress());
+                CommandList->SetGraphicsRootShaderResourceView(BaseParamIndex + 3, ProxyInstance->MeshletTrianglesBuffer->GetGPUVirtualAddress());
+                CommandList->SetGraphicsRootShaderResourceView(BaseParamIndex + 4, ProxyInstance->MeshletBoundsBuffer->GetGPUVirtualAddress());
+            }
+        }
+        
+        const unsigned int ASGroupCount = (static_cast<unsigned int>(MeshletDataInstances[0]->Meshlets.size()) + 32 - 1) / 32;
         CommandList->DispatchMesh(ASGroupCount, 1, 1);
     }
 
