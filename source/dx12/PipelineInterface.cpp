@@ -338,17 +338,17 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         }
     }
     
-    if (D3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&UploadResourceCommandAllocator)) != S_OK)
+    if (D3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&UploadCommandAllocator)) != S_OK)
     {
         return ErrorCode::CommandAllocatorCreateFailed;
     }
 
-    if (D3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, UploadResourceCommandAllocator.Get(), nullptr, IID_PPV_ARGS(&UploadResourceCommandList)) != S_OK)
+    if (D3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, UploadCommandAllocator.Get(), nullptr, IID_PPV_ARGS(&UploadCommandList)) != S_OK)
     {
         return ErrorCode::CommandListCreateFailed;
     }
 
-    if (UploadResourceCommandList->Close() != S_OK)
+    if (UploadCommandList->Close() != S_OK)
     {
         return ErrorCode::CommandListCloseFailed;
     }
@@ -444,11 +444,32 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
     D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
     CommandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
     CommandQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-    //  XXX: NodeMask?
-    CommandQueueDesc.NodeMask = 1;
+    CommandQueueDesc.NodeMask = 0;
     if (D3DDevice->CreateCommandQueue(&CommandQueueDesc, IID_PPV_ARGS(&D3DCommandQueue)) != S_OK)
     {
         return ErrorCode::Failed;
+    }
+    
+    D3D12_COMMAND_QUEUE_DESC UploadQueueDesc = {};
+    UploadQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    UploadQueueDesc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_HIGH;
+    UploadQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+    UploadQueueDesc.NodeMask = 0;
+    
+    if (FAILED(D3DDevice->CreateCommandQueue(&UploadQueueDesc, IID_PPV_ARGS(&UploadQueue))))
+    {
+        return ErrorCode::Failed;
+    }
+    
+    if (FAILED(D3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&UploadFence))))
+    {
+        return ErrorCode::FenceCreateFailed;
+    }
+    
+    UploadFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    if (UploadFenceEvent == nullptr)
+    {
+        return ErrorCode::FenceEventCreateFailed;
     }
     
     if (D3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&Fence)) != S_OK)
@@ -580,16 +601,16 @@ void PipelineInterface::CleanUp()
         }
     }
     
-    if (UploadResourceCommandAllocator)
+    if (UploadCommandAllocator)
     {
-        UploadResourceCommandAllocator->Release();
-        UploadResourceCommandAllocator = nullptr;
+        UploadCommandAllocator->Release();
+        UploadCommandAllocator = nullptr;
     }
     
-    if (UploadResourceCommandList)
+    if (UploadCommandList)
     {
-        UploadResourceCommandList->Release();
-        UploadResourceCommandList = nullptr;
+        UploadCommandList->Release();
+        UploadCommandList = nullptr;
     }
     
     FrameContexts.clear();
@@ -604,6 +625,24 @@ void PipelineInterface::CleanUp()
     {
         D3DCommandQueue->Release();
         D3DCommandQueue = nullptr;
+    }
+    
+    if (UploadQueue)
+    {
+        UploadQueue->Release();
+        UploadQueue = nullptr;
+    }
+    
+    if (UploadFence)
+    {
+        UploadFence->Release();
+        UploadFence = nullptr;
+    }
+    
+    if (UploadFenceEvent)
+    {
+        CloseHandle(UploadFenceEvent);
+        UploadFenceEvent = nullptr;
     }
 
     if (D3DRTVDescHeap)
@@ -1024,10 +1063,10 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
     memcpy(BoundsDataBegin, MeshletDataInstance->MeshletBounds.data(), MeshletBoundsBufferSize);
     MeshletDataProxyInstance->MeshletBoundsBufferUpload->Unmap(0, nullptr);
     
-    UploadResourceCommandAllocator->Reset();
-    UploadResourceCommandList->Reset(UploadResourceCommandAllocator.Get(), nullptr);
+    UploadCommandAllocator->Reset();
+    UploadCommandList->Reset(UploadCommandAllocator.Get(), nullptr);
     
-    UploadResourceCommandList->CopyBufferRegion(
+    UploadCommandList->CopyBufferRegion(
         MeshletDataProxyInstance->VertexBuffer.Get(), 0,
         MeshletDataProxyInstance->VertexBufferUpload.Get(), 0,
         VertexBufferSize);
@@ -1036,9 +1075,9 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
         MeshletDataProxyInstance->VertexBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    UploadResourceCommandList->ResourceBarrier(1, &VertexBarrier);
+    UploadCommandList->ResourceBarrier(1, &VertexBarrier);
     
-    UploadResourceCommandList->CopyBufferRegion(
+    UploadCommandList->CopyBufferRegion(
         MeshletDataProxyInstance->MeshletsBuffer.Get(), 0,
         MeshletDataProxyInstance->MeshletsBufferUpload.Get(), 0,
         MeshletsBufferSize);
@@ -1047,9 +1086,9 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
         MeshletDataProxyInstance->MeshletsBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    UploadResourceCommandList->ResourceBarrier(1, &MeshletsBarrier);
+    UploadCommandList->ResourceBarrier(1, &MeshletsBarrier);
     
-    UploadResourceCommandList->CopyBufferRegion(
+    UploadCommandList->CopyBufferRegion(
         MeshletDataProxyInstance->MeshletVerticesBuffer.Get(), 0,
         MeshletDataProxyInstance->MeshletVerticesBufferUpload.Get(), 0,
         MeshletVerticesBufferSize);
@@ -1058,9 +1097,9 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
         MeshletDataProxyInstance->MeshletVerticesBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    UploadResourceCommandList->ResourceBarrier(1, &VerticesBarrier);
+    UploadCommandList->ResourceBarrier(1, &VerticesBarrier);
     
-    UploadResourceCommandList->CopyBufferRegion(
+    UploadCommandList->CopyBufferRegion(
         MeshletDataProxyInstance->MeshletTrianglesBuffer.Get(), 0,
         MeshletDataProxyInstance->MeshletTrianglesBufferUpload.Get(), 0,
         MeshletTrianglesBufferSize);
@@ -1069,9 +1108,9 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
         MeshletDataProxyInstance->MeshletTrianglesBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    UploadResourceCommandList->ResourceBarrier(1, &TrianglesBarrier);
+    UploadCommandList->ResourceBarrier(1, &TrianglesBarrier);
     
-    UploadResourceCommandList->CopyBufferRegion(
+    UploadCommandList->CopyBufferRegion(
         MeshletDataProxyInstance->MeshletBoundsBuffer.Get(), 0,
         MeshletDataProxyInstance->MeshletBoundsBufferUpload.Get(), 0,
         MeshletBoundsBufferSize);
@@ -1080,20 +1119,17 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
         MeshletDataProxyInstance->MeshletBoundsBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    UploadResourceCommandList->ResourceBarrier(1, &BoundsBarrier);
+    UploadCommandList->ResourceBarrier(1, &BoundsBarrier);
     
-    UploadResourceCommandList->Close();
+    UploadCommandList->Close();
     
-    ID3D12GraphicsCommandList* UploadCommandListPointer = UploadResourceCommandList.Get();
-    D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&UploadCommandListPointer);
+    ID3D12CommandList* UploadCommandLists[] = { UploadCommandList.Get() };
+    UploadQueue->ExecuteCommandLists(_countof(UploadCommandLists), UploadCommandLists);
     
-    UINT64 FenceValue = 1;
-    D3DCommandQueue->Signal(Fence.Get(), FenceValue);
-    if (Fence->GetCompletedValue() < FenceValue)
-    {
-        Fence->SetEventOnCompletion(FenceValue, FenceEvent);
-        WaitForSingleObject(FenceEvent, INFINITE);
-    }
+    UploadFenceValue++;
+    UploadQueue->Signal(UploadFence.Get(), UploadFenceValue);
+    
+    D3DCommandQueue->Wait(UploadFence.Get(), UploadFenceValue);
 }
 
 void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInstance)
