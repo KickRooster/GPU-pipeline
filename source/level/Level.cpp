@@ -87,7 +87,7 @@ int Level::InstantiateStaticMeshActors(const string& Path)
 StaticMeshActor* Level::InstantiateCullingVisualCameraActor()
 {
     //  XXX:    Hard recorded file path, and it must has 1 sub mesh only.
-    const string CameraPath = "D:\\GPU-pipeline\\content\\mesh\\duck.fbx";
+    const string CameraPath = "D:\\GPU-pipeline\\content\\mesh\\mp5_sil.fbx";
 
     vector<Mesh> Meshes;
     MeshLoader::GetInstance().LoadMesh(CameraPath, Meshes);

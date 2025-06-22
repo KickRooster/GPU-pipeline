@@ -91,9 +91,6 @@ int main(int, char**)
 	//	Culling Visual Camera Actor.
 	StaticMeshActor* CullingCameraActorInstance = Level::GetInstance().InstantiateCullingVisualCameraActor();
 	
-	//	Static Mesh Actors.
-	Level::GetInstance().InstantiateStaticMeshActors("D:\\GPU-pipeline\\content\\mesh\\sponza.obj");
-	
 	// Camera Actor.
 	CameraActor* CameraActorInstance = Level::GetInstance().InstantiateCameraActor();
 	PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
@@ -198,6 +195,23 @@ int main(int, char**)
 		ImGuiID DockspaceID = ImGui::GetID("MainDockSpace");
 		ImGui::DockSpace(DockspaceID, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 		ImGui::End();
+		
+		if (ImGui::BeginMainMenuBar())
+		{
+			if (ImGui::BeginMenu("File"))
+			{
+				if (ImGui::BeginMenu("Import"))
+				{
+					if (ImGui::MenuItem("Mesh"))
+					{
+						Level::GetInstance().InstantiateStaticMeshActors("D:\\GPU-pipeline\\content\\mesh\\sponza.obj");
+					}
+					ImGui::EndMenu();
+				}
+				ImGui::EndMenu();
+			}
+			ImGui::EndMainMenuBar();
+		}
 		
 		const unsigned int FrameContextIndex = PipelineInterface::GetInstance().WaitForNextFrameResources();
 		
@@ -346,7 +360,6 @@ int main(int, char**)
 			CameraActorInstance->AspectRatio = ViewportSize.x / ViewportSize.y;
 			static_cast<CullingVisualCameraActor*>(CullingCameraActorInstance)->AspectRatio = CameraActorInstance->AspectRatio;
 			Level::GetInstance().Update(DeltaTime);
-			//PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
 			PipelineInterface::GetInstance().RenderLevelMeshlet(FrameContextIndex, &Level::GetInstance());
 			ImGui::Image(static_cast<ImTextureID>(PipelineInterface::GetInstance().GetRenderTargetSRVGPUHandle(FrameContextIndex).ptr), ViewportSize);
 			
