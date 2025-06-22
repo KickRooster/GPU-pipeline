@@ -337,6 +337,21 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
             return ErrorCode::CommandAllocatorCreateFailed;
         }
     }
+    
+    if (D3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&UploadResourceCommandAllocator)) != S_OK)
+    {
+        return ErrorCode::CommandAllocatorCreateFailed;
+    }
+
+    if (D3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, UploadResourceCommandAllocator.Get(), nullptr, IID_PPV_ARGS(&UploadResourceCommandList)) != S_OK)
+    {
+        return ErrorCode::CommandListCreateFailed;
+    }
+
+    if (UploadResourceCommandList->Close() != S_OK)
+    {
+        return ErrorCode::CommandListCloseFailed;
+    }
 
     if (D3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, FrameContexts[0].CommandAllocator.Get(), nullptr, IID_PPV_ARGS(&CommandList)) != S_OK)
     {
@@ -500,12 +515,6 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         return Result;
     }
 
-    //Result = CreateVertexShaderPipelinestate();
-    //if (Result != ErrorCode::OK)
-    //{
-    //    return Result;
-    //}
-
     Result = CreateMeshShaderPipelinestate();
     if (Result != ErrorCode::OK)
     {
@@ -570,6 +579,19 @@ void PipelineInterface::CleanUp()
             FrameContexts[I].CommandAllocator = nullptr;
         }
     }
+    
+    if (UploadResourceCommandAllocator)
+    {
+        UploadResourceCommandAllocator->Release();
+        UploadResourceCommandAllocator = nullptr;
+    }
+    
+    if (UploadResourceCommandList)
+    {
+        UploadResourceCommandList->Release();
+        UploadResourceCommandList = nullptr;
+    }
+    
     FrameContexts.clear();
 
     if (CommandList)
@@ -1002,12 +1024,10 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
     memcpy(BoundsDataBegin, MeshletDataInstance->MeshletBounds.data(), MeshletBoundsBufferSize);
     MeshletDataProxyInstance->MeshletBoundsBufferUpload->Unmap(0, nullptr);
     
-    FrameContext& FrameContext = FrameContexts[0];
+    UploadResourceCommandAllocator->Reset();
+    UploadResourceCommandList->Reset(UploadResourceCommandAllocator.Get(), nullptr);
     
-    FrameContext.CommandAllocator->Reset();
-    CommandList->Reset(FrameContext.CommandAllocator.Get(), nullptr);
-    
-    CommandList->CopyBufferRegion(
+    UploadResourceCommandList->CopyBufferRegion(
         MeshletDataProxyInstance->VertexBuffer.Get(), 0,
         MeshletDataProxyInstance->VertexBufferUpload.Get(), 0,
         VertexBufferSize);
@@ -1016,9 +1036,9 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
         MeshletDataProxyInstance->VertexBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    CommandList->ResourceBarrier(1, &VertexBarrier);
+    UploadResourceCommandList->ResourceBarrier(1, &VertexBarrier);
     
-    CommandList->CopyBufferRegion(
+    UploadResourceCommandList->CopyBufferRegion(
         MeshletDataProxyInstance->MeshletsBuffer.Get(), 0,
         MeshletDataProxyInstance->MeshletsBufferUpload.Get(), 0,
         MeshletsBufferSize);
@@ -1027,9 +1047,9 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
         MeshletDataProxyInstance->MeshletsBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    CommandList->ResourceBarrier(1, &MeshletsBarrier);
+    UploadResourceCommandList->ResourceBarrier(1, &MeshletsBarrier);
     
-    CommandList->CopyBufferRegion(
+    UploadResourceCommandList->CopyBufferRegion(
         MeshletDataProxyInstance->MeshletVerticesBuffer.Get(), 0,
         MeshletDataProxyInstance->MeshletVerticesBufferUpload.Get(), 0,
         MeshletVerticesBufferSize);
@@ -1038,9 +1058,9 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
         MeshletDataProxyInstance->MeshletVerticesBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    CommandList->ResourceBarrier(1, &VerticesBarrier);
+    UploadResourceCommandList->ResourceBarrier(1, &VerticesBarrier);
     
-    CommandList->CopyBufferRegion(
+    UploadResourceCommandList->CopyBufferRegion(
         MeshletDataProxyInstance->MeshletTrianglesBuffer.Get(), 0,
         MeshletDataProxyInstance->MeshletTrianglesBufferUpload.Get(), 0,
         MeshletTrianglesBufferSize);
@@ -1049,9 +1069,9 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
         MeshletDataProxyInstance->MeshletTrianglesBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    CommandList->ResourceBarrier(1, &TrianglesBarrier);
+    UploadResourceCommandList->ResourceBarrier(1, &TrianglesBarrier);
     
-    CommandList->CopyBufferRegion(
+    UploadResourceCommandList->CopyBufferRegion(
         MeshletDataProxyInstance->MeshletBoundsBuffer.Get(), 0,
         MeshletDataProxyInstance->MeshletBoundsBufferUpload.Get(), 0,
         MeshletBoundsBufferSize);
@@ -1060,12 +1080,12 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
         MeshletDataProxyInstance->MeshletBoundsBuffer.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    CommandList->ResourceBarrier(1, &BoundsBarrier);
+    UploadResourceCommandList->ResourceBarrier(1, &BoundsBarrier);
     
-    CommandList->Close();
+    UploadResourceCommandList->Close();
     
-    ID3D12GraphicsCommandList* CommandListPointer = CommandList.Get();
-    D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&CommandListPointer);
+    ID3D12GraphicsCommandList* UploadCommandListPointer = UploadResourceCommandList.Get();
+    D3DCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&UploadCommandListPointer);
     
     UINT64 FenceValue = 1;
     D3DCommandQueue->Signal(Fence.Get(), FenceValue);

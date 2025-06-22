@@ -96,6 +96,8 @@ class PipelineInterface : public Singleton<PipelineInterface>
     Microsoft::WRL::ComPtr<IDXGISwapChain3> SwapChain = nullptr;
     HANDLE SwapChainWaitableObject = nullptr;
     std::vector<FrameContext> FrameContexts;                                     //  FrameNumInFlight
+    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> UploadResourceCommandAllocator;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList6> UploadResourceCommandList;
     
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> D3DRTVDescHeap = nullptr;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> D3DDSDescHeap = nullptr;
