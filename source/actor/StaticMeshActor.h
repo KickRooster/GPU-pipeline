@@ -1,20 +1,23 @@
 #pragma once
 #include <memory>
 #include <vector>
-#include <string>
 #include "Actor.h"
-#include "../mesh/Mesh.h"
+#include "../asset/Mesh.h"
+#include "../asset/Material.h"
 #include "../dx12/MeshProxy.h"
 #include "../dx12/ConstantBuffer.h"
 #include "../dx12/ConstantBufferProxy.h"
+#include "../dx12/MaterialProxy.h"
 
 class StaticMeshActor : public Actor
 {
 protected:
     DirectX::XMMATRIX TransformationMatrix;    // SRT order: Scale * Rotation * Translation (UE style)
+    DirectX::XMFLOAT4 BoundingSphere;
     
-    std::unique_ptr<Mesh> MeshInstance;
-
+    std::unique_ptr<Material> MaterialInstance;
+    std::unique_ptr<MaterialProxy> MaterialProxyInstance;
+    
     std::vector<std::unique_ptr<MeshletData>> MeshletDataInstances;
     std::vector<std::unique_ptr<MeshletDataProxy>> MeshletDataProxyInstances;
     
@@ -23,15 +26,16 @@ protected:
 
 public:
     StaticMeshActor(
-        std::unique_ptr<Mesh> InMeshInstance,
+        const DirectX::XMFLOAT4X4* Local2WorldMatrix,
+        const DirectX::XMFLOAT4 BoundingSphere,
         std::vector<std::unique_ptr<MeshletData>> InMeshletDataInstances,
         std::vector<std::unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances);
-    
+
     void Update(float DeltaTime) override;
     const std::vector<std::unique_ptr<MeshletData>>& GetMeshletDataInstances() const;
     const std::vector<std::unique_ptr<MeshletDataProxy>>& GetMeshletDataProxyInstances() const;
-    
-    StaticMeshActorConstantBuffer* GetConstantBuffer() const;
+    void SetMaterial(std::unique_ptr<Material> InMaterialInstance, std::unique_ptr<MaterialProxy> InMaterialProxyInstance);
+    const Material* GetMaterial() const;
     ConstantBufferProxy* GetConstantBufferProxy() const;
     DirectX::XMMATRIX GetWorldMatrix() const;
     ~StaticMeshActor() override = default;

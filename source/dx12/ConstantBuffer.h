@@ -8,7 +8,7 @@ struct CameraConstantBuffer
     DirectX::XMFLOAT4   Planes[6];
     DirectX::XMFLOAT3   ViewPosition;
     float               RecipTanHalfFovy;  // 1.0f / tanf(fovy * 0.5f)
-    uint32_t            LODCount;
+    unsigned int        LODCount;
 };
 
 struct StaticMeshActorConstantBuffer
@@ -16,5 +16,15 @@ struct StaticMeshActorConstantBuffer
     DirectX::XMFLOAT4X4 World = MathTool::GetInstance().Identity4x4();
     DirectX::XMFLOAT4X4 WorldInvTranspose = MathTool::GetInstance().Identity4x4();
     DirectX::XMFLOAT4   BoundingSphere;
-    unsigned int        MeshletCounts[4] = {0, 0, 0, 0};
+    
+    // HLSL中每个数组元素占16字节，直接模拟布局
+    struct {
+        unsigned int Value;
+        unsigned int Padding[3];
+    } MeshletCounts[4];
+    
+    struct {
+        unsigned int Value;
+        unsigned int Padding[3];
+    } PBRTextureIndices[4];
 };

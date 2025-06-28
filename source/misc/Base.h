@@ -31,6 +31,10 @@ enum class ErrorCode
     QueryIDXGISwapChain3InterfaceFailed,
     //  Assimp begin.
     MeshDataIncomplete,
+    //  Texture begin.
+    TextureNotExist,
+    TextureLoadFailed,
+    AllocateTextureMemoryFailed,
     //  Others
     ErrorCode_Num
 };

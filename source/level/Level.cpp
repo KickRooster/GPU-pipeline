@@ -1,8 +1,11 @@
 #include "Level.h"
 #include "../actor/CameraActor.h"
 #include "../actor/StaticMeshActor.h"
-#include "../mesh/MeshLoader.h"
+#include "../asset/MeshLoader.h"
+#include "../asset/Texture.h"
+#include "../asset/TextureLoader.h"
 #include "../dx12/PipelineInterface.h"
+#include "../dx12/TextureProxy.h"
 #include <map>
 
 using namespace std;
@@ -11,7 +14,8 @@ using namespace DirectX;
 int Level::InstantiateStaticMeshActors(const string& Path)
 {
     vector<Mesh> Meshes;
-    MeshLoader::GetInstance().LoadMesh(Path, Meshes);
+    vector<PBRTextureNamesPatch> TextureNamesPatches;
+    MeshLoader::GetInstance().LoadMesh(Path, Meshes, TextureNamesPatches);
 
     vector<unique_ptr<Mesh>> MeshInstances;
     
@@ -49,6 +53,31 @@ int Level::InstantiateStaticMeshActors(const string& Path)
         MeshLODDatasMap.emplace(I, move(LODDatas));
     }
 
+    vector<unique_ptr<Material>> MaterialInstances;
+    vector<unique_ptr<MaterialProxy>> MaterialProxyInstances;
+    
+    for (unsigned int I = 0; I < TextureNamesPatches.size(); ++I)
+    {
+        unique_ptr<Material> MaterialInstance = make_unique<Material>();
+        unique_ptr<MaterialProxy> MaterialProxyInstance = make_unique<MaterialProxy>();
+
+        if (!TextureNamesPatches[I].AlbedoPath.empty())
+        {
+            Texture TextureInstance;
+            if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[I].AlbedoPath, TextureInstance) == ErrorCode::OK)
+            {
+                MaterialInstance->AlbedoTexture = make_unique<Texture>(std::move(TextureInstance));
+                MaterialProxyInstance->AlbedoTextureIndex = SimpleBindlessAllocator::GetInstance().AllocateRange(1);
+            }
+        }
+
+        MaterialInstances.push_back(move(MaterialInstance));
+        MaterialProxyInstances.push_back(move(MaterialProxyInstance));
+    }
+
+    PipelineInterface::GetInstance().ResetUploadCommandAllocator();
+    PipelineInterface::GetInstance().ResetUploadCommandList();
+
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
         for (size_t LODIndex = 0; LODIndex < MeshletDatasMap[I].size(); ++LODIndex)
@@ -56,14 +85,38 @@ int Level::InstantiateStaticMeshActors(const string& Path)
             PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(
                 MeshLODDatasMap[I][LODIndex].Vertices,
                 MeshletDatasMap[I][LODIndex].get(), 
-                MeshletDataProxiesMap[I][LODIndex].get()
+                MeshletDataProxiesMap[I][LODIndex].get(),
+                false
                 );
         }
-        
+
+        //  XXX:    MaterialInstances.size() == Meshes.size()
+        if (MaterialInstances[I]->AlbedoTexture)
+        {
+            unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
+            
+            PipelineInterface::GetInstance().CreateTexture(
+                MaterialInstances[I]->AlbedoTexture.get(),
+                MaterialProxyInstances[I]->AlbedoTextureIndex,
+                TextureProxyInstance.get(),
+                false
+            );
+
+            MaterialInstances[I]->AlbedoTextureProxy = move(TextureProxyInstance);
+        }
+    }
+
+    PipelineInterface::GetInstance().ExecuteAndWaitUploadCommandList();
+    
+    for (unsigned int I = 0; I < Meshes.size(); ++I)
+    {
         unique_ptr<StaticMeshActor> ActorInstance = make_unique<StaticMeshActor>(
-            move(MeshInstances[I]),
+            &MeshInstances[I]->Local2WorldMatrix,
+            MeshInstances[I]->BoundingSphere,
             move(MeshletDatasMap[I]),
             move(MeshletDataProxiesMap[I]));
+        
+        ActorInstance->SetMaterial(move(MaterialInstances[I]), move(MaterialProxyInstances[I]));
 
         ActorInstance->Transform.Position.x = 0;
         ActorInstance->Transform.Position.y = 0;
@@ -81,7 +134,7 @@ int Level::InstantiateStaticMeshActors(const string& Path)
         StaticMeshActors.push_back(move(ActorInstance));
     }
     
-    return Meshes.size();
+    return static_cast<int>(Meshes.size());
 }
 
 StaticMeshActor* Level::InstantiateCullingVisualCameraActor()
@@ -90,7 +143,8 @@ StaticMeshActor* Level::InstantiateCullingVisualCameraActor()
     const string CameraPath = "D:\\GPU-pipeline\\content\\mesh\\mp5_sil.fbx";
 
     vector<Mesh> Meshes;
-    MeshLoader::GetInstance().LoadMesh(CameraPath, Meshes);
+    vector<PBRTextureNamesPatch> TextureNamesPatches;
+    MeshLoader::GetInstance().LoadMesh(CameraPath, Meshes, TextureNamesPatches);
 
     unique_ptr<Mesh> MeshInstance = make_unique<Mesh>();
     MeshInstance->Vertices = Meshes[0].Vertices;
@@ -120,10 +174,38 @@ StaticMeshActor* Level::InstantiateCullingVisualCameraActor()
             );
     }
 
+    unique_ptr<Material> MaterialInstance = make_unique<Material>();
+    unique_ptr<MaterialProxy> MaterialProxyInstance = make_unique<MaterialProxy>();
+    
+    if (!TextureNamesPatches[0].AlbedoPath.empty())
+    {
+        Texture TextureInstance;
+        if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[0].AlbedoPath, TextureInstance) == ErrorCode::OK)
+        {
+            MaterialInstance->AlbedoTexture = make_unique<Texture>(std::move(TextureInstance));
+            MaterialProxyInstance->AlbedoTextureIndex = SimpleBindlessAllocator::GetInstance().AllocateRange(1);
+        }
+    }
+    
+    if (MaterialInstance->AlbedoTexture)
+    {
+        unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
+            
+        PipelineInterface::GetInstance().CreateTexture(
+            MaterialInstance->AlbedoTexture.get(),
+            MaterialProxyInstance->AlbedoTextureIndex,
+            TextureProxyInstance.get()
+        );
+
+        MaterialInstance->AlbedoTextureProxy = move(TextureProxyInstance);
+    }
+    
     unique_ptr<CullingVisualCameraActor> ActorInstance = make_unique<CullingVisualCameraActor>(
         move(MeshInstance),
         move(MeshletDatas),
         move(MeshletDataProxyInstances));
+
+    ActorInstance->SetMaterial(move(MaterialInstance), move(MaterialProxyInstance));
 
     PipelineInterface::GetInstance().CreateConstantBuffer(static_cast<StaticMeshActor*>(ActorInstance.get()));
     

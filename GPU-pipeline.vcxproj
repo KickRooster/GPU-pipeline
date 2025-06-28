@@ -79,12 +79,12 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build_v143\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(ProjectDir)thirdpatry\imGuIZMO.quat\imguizmo_quat;$(ProjectDir)thirdpatry\ImGuizmo;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build_v143\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(ProjectDir)thirdpatry\imGuIZMO.quat\imguizmo_quat;$(ProjectDir)thirdpatry\ImGuizmo;$(ProjectDir)thirdpatry\stb;$(IncludePath)</IncludePath>
     <LibraryPath>$(ProjectDir)thirdpatry\assimp\build_v143\lib\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build_v143\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(ProjectDir)thirdpatry\imGuIZMO.quat\imguizmo_quat;$(ProjectDir)thirdpatry\ImGuizmo;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build_v143\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(ProjectDir)thirdpatry\imGuIZMO.quat\imguizmo_quat;$(ProjectDir)thirdpatry\ImGuizmo;$(ProjectDir)thirdpatry\stb;$(IncludePath)</IncludePath>
     <LibraryPath>$(ProjectDir)thirdpatry\assimp\build_v143\lib\Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -149,11 +149,15 @@
     <ClCompile Include="source\actor\CameraActor.cpp" />
     <ClCompile Include="source\actor\CullingVisualCameraActor.cpp" />
     <ClCompile Include="source\actor\StaticMeshActor.cpp" />
+    <ClCompile Include="source\asset\FileTool.cpp" />
+    <ClCompile Include="source\asset\Material.cpp" />
+    <ClCompile Include="source\asset\Texture.cpp" />
+    <ClCompile Include="source\asset\TextureLoader.cpp" />
     <ClCompile Include="source\dx12\PipelineInterface.cpp" />
     <ClCompile Include="source\GPU-pipeline.cpp" />
     <ClCompile Include="source\level\Level.cpp" />
     <ClCompile Include="source\Log.cpp" />
-    <ClCompile Include="source\mesh\MeshLoader.cpp" />
+    <ClCompile Include="source\asset\MeshLoader.cpp" />
     <ClCompile Include="thirdpatry\imgui\imgui.cpp" />
     <ClCompile Include="thirdpatry\imgui\imgui_demo.cpp" />
     <ClCompile Include="thirdpatry\imgui\imgui_draw.cpp" />
@@ -184,8 +188,14 @@
     <ClInclude Include="source\actor\Actor.h" />
     <ClInclude Include="source\actor\CullingVisualCameraActor.h" />
     <ClInclude Include="source\actor\StaticMeshActor.h" />
-    <ClInclude Include="source\mesh\MeshLoader.h" />
-    <ClInclude Include="source\mesh\Mesh.h" />
+    <ClInclude Include="source\asset\FileTool.h" />
+    <ClInclude Include="source\asset\Material.h" />
+    <ClInclude Include="source\asset\MeshLoader.h" />
+    <ClInclude Include="source\asset\Mesh.h" />
+    <ClInclude Include="source\asset\Texture.h" />
+    <ClInclude Include="source\asset\TextureLoader.h" />
+    <ClInclude Include="source\dx12\MaterialProxy.h" />
+    <ClInclude Include="source\dx12\TextureProxy.h" />
     <ClInclude Include="source\misc\Base.h" />
     <ClInclude Include="source\misc\DesignPatterns.h" />
     <ClInclude Include="source\misc\Math.h" />
