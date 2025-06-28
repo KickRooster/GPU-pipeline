@@ -43,7 +43,10 @@
     <ClCompile Include="source\actor\StaticMeshActor.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="source\mesh\MeshLoader.cpp">
+    <ClCompile Include="source\asset\MeshLoader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="source\asset\Material.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="thirdpatry\imgui\imgui.cpp">
@@ -99,10 +102,16 @@
     <ClInclude Include="source\actor\StaticMeshActor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="source\mesh\MeshLoader.h">
+    <ClInclude Include="source\asset\MeshLoader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="source\mesh\Mesh.h">
+    <ClInclude Include="source\asset\Mesh.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="source\asset\Material.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="source\asset\Texture.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="source\dx12\MeshProxy.h">

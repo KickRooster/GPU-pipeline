@@ -9,7 +9,8 @@
 #include <vector>
 #include "MeshProxy.h"
 #include "../level/Level.h"
-#include "../mesh/Mesh.h"
+#include "../asset/Mesh.h"
+#include "../asset/Material.h"
 
 // Simple free list based allocator
 struct ImGUIDescriptorHeapAllocator
@@ -66,6 +67,25 @@ struct ImGUIDescriptorHeapAllocator
     }
 };
 
+// Simple bindless descriptor allocator
+class SimpleBindlessAllocator : public Singleton<SimpleBindlessAllocator>
+{
+public:
+    ErrorCode Initialize(ID3D12Device* Device, D3D12_DESCRIPTOR_HEAP_TYPE Type, unsigned int NumDescriptors, bool ShaderVisible = false);
+    unsigned int AllocateRange(unsigned int Count);
+    void Reset();
+    ID3D12DescriptorHeap* GetHeap() const;
+    unsigned int GetDescriptorSize() const;
+    
+private:
+    friend class Singleton<SimpleBindlessAllocator>;
+    
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> DescriptorHeap;
+    unsigned int DescriptorSize = 0;
+    unsigned int NextDescriptorIndex = 0;
+    unsigned int MaxDescriptors = 0;
+};
+
 struct FrameContext
 {
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CommandAllocator;
@@ -88,7 +108,10 @@ class PipelineInterface : public Singleton<PipelineInterface>
     
     const int BackBufferCount = 2;
     const int FrameNumInFlight = 2;
-    const int SRVHeapSize = 64;
+    const unsigned int BindlessTextureStartIndex = 32;
+    const int SRVHeapSize = 32768;
+    //  Less than SRVHeapSize - BindlessTextureStartIndex - FrameNumInFlight(SRV)
+    const unsigned int MaxTextureDescriptors = 16384;
     
     Microsoft::WRL::ComPtr<ID3D12Device2> D3DDevice = nullptr;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList6> CommandList;
@@ -144,7 +167,11 @@ public:
     IDXGISwapChain3* GetSwapChain();
     void UpdateFrameContextFenceValue(unsigned int FrameContextIndex, unsigned long FenceValue);
     D3D12_GPU_DESCRIPTOR_HANDLE GetRenderTargetSRVGPUHandle(unsigned int FrameContextIndex) const;
-    void CreateMeshletDataProxyBuffer(const std::vector<Vertex>& Vertices, const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance);
+    void ResetUploadCommandAllocator() const;
+    void ResetUploadCommandList() const;
+    void ExecuteAndWaitUploadCommandList();
+    void CreateMeshletDataProxyBuffer(const std::vector<Vertex>& Vertices, const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance, bool ImmediateExecute = true);
+    void CreateTexture(const Texture* TextureInstance, unsigned int DescriptorIndex, TextureProxy* TextureProxyInstance, bool ImmediateExecute = true);
     void CreateConstantBuffer(const CameraActor* CameraActorInstance);
     void CreateConstantBuffer(const StaticMeshActor* ActorInstance);
     void UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);

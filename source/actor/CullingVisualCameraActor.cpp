@@ -8,7 +8,8 @@ CullingVisualCameraActor::CullingVisualCameraActor(
     vector<unique_ptr<MeshletData>> InMeshletDataInstances,
     vector<unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances)
 :StaticMeshActor(
-    move(InMeshInstance),
+    &InMeshInstance->Local2WorldMatrix,
+    InMeshInstance->BoundingSphere,
     move(InMeshletDataInstances),
     move(InMeshletDataProxyInstances))
 {

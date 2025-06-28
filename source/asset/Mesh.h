@@ -1,7 +1,6 @@
 #pragma once
 #include "../misc/Base.h"
 #include <vector>
-#include <assimp/scene.h>
 #include "meshoptimizer.h"
 #include <DirectXMath.h>
 

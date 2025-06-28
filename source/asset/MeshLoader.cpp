@@ -1,29 +1,81 @@
 #include "MeshLoader.h"
+#include "Texture.h"
 #include "../misc/Math.h"
+#include "DirectXMath.h"
 
 using namespace std;
 using namespace DirectX;
 
-void MeshLoader::ProcessNode(aiNode* Node, const aiScene* Scene, vector<Mesh>& OutMeshes, const XMMATRIX& ParentTransform)
+void MeshLoader::ExtractPBRTextures(const aiMaterial* Material, PBRTextureNamesPatch& OutTextureNamesPatch)
 {
-    const XMMATRIX NodeTransform = MathTool::GetInstance().AssimpMatrixToXMMatrix(Node->mTransformation);
-    const XMMATRIX WorldTransform = ParentTransform * NodeTransform;
+    aiString Path;
     
-    for (unsigned int I = 0; I < Node->mNumMeshes; I++)
+    if (Material->GetTexture(aiTextureType_DIFFUSE, 0, &Path) == AI_SUCCESS)
     {
-        aiMesh* AssimpMesh = Scene->mMeshes[Node->mMeshes[I]];
-        ProcessMesh(AssimpMesh, Scene, OutMeshes, WorldTransform);
+        OutTextureNamesPatch.AlbedoPath = Path.C_Str();
+    }
+    else if (Material->GetTexture(aiTextureType_BASE_COLOR, 0, &Path) == AI_SUCCESS)
+    {
+        OutTextureNamesPatch.AlbedoPath = Path.C_Str();
     }
     
-    for (unsigned int I = 0; I < Node->mNumChildren; I++)
+    if (Material->GetTexture(aiTextureType_NORMALS, 0, &Path) == AI_SUCCESS)
     {
-        ProcessNode(Node->mChildren[I], Scene, OutMeshes, WorldTransform);
+        OutTextureNamesPatch.NormalPath = Path.C_Str();
+    }
+    else if (Material->GetTexture(aiTextureType_HEIGHT, 0, &Path) == AI_SUCCESS)
+    {
+        OutTextureNamesPatch.NormalPath = Path.C_Str();
+    }
+    
+    if (Material->GetTexture(aiTextureType_METALNESS, 0, &Path) == AI_SUCCESS)
+    {
+        OutTextureNamesPatch.MetallicPath = Path.C_Str();
+    }
+    
+    if (Material->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &Path) == AI_SUCCESS)
+    {
+        OutTextureNamesPatch.RoughnessPath = Path.C_Str();
+    }
+    
+    aiTextureType OtherTypes[] = {
+        aiTextureType_SPECULAR,
+        aiTextureType_AMBIENT,
+        aiTextureType_EMISSIVE,
+        aiTextureType_SHININESS,
+        aiTextureType_OPACITY,
+        aiTextureType_DISPLACEMENT,
+        aiTextureType_LIGHTMAP,
+        aiTextureType_REFLECTION,
+        aiTextureType_BASE_COLOR,
+        aiTextureType_NORMAL_CAMERA,
+        aiTextureType_EMISSION_COLOR,
+        aiTextureType_AMBIENT_OCCLUSION,
+        aiTextureType_SHEEN,
+        aiTextureType_CLEARCOAT,
+        aiTextureType_TRANSMISSION,
+        aiTextureType_MAYA_BASE,
+        aiTextureType_MAYA_SPECULAR,
+        aiTextureType_MAYA_SPECULAR_COLOR,
+        aiTextureType_MAYA_SPECULAR_ROUGHNESS,
+        aiTextureType_ANISOTROPY,
+        aiTextureType_GLTF_METALLIC_ROUGHNESS,
+        aiTextureType_UNKNOWN
+    };
+    
+    for (aiTextureType Type : OtherTypes)
+    {
+        if (Material->GetTexture(Type, 0, &Path) == AI_SUCCESS)
+        {
+            OutTextureNamesPatch.OtherTexturePaths.push_back(Path.C_Str());
+        }
     }
 }
 
-void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, vector<Mesh>& OutMeshes, const XMMATRIX& NodeTransform)
+void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, const XMMATRIX& NodeTransform, vector<Mesh>& OutMeshes, std::vector<PBRTextureNamesPatch>& OutTextureNamesPatches)
 {
     Mesh OutMesh;
+    PBRTextureNamesPatch OutTextureNamesPatch;
 
     XMStoreFloat4x4(&OutMesh.Local2WorldMatrix, NodeTransform);
     
@@ -79,8 +131,6 @@ void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, vector<Me
             OutMesh.Indices.push_back(Face.mIndices[J]);
         }
     }
-
-    OutMesh.Name = AssimpMesh->mName.C_Str();
     
     vector<float> Positions;
     Positions.reserve(OutMesh.Vertices.size() * 3);
@@ -103,7 +153,28 @@ void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, vector<Me
     OutMesh.BoundingSphere.z = SphereBounds.center[2];
     OutMesh.BoundingSphere.w = SphereBounds.radius;
 
+    OutMesh.Name = AssimpMesh->mName.C_Str();
+    aiMaterial* Material = Scene->mMaterials[AssimpMesh->mMaterialIndex];
+    ExtractPBRTextures(Material, OutTextureNamesPatch);
+    OutTextureNamesPatches.push_back(OutTextureNamesPatch);
     OutMeshes.push_back(OutMesh);
+}
+
+void MeshLoader::ProcessNode(aiNode* Node, const aiScene* Scene, const XMMATRIX& ParentTransform, vector<Mesh>& OutMeshes, std::vector<PBRTextureNamesPatch>& OutTextureNamesPatches)
+{
+    const XMMATRIX NodeTransform = MathTool::GetInstance().AssimpMatrixToXMMatrix(Node->mTransformation);
+    const XMMATRIX WorldTransform = ParentTransform * NodeTransform;
+    
+    for (unsigned int I = 0; I < Node->mNumMeshes; I++)
+    {
+        aiMesh* AssimpMesh = Scene->mMeshes[Node->mMeshes[I]];
+        ProcessMesh(AssimpMesh, Scene, WorldTransform, OutMeshes, OutTextureNamesPatches);
+    }
+    
+    for (unsigned int I = 0; I < Node->mNumChildren; I++)
+    {
+        ProcessNode(Node->mChildren[I], Scene, WorldTransform, OutMeshes, OutTextureNamesPatches);
+    }
 }
 
 void MeshLoader::GenerateMeshletData(const vector<Vertex>& Vertices, const vector<unsigned int>& Indices, MeshletData& OutMeshletData) const
@@ -174,7 +245,7 @@ void MeshLoader::GenerateMeshletData(const vector<Vertex>& Vertices, const vecto
     OutMeshletData.MeshletBounds = move(NativeMeshletData.MeshletBounds);
 }
 
-ErrorCode MeshLoader::LoadMesh(const string& Path, vector<Mesh>& OutMeshes)
+ErrorCode MeshLoader::LoadMesh(const string& Path, vector<Mesh>& OutMeshes, std::vector<PBRTextureNamesPatch>& OutTextureNamesPatches)
 {
     Assimp::Importer Importer;
 
@@ -193,7 +264,7 @@ ErrorCode MeshLoader::LoadMesh(const string& Path, vector<Mesh>& OutMeshes)
         return ErrorCode::MeshDataIncomplete;
     }
 
-    ProcessNode(Scene->mRootNode, Scene, OutMeshes, XMMatrixIdentity());
+    ProcessNode(Scene->mRootNode, Scene, XMMatrixIdentity(), OutMeshes, OutTextureNamesPatches);
 
     return ErrorCode::OK;
 }

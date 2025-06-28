@@ -11,8 +11,9 @@ cbuffer cbStaticMeshActor : register(b1)
 {
     float4x4 gWorld;
     float4x4 gWorldInvTranspose;
-    float4   gBoundingSphere;    // xyz = center, w = radius
+    float4   gBoundingSphere;
     uint     gMeshletCounts[4];
+    uint     gPBRTextureIndices[4];
 };
 
 struct Vertex

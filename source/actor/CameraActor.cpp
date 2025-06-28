@@ -1,5 +1,5 @@
 #include "CameraActor.h"
-#include "../mesh/MeshLoader.h"
+#include "../asset/MeshLoader.h"
 
 using namespace std;
 using namespace DirectX;
@@ -162,7 +162,7 @@ void CameraActor::Update(float DeltaTime)
         memcpy(
             ConstantBufferProxyInstance->MappedData,
             ConstantBufferInstance.get(),
-            sizeof(CameraConstantBuffer));
+            MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(CameraConstantBuffer)));
     }
 }
 
