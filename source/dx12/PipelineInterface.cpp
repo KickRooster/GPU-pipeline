@@ -342,7 +342,7 @@ ErrorCode PipelineInterface::CreateMeshShaderPipelinestate()
     PSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
     PSODesc.DepthStencilState.DepthEnable = TRUE;
     PSODesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-    PSODesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+    PSODesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
     PSODesc.DepthStencilState.StencilEnable = FALSE;
     
     PSODesc.SampleMask = UINT_MAX;
@@ -1441,7 +1441,7 @@ void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 Ne
 
         D3D12_CLEAR_VALUE DepthStencilClearValue;
         DepthStencilClearValue.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-        DepthStencilClearValue.DepthStencil.Depth = 1.0f;
+        DepthStencilClearValue.DepthStencil.Depth = 0;
         DepthStencilClearValue.DepthStencil.Stencil = 0;
 
         HeapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -1502,7 +1502,7 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
     
     constexpr float ClearColor[] = { 0, 0, 0, 1.0f };
     CommandList->ClearRenderTargetView(FrameContexts[FrameContextIndex].RenderTargetCPUDescriptorHandle, ClearColor, 0, nullptr);
-    CommandList->ClearDepthStencilView(FrameContexts[FrameContextIndex].DepthStencilCPUDescriptorHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+    CommandList->ClearDepthStencilView(FrameContexts[FrameContextIndex].DepthStencilCPUDescriptorHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 0.0f, 0, 0, nullptr);
     
     const CD3DX12_VIEWPORT ViewPort = CD3DX12_VIEWPORT(0.f, 0.f, ViewportSize.x, ViewportSize.y);
     const CD3DX12_RECT ScissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(ViewportSize.x), static_cast<LONG>(ViewportSize.y));

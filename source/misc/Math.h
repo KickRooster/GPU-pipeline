@@ -31,6 +31,19 @@ public:
         );
     }
 
+    DirectX::XMMATRIX XMMatrixPerspectiveFovLHReverseZ(float FovY, float AspectRatio, float NearZ, float FarZ) const
+    {
+        const float YScale = 1.0f / tanf(FovY * 0.5f);
+        const float XScale = YScale / AspectRatio;
+        
+        return DirectX::XMMATRIX(
+            XScale, 0.0f,   0.0f,                             0.0f,
+            0.0f,   YScale, 0.0f,                             0.0f,
+            0.0f,   0.0f,   NearZ/(NearZ-FarZ),               1.0f,
+            0.0f,   0.0f,   (-NearZ*FarZ)/(NearZ-FarZ),       0.0f
+        );
+    }
+
     unsigned int CalcConstantBufferByteSize(unsigned int ByteSize) const
     {
         // Constant buffers must be a multiple of the minimum hardware
