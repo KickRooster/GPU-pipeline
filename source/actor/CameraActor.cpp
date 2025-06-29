@@ -108,7 +108,7 @@ void CameraActor::Update(float DeltaTime)
         XMLoadFloat3(&LookDirection),
         XMLoadFloat3(&UpDirection));
 
-    ProjectionMatrix = XMMatrixPerspectiveFovLH(FovY * XM_PI / 180.f, AspectRatio, NearPlane, FarPlane);
+    ProjectionMatrix = MathTool::GetInstance().XMMatrixPerspectiveFovLHReverseZ(FovY * XM_PI / 180.f, AspectRatio, NearPlane, FarPlane);
     const XMMATRIX ViewProjectionMatrix = ViewMatrix * ProjectionMatrix;
 
     XMStoreFloat4x4(&ConstantBufferInstance->ViewProj, XMMatrixTranspose(ViewProjectionMatrix));
@@ -131,11 +131,11 @@ void CameraActor::Update(float DeltaTime)
     // Bottom: row4 + row2
     Planes[3] = XMVectorAdd(ViewProjectionTransposeMatrix.r[3], ViewProjectionTransposeMatrix.r[1]);
     
-    // Far: row4 + row3
-    Planes[4] = XMVectorAdd(ViewProjectionTransposeMatrix.r[3], ViewProjectionTransposeMatrix.r[2]);
+    // Far: row4 - row3
+    Planes[4] = XMVectorSubtract(ViewProjectionTransposeMatrix.r[3], ViewProjectionTransposeMatrix.r[2]);
     
-    // Near: row4 - row3
-    Planes[5] = XMVectorSubtract(ViewProjectionTransposeMatrix.r[3], ViewProjectionTransposeMatrix.r[2]);
+    // Near: row4 + row3
+    Planes[5] = XMVectorAdd(ViewProjectionTransposeMatrix.r[3], ViewProjectionTransposeMatrix.r[2]);
     
     // Normalize
     for (int I = 0; I < 6; ++I)
