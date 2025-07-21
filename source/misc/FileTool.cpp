@@ -18,3 +18,18 @@ string FileTool::GetTextureFullPath(const std::string& FilePath)
     
     return TexturePath + "\\" + FileName;
 }
+
+wstring FileTool::GetAmplificationShaderPath() const
+{
+    return AmplificationShaderPath;
+}
+
+wstring FileTool::GetMeshShaderPath() const
+{
+    return MeshShaderPath;
+}
+
+wstring FileTool::GetPixelShaderPath() const
+{
+    return PixelShaderPath;
+}
