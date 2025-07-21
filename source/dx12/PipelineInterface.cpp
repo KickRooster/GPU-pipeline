@@ -1,5 +1,6 @@
 ﻿#include "PipelineInterface.h"
 #include "../misc/Math.h"
+#include "../misc/FileTool.h"
 #include "../actor/CameraActor.h"
 #include "../actor/StaticMeshActor.h"
 #include "../asset/Mesh.h"
@@ -301,29 +302,44 @@ ErrorCode PipelineInterface::CompileShaderDXC(const wstring& ShaderPath, const w
     }
 }
 
-ErrorCode PipelineInterface::CreateMeshShaderPipelinestate()
+ErrorCode PipelineInterface::RecompileShaders()
+{
+    WaitForLastSubmittedFrame();
+    
+    const ComPtr<ID3D12PipelineState> OldPipelineState = MeshShaderPipelineState;
+    
+    MeshShaderPipelineState.Reset();
+    
+    const ErrorCode Result = CreateMeshShaderPipelineState();
+    
+    if (Result != ErrorCode::OK)
+    {
+        MeshShaderPipelineState = OldPipelineState;
+        return Result;
+    }
+    
+    return ErrorCode::OK;
+}
+
+ErrorCode PipelineInterface::CreateMeshShaderPipelineState()
 {
     ComPtr<IDxcBlob> AmplificationShader;
     ComPtr<IDxcBlob> MeshShader;
     ComPtr<IDxcBlob> PixelShader;
-
-    wstring AmplificationShaderPath = L"D:\\GPU-pipeline\\content\\shader\\meshlet_as.hlsl";
-    wstring MeshShaderPath = L"D:\\GPU-pipeline\\content\\shader\\meshlet_ms.hlsl";
-    wstring PixelShaderPath = L"D:\\GPU-pipeline\\content\\shader\\meshlet_ps.hlsl";
     
-    ErrorCode Result = CompileShaderDXC(AmplificationShaderPath, L"main", L"as_6_5", AmplificationShader);
+    ErrorCode Result = CompileShaderDXC(FileTool::GetInstance().GetAmplificationShaderPath(), L"main", L"as_6_5", AmplificationShader);
     if (Result != ErrorCode::OK)
     {
         return Result;
     }
 
-    Result = CompileShaderDXC(MeshShaderPath, L"main", L"ms_6_5", MeshShader);
+    Result = CompileShaderDXC(FileTool::GetInstance().GetMeshShaderPath(), L"main", L"ms_6_5", MeshShader);
     if (Result != ErrorCode::OK)
     {
         return Result;
     }
 
-    Result = CompileShaderDXC(PixelShaderPath, L"main", L"ps_6_0", PixelShader);
+    Result = CompileShaderDXC(FileTool::GetInstance().GetPixelShaderPath(), L"main", L"ps_6_0", PixelShader);
     if (Result != ErrorCode::OK)
     {
         return Result;
@@ -615,7 +631,7 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         return Result;
     }
 
-    Result = CreateMeshShaderPipelinestate();
+    Result = CreateMeshShaderPipelineState();
     if (Result != ErrorCode::OK)
     {
         return Result;
@@ -846,7 +862,7 @@ void PipelineInterface::WaitForLastSubmittedFrame()
 {
     FrameContext* FrameContext = &FrameContexts[FrameIndex % FrameNumInFlight];
 
-    unsigned long long FenceValue = FrameContext->FenceValue;
+    const unsigned long long FenceValue = FrameContext->FenceValue;
     //  No fence was signaled
     if (FenceValue == 0)
     {

@@ -147,7 +147,8 @@ public:
     ErrorCode CreateRootSignature();
     ErrorCode CompileShaderFXC(const std::wstring& ShaderPath, const std::string& EntryPoint, const std::string& TargetProfile, Microsoft::WRL::ComPtr<ID3DBlob>& OutShaderBlob) const;
     ErrorCode CompileShaderDXC(const std::wstring& ShaderPath, const std::wstring& EntryPoint, const std::wstring& TargetProfile, Microsoft::WRL::ComPtr<IDxcBlob>& OutShaderBlob) const;
-    ErrorCode CreateMeshShaderPipelinestate();
+    ErrorCode RecompileShaders();
+    ErrorCode CreateMeshShaderPipelineState();
     ErrorCode Initialize(HWND hWnd);
     void CleanUp();
     void PackImGuiInitInfo(ImGui_ImplDX12_InitInfo& OutInitInfo);

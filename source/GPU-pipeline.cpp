@@ -348,6 +348,40 @@ int main(int, char**)
 		}
 		ImGui::End();
 		
+		ImGui::Begin("Tools");
+		{
+			if (ImGui::BeginTabBar("ToolsTabBar"))
+			{
+				if (ImGui::BeginTabItem("Shaders"))
+				{
+					if (ImGui::Button("Recompile Shaders"))
+					{
+						ErrorCode Result = PipelineInterface::GetInstance().RecompileShaders();
+						if (Result == ErrorCode::OK)
+						{
+							OutputDebugStringA("Shaders recompiled successfully!\n");
+						}
+						else
+						{
+							OutputDebugStringA("Shader recompilation failed!\n");
+						}
+					}
+					
+					ImGui::EndTabItem();
+				}
+				
+				if (ImGui::BeginTabItem("X"))
+				{
+					ImGui::Text("X tab content goes here");
+					
+					ImGui::EndTabItem();
+				}
+				
+				ImGui::EndTabBar();
+			}
+		}
+		ImGui::End();
+		
 		ImGui::Begin("Content Browser");
 		{
 		}
