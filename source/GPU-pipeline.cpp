@@ -21,7 +21,7 @@
 #include "actor/CameraActor.h"
 #include "actor/StaticMeshActor.h"
 #include "actor/CullingVisualCameraActor.h"
-// 使用修改后的 ImGuizmo
+#include "misc/FileTool.h"
 #include "../thirdpatry/ImGuizmo/ImGuizmo.h"
 #include "../thirdpatry/imGuIZMO.quat/imguizmo_quat/imGuIZMOquat.h"
 
@@ -384,6 +384,89 @@ int main(int, char**)
 		
 		ImGui::Begin("Content Browser");
 		{
+			static std::vector<std::string> TextureFiles;
+			static bool FirstTime = true;
+			static int SelectedTextureIndex = -1;
+			
+			if (FirstTime)
+			{
+				TextureFiles = FileTool::GetInstance().GetTextureFiles();
+				FirstTime = false;
+			}
+			
+			if (ImGui::BeginMenuBar())
+			{
+				ImGui::Text("Textures: %zu files", TextureFiles.size());
+				ImGui::EndMenuBar();
+			}
+			
+			float ThumbnailSize = 80.0f;
+			float ItemSpacing = 8.0f;
+			ImVec2 ContentSize = ImGui::GetContentRegionAvail();
+			int ItemsPerRow = static_cast<int>(ContentSize.x / (ThumbnailSize + ItemSpacing));
+			if (ItemsPerRow < 1)
+			{
+				ItemsPerRow = 1;
+			}
+			
+			for (size_t I = 0; I < TextureFiles.size(); ++I)
+			{
+				if (I > 0 && I % ItemsPerRow != 0)
+				{
+					ImGui::SameLine(0, ItemSpacing);
+				}
+				
+				std::string FileName = TextureFiles[I];
+				size_t DotPos = FileName.find_last_of('.');
+				if (DotPos != std::string::npos)
+				{
+					FileName = FileName.substr(0, DotPos);
+				}
+				
+				std::string UniqueID = "Texture" + std::to_string(I);
+				
+				bool IsSelected = (SelectedTextureIndex == static_cast<int>(I));
+				
+				if (ImGui::Selectable(UniqueID.c_str(), IsSelected, ImGuiSelectableFlags_None, ImVec2(ThumbnailSize, ThumbnailSize + 25)))
+				{
+					SelectedTextureIndex = static_cast<int>(I);
+				}
+				
+				ImVec2 ItemPos = ImGui::GetItemRectMin();
+				
+				ImGui::GetWindowDrawList()->AddRectFilled(
+					ItemPos,
+					ImVec2(ItemPos.x + ThumbnailSize, ItemPos.y + ThumbnailSize),
+					IsSelected ? IM_COL32(100, 150, 200, 255) : IM_COL32(120, 120, 120, 255),
+					3.0f
+				);
+				
+				ImVec2 TextPos = ImVec2(ItemPos.x, ItemPos.y + ThumbnailSize + 2);
+				
+				std::string DisplayName = FileName;
+				ImVec2 TextSize = ImGui::CalcTextSize(DisplayName.c_str());
+				
+				if (TextSize.x > ThumbnailSize)
+				{
+					float CharWidth = TextSize.x / DisplayName.length();
+					int MaxChars = static_cast<int>(ThumbnailSize / CharWidth) - 2;
+					
+					if (MaxChars > 3)
+					{
+						DisplayName = DisplayName.substr(0, MaxChars) + "..";
+					}
+					else
+					{
+						DisplayName = "...";
+					}
+				}
+				
+				ImGui::GetWindowDrawList()->AddText(
+					TextPos,
+					IsSelected ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 200, 255),
+					DisplayName.c_str()
+				);
+			}
 		}
 		ImGui::End();
 		
