@@ -180,7 +180,7 @@ ErrorCode PipelineInterface::CreateRootSignature()
     return ErrorCode::OK;
 }
 
-ErrorCode PipelineInterface::CompileShaderFXC(const wstring& ShaderPath, const string& EntryPoint, const string& TargetProfile, ComPtr<ID3DBlob>& OutShaderBlob) const
+ErrorCode PipelineInterface::CompileShaderFXC(const string& ShaderPath, const string& EntryPoint, const string& TargetProfile, ComPtr<ID3DBlob>& OutShaderBlob) const
 {
 #ifdef DX12_ENABLE_DEBUG_LAYER
     UINT CompileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
@@ -191,7 +191,7 @@ ErrorCode PipelineInterface::CompileShaderFXC(const wstring& ShaderPath, const s
     ComPtr<ID3DBlob> ErrorBlob;
     
     HRESULT hResult = D3DCompileFromFile(
-        ShaderPath.c_str(), 
+        FileTool::GetInstance().StringToWString(ShaderPath).c_str(),
         nullptr,
         D3D_COMPILE_STANDARD_FILE_INCLUDE,
         EntryPoint.c_str(),
@@ -219,7 +219,7 @@ ErrorCode PipelineInterface::CompileShaderFXC(const wstring& ShaderPath, const s
     return ErrorCode::OK;
 }
 
-ErrorCode PipelineInterface::CompileShaderDXC(const wstring& ShaderPath, const wstring& EntryPoint, const wstring& TargetProfile, ComPtr<IDxcBlob>& OutShaderBlob) const
+ErrorCode PipelineInterface::CompileShaderDXC(const string& ShaderPath, const wstring& EntryPoint, const wstring& TargetProfile, ComPtr<IDxcBlob>& OutShaderBlob) const
 {
     ComPtr<IDxcUtils> DxcUtils;
     ComPtr<IDxcCompiler3> DxcCompiler;
@@ -244,7 +244,7 @@ ErrorCode PipelineInterface::CompileShaderDXC(const wstring& ShaderPath, const w
     }
 
     ComPtr<IDxcBlobEncoding> ShaderSource;
-    hResult = DxcUtils->LoadFile(ShaderPath.c_str(), nullptr, &ShaderSource);
+    hResult = DxcUtils->LoadFile(FileTool::GetInstance().StringToWString(ShaderPath.c_str()).c_str(), nullptr, &ShaderSource);
     if (FAILED(hResult) || !ShaderSource)
     {
         return ErrorCode::ShaderLoadFailed;

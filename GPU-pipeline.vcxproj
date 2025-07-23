@@ -153,11 +153,13 @@
     <ClCompile Include="source\asset\Texture.cpp" />
     <ClCompile Include="source\asset\TextureLoader.cpp" />
     <ClCompile Include="source\dx12\PipelineInterface.cpp" />
-    <ClCompile Include="source\GPU-pipeline.cpp" />
     <ClCompile Include="source\level\Level.cpp" />
     <ClCompile Include="source\Log.cpp" />
     <ClCompile Include="source\asset\MeshLoader.cpp" />
-    <ClCompile Include="source\misc\FileTool.cpp">
+    <ClCompile Include="source\misc\FileTool.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="source\GPU-pipeline.cpp">
       <RuntimeLibrary>MultiThreadedDebugDll</RuntimeLibrary>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <Optimization>Disabled</Optimization>
