@@ -6,8 +6,8 @@
 class TextureLoader : public Singleton<TextureLoader>
 {
 private:
-    DXGI_FORMAT GetDXGIFormat(int Channels, bool IsHDR);
+    DXGI_FORMAT GetDXGIFormat(int Channels, bool IsHDR, bool IsSRGB);
     
 public:
-    ErrorCode LoadTexture(const std::string& FilePath, Texture& OutTextureInstance);
+    ErrorCode LoadTexture(const std::string& FilePath, bool IsSRGB, Texture& OutTextureInstance);
 };

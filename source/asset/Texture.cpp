@@ -9,6 +9,7 @@ Texture::Texture(Texture&& InTexture)
     OriginalChannels = InTexture.OriginalChannels;
     Channels = InTexture.Channels;
     IsHDR = InTexture.IsHDR;
+    IsSRGB = InTexture.IsSRGB;
     Format = InTexture.Format;
     ByteSize = InTexture.ByteSize;
 

@@ -10,7 +10,7 @@
 
 using namespace std;
 
-DXGI_FORMAT TextureLoader::GetDXGIFormat(int Channels, bool IsHDR)
+DXGI_FORMAT TextureLoader::GetDXGIFormat(int Channels, bool IsHDR, bool IsSRGB)
 {
     if (IsHDR)
     {
@@ -36,17 +36,24 @@ DXGI_FORMAT TextureLoader::GetDXGIFormat(int Channels, bool IsHDR)
             return DXGI_FORMAT_R8_UNORM;
         case 2:
             return DXGI_FORMAT_R8G8_UNORM;
+        // 3-channel textures are converted to 4-channel
         case 3:
-            return DXGI_FORMAT_R8G8B8A8_UNORM; // 3-channel textures are converted to 4-channel
         case 4:
-            return DXGI_FORMAT_R8G8B8A8_UNORM;
+            if (IsSRGB)
+            {
+                return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+            }
+            else
+            {
+                return DXGI_FORMAT_R8G8B8A8_UNORM; 
+            }
         default:
             return DXGI_FORMAT_UNKNOWN;
         }
     }
 }
 
-ErrorCode TextureLoader::LoadTexture(const std::string& FilePath, Texture& OutTextureInstance)
+ErrorCode TextureLoader::LoadTexture(const std::string& FilePath, bool IsSRGB, Texture& OutTextureInstance)
 {
     string TextureFullPath = FileTool::GetInstance().GetTextureFullPath(FilePath);
     
@@ -111,7 +118,7 @@ ErrorCode TextureLoader::LoadTexture(const std::string& FilePath, Texture& OutTe
         }
     }
     
-    OutTextureInstance.Format = GetDXGIFormat(OutTextureInstance.Channels, OutTextureInstance.IsHDR);
+    OutTextureInstance.Format = GetDXGIFormat(OutTextureInstance.Channels, OutTextureInstance.IsHDR, IsSRGB);
     
     return ErrorCode::OK;
 }

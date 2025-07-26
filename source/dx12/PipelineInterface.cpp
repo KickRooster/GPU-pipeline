@@ -1500,7 +1500,7 @@ void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 Ne
     }
 }
 
-void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const Level* LevelInstance)
+void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const Level* LevelInstance) const
 {
     D3D12_RESOURCE_BARRIER Barrier = {};
     Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -1534,15 +1534,70 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
     {
         const StaticMeshActor* StaticMeshActorInstance = LevelInstance->GetStaticMeshActors()[I];
         const Material* MaterialInstance = StaticMeshActorInstance->GetMaterial();
-        const TextureProxy* TextureProxyInstance = MaterialInstance->AlbedoTextureProxy.get();
-
-        if (TextureProxyInstance)
+        
+        // Copy albedo texture descriptor
+        const TextureProxy* AlbedoTextureProxyInstance = MaterialInstance->AlbedoTextureProxy.get();
+        if (AlbedoTextureProxyInstance)
         {
             D3D12_CPU_DESCRIPTOR_HANDLE SrcHandle = SimpleBindlessAllocator::GetInstance().GetHeap()->GetCPUDescriptorHandleForHeapStart();
-            SrcHandle.ptr += TextureProxyInstance->DescriptorIndex * SimpleBindlessAllocator::GetInstance().GetDescriptorSize();
+            SrcHandle.ptr += AlbedoTextureProxyInstance->DescriptorIndex * SimpleBindlessAllocator::GetInstance().GetDescriptorSize();
             
             D3D12_CPU_DESCRIPTOR_HANDLE DestHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
-            DestHandle.ptr += (BindlessTextureStartIndex + TextureProxyInstance->DescriptorIndex) * MainHeapDescriptorSize;
+            DestHandle.ptr += (BindlessTextureStartIndex + AlbedoTextureProxyInstance->DescriptorIndex) * MainHeapDescriptorSize;
+            
+            D3DDevice->CopyDescriptorsSimple(
+                1,
+                DestHandle,
+                SrcHandle,
+                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV
+            );
+        }
+        
+        // Copy normal texture descriptor
+        const TextureProxy* NormalTextureProxyInstance = MaterialInstance->NormalTextureProxy.get();
+        if (NormalTextureProxyInstance)
+        {
+            D3D12_CPU_DESCRIPTOR_HANDLE SrcHandle = SimpleBindlessAllocator::GetInstance().GetHeap()->GetCPUDescriptorHandleForHeapStart();
+            SrcHandle.ptr += NormalTextureProxyInstance->DescriptorIndex * SimpleBindlessAllocator::GetInstance().GetDescriptorSize();
+            
+            D3D12_CPU_DESCRIPTOR_HANDLE DestHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
+            DestHandle.ptr += (BindlessTextureStartIndex + NormalTextureProxyInstance->DescriptorIndex) * MainHeapDescriptorSize;
+            
+            D3DDevice->CopyDescriptorsSimple(
+                1,
+                DestHandle,
+                SrcHandle,
+                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV
+            );
+        }
+        
+        // Copy metallic texture descriptor
+        const TextureProxy* MetallicTextureProxyInstance = MaterialInstance->MetallicTextureProxy.get();
+        if (MetallicTextureProxyInstance)
+        {
+            D3D12_CPU_DESCRIPTOR_HANDLE SrcHandle = SimpleBindlessAllocator::GetInstance().GetHeap()->GetCPUDescriptorHandleForHeapStart();
+            SrcHandle.ptr += MetallicTextureProxyInstance->DescriptorIndex * SimpleBindlessAllocator::GetInstance().GetDescriptorSize();
+            
+            D3D12_CPU_DESCRIPTOR_HANDLE DestHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
+            DestHandle.ptr += (BindlessTextureStartIndex + MetallicTextureProxyInstance->DescriptorIndex) * MainHeapDescriptorSize;
+            
+            D3DDevice->CopyDescriptorsSimple(
+                1,
+                DestHandle,
+                SrcHandle,
+                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV
+            );
+        }
+        
+        // Copy roughness texture descriptor
+        const TextureProxy* RoughnessTextureProxyInstance = MaterialInstance->RoughnessTextureProxy.get();
+        if (RoughnessTextureProxyInstance)
+        {
+            D3D12_CPU_DESCRIPTOR_HANDLE SrcHandle = SimpleBindlessAllocator::GetInstance().GetHeap()->GetCPUDescriptorHandleForHeapStart();
+            SrcHandle.ptr += RoughnessTextureProxyInstance->DescriptorIndex * SimpleBindlessAllocator::GetInstance().GetDescriptorSize();
+            
+            D3D12_CPU_DESCRIPTOR_HANDLE DestHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
+            DestHandle.ptr += (BindlessTextureStartIndex + RoughnessTextureProxyInstance->DescriptorIndex) * MainHeapDescriptorSize;
             
             D3DDevice->CopyDescriptorsSimple(
                 1,

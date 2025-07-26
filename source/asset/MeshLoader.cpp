@@ -27,15 +27,30 @@ void MeshLoader::ExtractPBRTextures(const aiMaterial* Material, PBRTextureNamesP
     {
         OutTextureNamesPatch.NormalPath = Path.C_Str();
     }
+    //  XXX:    For fast develop only.
+    else if (OutTextureNamesPatch.AlbedoPath.find("Cerberus_A.tga"))
+    {
+        OutTextureNamesPatch.NormalPath = "Textures\\Cerberus_N.tga";
+    }
     
     if (Material->GetTexture(aiTextureType_METALNESS, 0, &Path) == AI_SUCCESS)
     {
         OutTextureNamesPatch.MetallicPath = Path.C_Str();
     }
+    //  XXX:    For fast develop only.
+    else if (OutTextureNamesPatch.AlbedoPath.find("Cerberus_A.tga"))
+    {
+        OutTextureNamesPatch.MetallicPath = "Textures\\Cerberus_M.tga";
+    }
     
     if (Material->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &Path) == AI_SUCCESS)
     {
         OutTextureNamesPatch.RoughnessPath = Path.C_Str();
+    }
+    //  XXX:    For fast develop only.
+    else if (OutTextureNamesPatch.AlbedoPath.find("Cerberus_A.tga"))
+    {
+        OutTextureNamesPatch.RoughnessPath = "Textures\\Cerberus_R.tga";
     }
     
     aiTextureType OtherTypes[] = {
@@ -92,6 +107,21 @@ void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, const XMM
             Vertex.Normal.x = AssimpMesh->mNormals[I].x;
             Vertex.Normal.y = AssimpMesh->mNormals[I].y;
             Vertex.Normal.z = AssimpMesh->mNormals[I].z;
+        }
+        else
+        {
+            Vertex.Normal = XMFLOAT3(0.0f, 1.0f, 0.0f);
+        }
+
+        if (AssimpMesh->HasTangentsAndBitangents())
+        {
+            Vertex.Tangent.x = AssimpMesh->mTangents[I].x;
+            Vertex.Tangent.y = AssimpMesh->mTangents[I].y;
+            Vertex.Tangent.z = AssimpMesh->mTangents[I].z;
+        }
+        else
+        {
+            Vertex.Tangent = XMFLOAT3(1.0f, 0.0f, 0.0f);
         }
 
         if (AssimpMesh->HasVertexColors(0))

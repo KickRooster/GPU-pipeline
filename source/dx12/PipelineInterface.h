@@ -176,5 +176,5 @@ public:
     void CreateConstantBuffer(const CameraActor* CameraActorInstance);
     void CreateConstantBuffer(const StaticMeshActor* ActorInstance);
     void UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);
-    void RenderLevelMeshlet(unsigned int FrameContextIndex, const Level* LevelInstance);
+    void RenderLevelMeshlet(unsigned int FrameContextIndex, const Level* LevelInstance) const;
 };
