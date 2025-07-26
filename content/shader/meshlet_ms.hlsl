@@ -20,6 +20,7 @@ struct Vertex
 {
     float3 Position;
     float3 Normal;
+    float3 Tangent;
     float4 Color;
     float2 UV0;
 };
@@ -104,6 +105,8 @@ struct VertexOut
     float4 PositionHS : SV_Position;
     float3 PositionWS : POSITION0;
     float3 Normal     : NORMAL0;
+    float3 Tangent    : TANGENT0;
+    float3 Bitangent  : BINORMAL0;
     float4 Color      : COLOR0;
     float2 UV0        : TEXCOORD0;
 };
@@ -143,6 +146,8 @@ void main(
         vout.PositionWS = mul(float4(v.Position, 1), gWorld).xyz;
         vout.PositionHS = mul(float4(vout.PositionWS, 1), gViewProj);
         vout.Normal = normalize(mul(float4(v.Normal, 0), gWorldInvTranspose).xyz);
+        vout.Tangent = normalize(mul(float4(v.Tangent, 0), gWorldInvTranspose).xyz);
+        vout.Bitangent = normalize(cross(vout.Tangent, vout.Normal));
         
         float4 lodColor = GetLODColor(lodIndex);
         

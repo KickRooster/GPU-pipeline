@@ -64,10 +64,40 @@ int Level::InstantiateStaticMeshActors(const string& Path)
         if (!TextureNamesPatches[I].AlbedoPath.empty())
         {
             Texture TextureInstance;
-            if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[I].AlbedoPath, TextureInstance) == ErrorCode::OK)
+            if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[I].AlbedoPath, true, TextureInstance) == ErrorCode::OK)
             {
                 MaterialInstance->AlbedoTexture = make_unique<Texture>(std::move(TextureInstance));
                 MaterialProxyInstance->AlbedoTextureIndex = SimpleBindlessAllocator::GetInstance().AllocateRange(1);
+            }
+        }
+
+        if (!TextureNamesPatches[I].NormalPath.empty())
+        {
+            Texture TextureInstance;
+            if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[I].NormalPath, false, TextureInstance) == ErrorCode::OK)
+            {
+                MaterialInstance->NormalTexture = make_unique<Texture>(std::move(TextureInstance));
+                MaterialProxyInstance->NormalTextureIndex = SimpleBindlessAllocator::GetInstance().AllocateRange(1);
+            }
+        }
+
+        if (!TextureNamesPatches[I].MetallicPath.empty())
+        {
+            Texture TextureInstance;
+            if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[I].MetallicPath, false, TextureInstance) == ErrorCode::OK)
+            {
+                MaterialInstance->MetallicTexture = make_unique<Texture>(std::move(TextureInstance));
+                MaterialProxyInstance->MetallicTextureIndex = SimpleBindlessAllocator::GetInstance().AllocateRange(1);
+            }
+        }
+
+        if (!TextureNamesPatches[I].RoughnessPath.empty())
+        {
+            Texture TextureInstance;
+            if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[I].RoughnessPath, false, TextureInstance) == ErrorCode::OK)
+            {
+                MaterialInstance->RoughnessTexture = make_unique<Texture>(std::move(TextureInstance));
+                MaterialProxyInstance->RoughnessTextureIndex = SimpleBindlessAllocator::GetInstance().AllocateRange(1);
             }
         }
 
@@ -103,6 +133,48 @@ int Level::InstantiateStaticMeshActors(const string& Path)
             );
 
             MaterialInstances[I]->AlbedoTextureProxy = move(TextureProxyInstance);
+        }
+
+        if (MaterialInstances[I]->NormalTexture)
+        {
+            unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
+            
+            PipelineInterface::GetInstance().CreateTexture(
+                MaterialInstances[I]->NormalTexture.get(),
+                MaterialProxyInstances[I]->NormalTextureIndex,
+                TextureProxyInstance.get(),
+                false
+            );
+
+            MaterialInstances[I]->NormalTextureProxy = move(TextureProxyInstance);
+        }
+
+        if (MaterialInstances[I]->MetallicTexture)
+        {
+            unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
+            
+            PipelineInterface::GetInstance().CreateTexture(
+                MaterialInstances[I]->MetallicTexture.get(),
+                MaterialProxyInstances[I]->MetallicTextureIndex,
+                TextureProxyInstance.get(),
+                false
+            );
+
+            MaterialInstances[I]->MetallicTextureProxy = move(TextureProxyInstance);
+        }
+
+        if (MaterialInstances[I]->RoughnessTexture)
+        {
+            unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
+            
+            PipelineInterface::GetInstance().CreateTexture(
+                MaterialInstances[I]->RoughnessTexture.get(),
+                MaterialProxyInstances[I]->RoughnessTextureIndex,
+                TextureProxyInstance.get(),
+                false
+            );
+
+            MaterialInstances[I]->RoughnessTextureProxy = move(TextureProxyInstance);
         }
     }
 
@@ -180,10 +252,40 @@ StaticMeshActor* Level::InstantiateCullingVisualCameraActor()
     if (!TextureNamesPatches[0].AlbedoPath.empty())
     {
         Texture TextureInstance;
-        if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[0].AlbedoPath, TextureInstance) == ErrorCode::OK)
+        if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[0].AlbedoPath, true, TextureInstance) == ErrorCode::OK)
         {
             MaterialInstance->AlbedoTexture = make_unique<Texture>(std::move(TextureInstance));
             MaterialProxyInstance->AlbedoTextureIndex = SimpleBindlessAllocator::GetInstance().AllocateRange(1);
+        }
+    }
+
+    if (!TextureNamesPatches[0].NormalPath.empty())
+    {
+        Texture TextureInstance;
+        if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[0].NormalPath, false, TextureInstance) == ErrorCode::OK)
+        {
+            MaterialInstance->NormalTexture = make_unique<Texture>(std::move(TextureInstance));
+            MaterialProxyInstance->NormalTextureIndex = SimpleBindlessAllocator::GetInstance().AllocateRange(1);
+        }
+    }
+
+    if (!TextureNamesPatches[0].MetallicPath.empty())
+    {
+        Texture TextureInstance;
+        if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[0].MetallicPath, false, TextureInstance) == ErrorCode::OK)
+        {
+            MaterialInstance->MetallicTexture = make_unique<Texture>(std::move(TextureInstance));
+            MaterialProxyInstance->MetallicTextureIndex = SimpleBindlessAllocator::GetInstance().AllocateRange(1);
+        }
+    }
+
+    if (!TextureNamesPatches[0].RoughnessPath.empty())
+    {
+        Texture TextureInstance;
+        if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[0].RoughnessPath, false, TextureInstance) == ErrorCode::OK)
+        {
+            MaterialInstance->RoughnessTexture = make_unique<Texture>(std::move(TextureInstance));
+            MaterialProxyInstance->RoughnessTextureIndex = SimpleBindlessAllocator::GetInstance().AllocateRange(1);
         }
     }
     
