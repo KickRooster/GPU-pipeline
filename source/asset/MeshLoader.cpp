@@ -28,7 +28,7 @@ void MeshLoader::ExtractPBRTextures(const aiMaterial* Material, PBRTextureNamesP
         OutTextureNamesPatch.NormalPath = Path.C_Str();
     }
     //  XXX:    For fast develop only.
-    else if (OutTextureNamesPatch.AlbedoPath.find("Cerberus_A.tga"))
+    else if (OutTextureNamesPatch.AlbedoPath.find("Cerberus_A.tga") != std::string::npos)
     {
         OutTextureNamesPatch.NormalPath = "Textures\\Cerberus_N.tga";
     }
@@ -38,7 +38,7 @@ void MeshLoader::ExtractPBRTextures(const aiMaterial* Material, PBRTextureNamesP
         OutTextureNamesPatch.MetallicPath = Path.C_Str();
     }
     //  XXX:    For fast develop only.
-    else if (OutTextureNamesPatch.AlbedoPath.find("Cerberus_A.tga"))
+    else if (OutTextureNamesPatch.AlbedoPath.find("Cerberus_A.tga") != std::string::npos)
     {
         OutTextureNamesPatch.MetallicPath = "Textures\\Cerberus_M.tga";
     }
@@ -48,7 +48,7 @@ void MeshLoader::ExtractPBRTextures(const aiMaterial* Material, PBRTextureNamesP
         OutTextureNamesPatch.RoughnessPath = Path.C_Str();
     }
     //  XXX:    For fast develop only.
-    else if (OutTextureNamesPatch.AlbedoPath.find("Cerberus_A.tga"))
+    else if (OutTextureNamesPatch.AlbedoPath.find("Cerberus_A.tga") != std::string::npos)
     {
         OutTextureNamesPatch.RoughnessPath = "Textures\\Cerberus_R.tga";
     }

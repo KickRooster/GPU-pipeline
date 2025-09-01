@@ -146,9 +146,86 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="source\actor\CameraActor.cpp" />
-    <ClCompile Include="source\actor\CullingVisualCameraActor.cpp" />
-    <ClCompile Include="source\actor\StaticMeshActor.cpp" />
+    <ClCompile Include="source\actor\Camera.cpp" />
+    <ClCompile Include="source\actor\CullingVisualCamera.cpp" />
+    <ClCompile Include="source\actor\SkyLight.cpp">
+      <RuntimeLibrary>MultiThreadedDebugDll</RuntimeLibrary>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <Optimization>Disabled</Optimization>
+      <SupportJustMyCode>true</SupportJustMyCode>
+      <AssemblerOutput>NoListing</AssemblerOutput>
+      <AssemblerListingLocation>GPU-pipeline\x64\Debug\</AssemblerListingLocation>
+      <UndefineAllPreprocessorDefinitions>false</UndefineAllPreprocessorDefinitions>
+      <BrowseInformation>false</BrowseInformation>
+      <BrowseInformationFile>GPU-pipeline\x64\Debug\</BrowseInformationFile>
+      <CompileAs>Default</CompileAs>
+      <ConformanceMode>true</ConformanceMode>
+      <DiagnosticsFormat>Column</DiagnosticsFormat>
+      <DisableLanguageExtensions>false</DisableLanguageExtensions>
+      <ErrorReporting>Prompt</ErrorReporting>
+      <ExpandAttributedSource>false</ExpandAttributedSource>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <EnableASAN>false</EnableASAN>
+      <EnableFuzzer>false</EnableFuzzer>
+      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
+      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+      <EnableVectorLength>NotSet</EnableVectorLength>
+      <FloatingPointModel>Precise</FloatingPointModel>
+      <ForceConformanceInForLoopScope>true</ForceConformanceInForLoopScope>
+      <GenerateModuleDependencies>false</GenerateModuleDependencies>
+      <GenerateSourceDependencies>false</GenerateSourceDependencies>
+      <GenerateXMLDocumentationFiles>false</GenerateXMLDocumentationFiles>
+      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <IgnoreStandardIncludePath>false</IgnoreStandardIncludePath>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>Default</LanguageStandard_C>
+      <MinimalRebuild>false</MinimalRebuild>
+      <ModuleDependenciesFile>GPU-pipeline\x64\Debug\</ModuleDependenciesFile>
+      <ModuleOutputFile>GPU-pipeline\x64\Debug\</ModuleOutputFile>
+      <OmitDefaultLibName>false</OmitDefaultLibName>
+      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <ObjectFileName>GPU-pipeline\x64\Debug\</ObjectFileName>
+      <CallingConvention>Cdecl</CallingConvention>
+      <ProgramDataBaseFileName>GPU-pipeline\x64\Debug\vc143.pdb</ProgramDataBaseFileName>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>GPU-pipeline\x64\Debug\GPU-pipeline.pch</PrecompiledHeaderOutputFile>
+      <PreprocessToFile>false</PreprocessToFile>
+      <PreprocessKeepComments>false</PreprocessKeepComments>
+      <PreprocessSuppressLineNumbers>false</PreprocessSuppressLineNumbers>
+      <RemoveUnreferencedCodeData>true</RemoveUnreferencedCodeData>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+      <ShowIncludes>false</ShowIncludes>
+      <SourceDependenciesFile>GPU-pipeline\x64\Debug\</SourceDependenciesFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
+      <SmallerTypeCheck>false</SmallerTypeCheck>
+      <SpectreMitigation>false</SpectreMitigation>
+      <StructMemberAlignment>Default</StructMemberAlignment>
+      <TrackerLogDirectory>GPU-pipeline\x64\Debug\GPU-pipeline.tlog\</TrackerLogDirectory>
+      <TranslateIncludes>false</TranslateIncludes>
+      <MinimalRebuildFromTracking>true</MinimalRebuildFromTracking>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
+      <UseFullPaths>true</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <XMLDocumentationFileName>GPU-pipeline\x64\Debug\</XMLDocumentationFileName>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <IntelJCCErratum>false</IntelJCCErratum>
+      <BuildStlModules>false</BuildStlModules>
+      <TreatAngleIncludeAsExternal>false</TreatAngleIncludeAsExternal>
+      <ExternalWarningLevel>InheritWarningLevel</ExternalWarningLevel>
+      <TreatExternalTemplatesAsInternal>true</TreatExternalTemplatesAsInternal>
+      <DisableAnalyzeExternal>false</DisableAnalyzeExternal>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;IMGUIZMO_IMGUI_FOLDER=../imgui/;_UNICODE;UNICODE;</PreprocessorDefinitions>
+      <SDLCheck>true</SDLCheck>
+      <LinkCompiled>true</LinkCompiled>
+      <AdditionalIncludeDirectories>D:\GPU-pipeline\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\include;D:\GPU-pipeline\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\include\d3dx12;D:\GPU-pipeline\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\;</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="source\actor\StaticMesh.cpp" />
+    <ClCompile Include="source\asset\CubemapTexture.cpp" />
     <ClCompile Include="source\asset\Material.cpp" />
     <ClCompile Include="source\asset\Texture.cpp" />
     <ClCompile Include="source\asset\TextureLoader.cpp" />
@@ -189,7 +266,7 @@
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <IgnoreStandardIncludePath>false</IgnoreStandardIncludePath>
-      <LanguageStandard>Default</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>Default</LanguageStandard_C>
       <MinimalRebuild>false</MinimalRebuild>
       <ModuleDependenciesFile>GPU-pipeline\x64\Debug\</ModuleDependenciesFile>
@@ -263,8 +340,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\actor\Actor.h" />
-    <ClInclude Include="source\actor\CullingVisualCameraActor.h" />
-    <ClInclude Include="source\actor\StaticMeshActor.h" />
+    <ClInclude Include="source\actor\CullingVisualCamera.h" />
+    <ClInclude Include="source\actor\SkyLight.h" />
+    <ClInclude Include="source\actor\StaticMesh.h" />
+    <ClInclude Include="source\asset\CubemapTexture.h" />
     <ClInclude Include="source\asset\Material.h" />
     <ClInclude Include="source\asset\MeshLoader.h" />
     <ClInclude Include="source\asset\Mesh.h" />
@@ -298,7 +377,7 @@
     <None Include="content\shader\meshlet_ps.hlsl" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="source\actor\CameraActor.h" />
+    <ClInclude Include="source\actor\Camera.h" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="thirdpatry\imgui\misc\debuggers\imgui.natstepfilter" />

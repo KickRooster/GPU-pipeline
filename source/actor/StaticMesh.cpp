@@ -1,4 +1,4 @@
-#include "StaticMeshActor.h"
+#include "StaticMesh.h"
 #include "../asset/Mesh.h"
 #include "../asset/MeshLoader.h"
 #include "../dx12/MeshProxy.h"
@@ -6,8 +6,8 @@
 using namespace std;
 using namespace DirectX;
 
-StaticMeshActor::StaticMeshActor(
-    const DirectX::XMFLOAT4X4* Local2WorldMatrix,
+StaticMesh::StaticMesh(
+    const XMFLOAT4X4* Local2WorldMatrix,
     const XMFLOAT4 InBoundingSphere,
     vector<unique_ptr<MeshletData>> InMeshletDataInstances,
     vector<unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances)
@@ -16,7 +16,7 @@ StaticMeshActor::StaticMeshActor(
     MeshletDataInstances(move(InMeshletDataInstances)),
     MeshletDataProxyInstances(move(InMeshletDataProxyInstances))
 {
-    ConstantBufferInstance = make_unique<StaticMeshActorConstantBuffer>();
+    ConstantBufferInstance = make_unique<StaticMeshConstantBuffer>();
     ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
     
     for (size_t I = 0; I < MeshletDataInstances.size(); ++I)
@@ -35,7 +35,7 @@ StaticMeshActor::StaticMeshActor(
     }
 }
 
-void StaticMeshActor::Update(float DeltaTime)
+void StaticMesh::Update(float DeltaTime)
 {
     const XMMATRIX Scale = XMMatrixScaling(Transform.Scale.x, Transform.Scale.y, Transform.Scale.z);
     
@@ -61,22 +61,27 @@ void StaticMeshActor::Update(float DeltaTime)
             memcpy(
                 ConstantBufferProxyInstance->MappedData,
                 ConstantBufferInstance.get(),
-                MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(StaticMeshActorConstantBuffer)));
+                MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(StaticMeshConstantBuffer)));
         }
     }
 }
 
-const vector<unique_ptr<MeshletData>>& StaticMeshActor::GetMeshletDataInstances() const
+ConstantBufferProxy* StaticMesh::GetConstantBufferProxy() const
+{
+    return ConstantBufferProxyInstance.get();   
+}
+
+const vector<unique_ptr<MeshletData>>& StaticMesh::GetMeshletDataInstances() const
 {
     return MeshletDataInstances;
 }
 
-const vector<unique_ptr<MeshletDataProxy>>& StaticMeshActor::GetMeshletDataProxyInstances() const
+const vector<unique_ptr<MeshletDataProxy>>& StaticMesh::GetMeshletDataProxyInstances() const
 {
     return MeshletDataProxyInstances;
 }
 
-void StaticMeshActor::SetMaterial(std::unique_ptr<Material> InMaterialInstance, std::unique_ptr<MaterialProxy> InMaterialProxyInstance)
+void StaticMesh::SetMaterial(std::unique_ptr<Material> InMaterialInstance, std::unique_ptr<MaterialProxy> InMaterialProxyInstance)
 {
     MaterialInstance = std::move(InMaterialInstance);
     MaterialProxyInstance = std::move(InMaterialProxyInstance);
@@ -87,17 +92,12 @@ void StaticMeshActor::SetMaterial(std::unique_ptr<Material> InMaterialInstance, 
     ConstantBufferInstance->PBRTextureIndices[3].Value = MaterialProxyInstance->RoughnessTextureIndex;
 }
 
-const Material* StaticMeshActor::GetMaterial() const
+const Material* StaticMesh::GetMaterial() const
 {
     return MaterialInstance.get();
 }
 
-ConstantBufferProxy* StaticMeshActor::GetConstantBufferProxy() const
-{
-    return ConstantBufferProxyInstance.get();   
-}
-
-XMMATRIX StaticMeshActor::GetWorldMatrix() const
+XMMATRIX StaticMesh::GetWorldMatrix() const
 {
     return TransformationMatrix;
 }

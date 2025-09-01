@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "../misc/Base.h"
+#include "../misc/Math.h"
 #include <vector>
 #include <string>
 #include <dxgi1_6.h>
@@ -26,6 +26,7 @@ struct Texture
     size_t ByteSize = 0;
 
     Texture() = default;
-    Texture(Texture&& InTexture);
+    Texture(Texture&& InTexture) noexcept;
+    DirectX::XMFLOAT4 Sample(const DirectX::XMFLOAT2& UV) const;
     ~Texture();
 };

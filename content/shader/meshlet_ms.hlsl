@@ -7,7 +7,7 @@ cbuffer cbCamera : register(b0)
     uint     gLODCount;
 };
 
-cbuffer cbStaticMeshActor : register(b1)
+cbuffer cbStaticMesh : register(b1)
 {
     float4x4 gWorld;
     float4x4 gWorldInvTranspose;

@@ -1,10 +1,11 @@
 ﻿#include "PipelineInterface.h"
 #include "../misc/Math.h"
 #include "../misc/FileTool.h"
-#include "../actor/CameraActor.h"
-#include "../actor/StaticMeshActor.h"
+#include "../actor/Camera.h"
+#include "../actor/StaticMesh.h"
 #include "../asset/Mesh.h"
 #include "../asset/MeshLoader.h"
+#include "../asset/CubemapTexture.h"
 #include "MaterialProxy.h"
 
 #include <d3dcompiler.h>
@@ -28,28 +29,22 @@
 using namespace Microsoft::WRL;
 using namespace std;
 
-ErrorCode SimpleBindlessAllocator::Initialize(ID3D12Device* Device, D3D12_DESCRIPTOR_HEAP_TYPE Type, unsigned int NumDescriptors, bool ShaderVisible)
+ErrorCode BindlessAllocator::Initialize(ID3D12DescriptorHeap* ExistingHeap, unsigned int NumDescriptors, unsigned int StartOffset)
 {
+    ExternalHeap = ExistingHeap;
     MaxDescriptors = NumDescriptors;
-    
-    D3D12_DESCRIPTOR_HEAP_DESC HeapDesc = {};
-    HeapDesc.Type = Type;
-    HeapDesc.NumDescriptors = NumDescriptors;
-    HeapDesc.Flags = ShaderVisible ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    
-    const HRESULT HResult = Device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&DescriptorHeap));
-    if (FAILED(HResult))
-    {
-        return ErrorCode::DescriptorHeapCreateFailed;
-    }
-    
-    DescriptorSize = Device->GetDescriptorHandleIncrementSize(Type);
+    HeapStartOffset = StartOffset;
     NextDescriptorIndex = 0;
+    
+    Microsoft::WRL::ComPtr<ID3D12Device> Device;
+    ExistingHeap->GetDevice(IID_PPV_ARGS(&Device));
+    D3D12_DESCRIPTOR_HEAP_DESC Desc = ExistingHeap->GetDesc();
+    DescriptorSize = Device->GetDescriptorHandleIncrementSize(Desc.Type);
     
     return ErrorCode::OK;
 }
 
-unsigned int SimpleBindlessAllocator::AllocateRange(unsigned int Count)
+unsigned int BindlessAllocator::AllocateRange(unsigned int Count)
 {
     if (NextDescriptorIndex + Count > MaxDescriptors)
     {
@@ -62,17 +57,17 @@ unsigned int SimpleBindlessAllocator::AllocateRange(unsigned int Count)
     return StartIndex;
 }
 
-void SimpleBindlessAllocator::Reset()
+void BindlessAllocator::Reset()
 {
     NextDescriptorIndex = 0;
 }
 
-ID3D12DescriptorHeap* SimpleBindlessAllocator::GetHeap() const
+ID3D12DescriptorHeap* BindlessAllocator::GetHeap() const
 {
-    return DescriptorHeap.Get();
+    return ExternalHeap ? ExternalHeap : DescriptorHeap.Get();
 }
 
-unsigned int SimpleBindlessAllocator::GetDescriptorSize() const
+unsigned int BindlessAllocator::GetDescriptorSize() const
 {
     return DescriptorSize;
 }
@@ -88,9 +83,8 @@ ErrorCode PipelineInterface::CreateRootSignature()
         FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
     }
     
-    // 扩展根签名：支持4级LOD的所有资源传递 + Bindless纹理访问
-    // 2个CBV + 4级LOD×5个SRV + 1个bindless纹理描述符表 = 23个参数
-    CD3DX12_ROOT_PARAMETER1 RootParameters[23] = {};
+    // 3个CBV + 4级LOD×5个SRV + 1个bindless纹理描述符表 + 1个bindless cubemap描述符表 = 25个参数
+    CD3DX12_ROOT_PARAMETER1 RootParameters[25] = {};
     
     // Parameter 0: Camera Constants (b0)
     RootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
@@ -98,7 +92,10 @@ ErrorCode PipelineInterface::CreateRootSignature()
     // Parameter 1: Actor Constants (b1)
     RootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
     
-    // Parameter 2: Bindless纹理描述符表 (t20, space0) - 用于访问所有纹理
+    // Parameter 2: SkyLight Constants (b2)
+    RootParameters[2].InitAsConstantBufferView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+    
+    // Parameter 3: Bindless纹理描述符表 (t20, space0) - 用于访问所有纹理
     CD3DX12_DESCRIPTOR_RANGE1 TextureRange = {};
     TextureRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
     TextureRange.NumDescriptors = UINT_MAX; // Bindless - 无限制数量
@@ -107,35 +104,46 @@ ErrorCode PipelineInterface::CreateRootSignature()
     TextureRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
     TextureRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
     
-    RootParameters[2].InitAsDescriptorTable(1, &TextureRange, D3D12_SHADER_VISIBILITY_PIXEL);
+    RootParameters[3].InitAsDescriptorTable(1, &TextureRange, D3D12_SHADER_VISIBILITY_PIXEL);
     
-    // LOD 0 资源 (参数 3-7, 寄存器 t0-t4)
-    RootParameters[3].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 Vertices
-    RootParameters[4].InitAsShaderResourceView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 Meshlets
-    RootParameters[5].InitAsShaderResourceView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 UniqueVertexIndices
-    RootParameters[6].InitAsShaderResourceView(3, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 MeshletTriangles
-    RootParameters[7].InitAsShaderResourceView(4, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 MeshletBounds
+    // Parameter 4: Bindless Cubemap描述符表 (t0, space1) - 用于访问所有cubemap
+    CD3DX12_DESCRIPTOR_RANGE1 CubemapRange = {};
+    CubemapRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    CubemapRange.NumDescriptors = UINT_MAX; // Bindless - 无限制数量
+    CubemapRange.BaseShaderRegister = 0;    // 从t0开始
+    CubemapRange.RegisterSpace = 1;         // 使用space1避免冲突
+    CubemapRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
+    CubemapRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
     
-    // LOD 1 资源 (参数 8-12, 寄存器 t5-t9)
-    RootParameters[8].InitAsShaderResourceView(5, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);    // LOD1 Vertices
-    RootParameters[9].InitAsShaderResourceView(6, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);    // LOD1 Meshlets
-    RootParameters[10].InitAsShaderResourceView(7, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);    // LOD1 UniqueVertexIndices
-    RootParameters[11].InitAsShaderResourceView(8, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);  // LOD1 MeshletTriangles
-    RootParameters[12].InitAsShaderResourceView(9, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);  // LOD1 MeshletBounds
+    RootParameters[4].InitAsDescriptorTable(1, &CubemapRange, D3D12_SHADER_VISIBILITY_PIXEL);
     
-    // LOD 2 资源 (参数 13-17, 寄存器 t10-t14)
-    RootParameters[13].InitAsShaderResourceView(10, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 Vertices
-    RootParameters[14].InitAsShaderResourceView(11, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 Meshlets
-    RootParameters[15].InitAsShaderResourceView(12, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 UniqueVertexIndices
-    RootParameters[16].InitAsShaderResourceView(13, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 MeshletTriangles
-    RootParameters[17].InitAsShaderResourceView(14, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 MeshletBounds
+    // LOD 0 资源 (参数 5-9, 寄存器 t0-t4)
+    RootParameters[5].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 Vertices
+    RootParameters[6].InitAsShaderResourceView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 Meshlets
+    RootParameters[7].InitAsShaderResourceView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 UniqueVertexIndices
+    RootParameters[8].InitAsShaderResourceView(3, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 MeshletTriangles
+    RootParameters[9].InitAsShaderResourceView(4, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);   // LOD0 MeshletBounds
     
-    // LOD 3 资源 (参数 18-22, 寄存器 t15-t19)
-    RootParameters[18].InitAsShaderResourceView(15, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 Vertices
-    RootParameters[19].InitAsShaderResourceView(16, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 Meshlets
-    RootParameters[20].InitAsShaderResourceView(17, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 UniqueVertexIndices
-    RootParameters[21].InitAsShaderResourceView(18, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 MeshletTriangles
-    RootParameters[22].InitAsShaderResourceView(19, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 MeshletBounds
+    // LOD 1 资源 (参数 10-14, 寄存器 t5-t9)
+    RootParameters[10].InitAsShaderResourceView(5, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);    // LOD1 Vertices
+    RootParameters[11].InitAsShaderResourceView(6, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);    // LOD1 Meshlets
+    RootParameters[12].InitAsShaderResourceView(7, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);    // LOD1 UniqueVertexIndices
+    RootParameters[13].InitAsShaderResourceView(8, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);  // LOD1 MeshletTriangles
+    RootParameters[14].InitAsShaderResourceView(9, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);  // LOD1 MeshletBounds
+    
+    // LOD 2 资源 (参数 15-19, 寄存器 t10-t14)
+    RootParameters[15].InitAsShaderResourceView(10, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 Vertices
+    RootParameters[16].InitAsShaderResourceView(11, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 Meshlets
+    RootParameters[17].InitAsShaderResourceView(12, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 UniqueVertexIndices
+    RootParameters[18].InitAsShaderResourceView(13, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 MeshletTriangles
+    RootParameters[19].InitAsShaderResourceView(14, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD2 MeshletBounds
+    
+    // LOD 3 资源 (参数 20-24, 寄存器 t15-t19)
+    RootParameters[20].InitAsShaderResourceView(15, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 Vertices
+    RootParameters[21].InitAsShaderResourceView(16, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 Meshlets
+    RootParameters[22].InitAsShaderResourceView(17, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 UniqueVertexIndices
+    RootParameters[23].InitAsShaderResourceView(18, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 MeshletTriangles
+    RootParameters[24].InitAsShaderResourceView(19, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // LOD3 MeshletBounds
     
     // 静态采样器设置 - 用于bindless纹理采样
     CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1] = {};
@@ -227,13 +235,13 @@ ErrorCode PipelineInterface::CompileShaderDXC(const string& ShaderPath, const ws
     HRESULT hResult = DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&DxcUtils));
     if (FAILED(hResult))
     {
-        return ErrorCode::DxcUtilsCreateFailed;
+        return ErrorCode::UtilsCreateFailed;
     }
     
     hResult = DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&DxcCompiler));
     if (FAILED(hResult))
     {
-        return ErrorCode::DxcCompilerCreateFailed;
+        return ErrorCode::CompilerCreateFailed;
     }
     
     ComPtr<IDxcIncludeHandler> IncludeHandler;
@@ -637,11 +645,21 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         return Result;
         }
 
-    Result = SimpleBindlessAllocator::GetInstance().Initialize(
-        D3DDevice.Get(), 
-        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 
-        MaxTextureDescriptors, 
-        false
+    Result = TextureAllocator.Initialize(
+        D3DSRVCBVDescHeap.Get(),
+        MaxTextureDescriptors,
+        BindlessTextureStartIndex
+    );
+
+    if (Result != ErrorCode::OK)
+    {
+        return Result;
+    }
+
+    Result = CubemapAllocator.Initialize(
+        D3DSRVCBVDescHeap.Get(),
+        MaxCubemapDescriptors,
+        BindlessTextureStartIndex + MaxTextureDescriptors
     );
 
     if (Result != ErrorCode::OK)
@@ -685,6 +703,10 @@ void PipelineInterface::CleanUp()
     
     IMGUIRenderTargetResources.clear();
     IMGUIRenderTargetDescriptorHandles.clear();
+
+    // Reset allocators
+    TextureAllocator.Reset();
+    CubemapAllocator.Reset();
 
     //  Do clean
     if (SwapChain)
@@ -963,6 +985,16 @@ IDXGISwapChain3* PipelineInterface::GetSwapChain()
     return SwapChain.Get();
 }
 
+BindlessAllocator& PipelineInterface::GetTextureBindlessAllocator()
+{
+    return TextureAllocator;
+}
+
+BindlessAllocator& PipelineInterface::GetCubemapBindlessAllocator()
+{
+    return CubemapAllocator;    
+}
+
 void PipelineInterface::UpdateFrameContextFenceValue(unsigned FrameContextIndex, unsigned long FenceValue)
 {
     FrameContexts[FrameContextIndex].FenceValue = FenceValue;
@@ -998,9 +1030,12 @@ void PipelineInterface::ExecuteAndWaitUploadCommandList()
         UploadFence->SetEventOnCompletion(UploadFenceValue, UploadFenceEvent);
         WaitForSingleObject(UploadFenceEvent, INFINITE);
     }
+    
+    // Reset allocator after execution completes
+    UploadCommandAllocator->Reset();
 }
 
-void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Vertices, const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance, bool ImmediateExecute)
+ErrorCode PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Vertices, const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance, bool ImmediateExecute)
 {
     if (ImmediateExecute)
     {
@@ -1017,61 +1052,91 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
     CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
     
     CD3DX12_RESOURCE_DESC VertexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(VertexBufferSize);
-    D3DDevice->CreateCommittedResource(
+    HRESULT hResult = D3DDevice->CreateCommittedResource(
         &DefaultHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
         &VertexBufferDesc, 
         D3D12_RESOURCE_STATE_COPY_DEST, 
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->VertexBuffer));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
     
     CD3DX12_RESOURCE_DESC MeshletsBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(MeshletsBufferSize);
-    D3DDevice->CreateCommittedResource(
+    hResult = D3DDevice->CreateCommittedResource(
         &DefaultHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
         &MeshletsBufferDesc, 
         D3D12_RESOURCE_STATE_COPY_DEST, 
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletsBuffer));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
     
     CD3DX12_RESOURCE_DESC MeshletVerticesBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(MeshletVerticesBufferSize);
-    D3DDevice->CreateCommittedResource(
+    hResult = D3DDevice->CreateCommittedResource(
         &DefaultHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
         &MeshletVerticesBufferDesc, 
         D3D12_RESOURCE_STATE_COPY_DEST, 
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletVerticesBuffer));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
     
     CD3DX12_RESOURCE_DESC MeshletTrianglesBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(MeshletTrianglesBufferSize);
-    D3DDevice->CreateCommittedResource(
+    hResult = D3DDevice->CreateCommittedResource(
         &DefaultHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
         &MeshletTrianglesBufferDesc, 
         D3D12_RESOURCE_STATE_COPY_DEST, 
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletTrianglesBuffer));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
     
     CD3DX12_RESOURCE_DESC MeshletBoundsBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(MeshletBoundsBufferSize);
-    D3DDevice->CreateCommittedResource(
+    hResult = D3DDevice->CreateCommittedResource(
         &DefaultHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
         &MeshletBoundsBufferDesc, 
         D3D12_RESOURCE_STATE_COPY_DEST, 
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletBoundsBuffer));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
     
     CD3DX12_HEAP_PROPERTIES UploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
     
-    D3DDevice->CreateCommittedResource(
+    hResult = D3DDevice->CreateCommittedResource(
         &UploadHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
         &VertexBufferDesc, 
         D3D12_RESOURCE_STATE_GENERIC_READ, 
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->VertexBufferUpload));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
     
-    D3DDevice->CreateCommittedResource(
+    hResult = D3DDevice->CreateCommittedResource(
         &UploadHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
         &MeshletsBufferDesc, 
@@ -1079,29 +1144,49 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletsBufferUpload));
     
-    D3DDevice->CreateCommittedResource(
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+    
+    hResult = D3DDevice->CreateCommittedResource(
         &UploadHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
         &MeshletVerticesBufferDesc, 
         D3D12_RESOURCE_STATE_GENERIC_READ, 
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletVerticesBufferUpload));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
     
-    D3DDevice->CreateCommittedResource(
+    hResult = D3DDevice->CreateCommittedResource(
         &UploadHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
         &MeshletTrianglesBufferDesc, 
         D3D12_RESOURCE_STATE_GENERIC_READ, 
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletTrianglesBufferUpload));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
     
-    D3DDevice->CreateCommittedResource(
+    hResult = D3DDevice->CreateCommittedResource(
         &UploadHeapProperties, 
         D3D12_HEAP_FLAG_NONE, 
         &MeshletBoundsBufferDesc, 
         D3D12_RESOURCE_STATE_GENERIC_READ, 
         nullptr, 
         IID_PPV_ARGS(&MeshletDataProxyInstance->MeshletBoundsBufferUpload));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
     
     Vertex* VertexDataBegin;
     CD3DX12_RANGE VertexReadRange(0, 0);
@@ -1214,11 +1299,11 @@ void PipelineInterface::CreateMeshletDataProxyBuffer(const vector<Vertex>& Verti
     }
 }
 
-void PipelineInterface::CreateTexture(const Texture* TextureInstance, unsigned int DescriptorIndex, TextureProxy* TextureProxyInstance, bool ImmediateExecute)
+ErrorCode PipelineInterface::CreateTexture(const Texture* TextureInstance, unsigned int DescriptorIndex, TextureProxy* TextureProxyInstance, bool ImmediateExecute)
 {
     if (!TextureInstance || !TextureInstance->Data || !TextureProxyInstance)
     {
-        return;
+        return ErrorCode::InvalidedTextureData;
     }
 
     if (ImmediateExecute)
@@ -1233,7 +1318,7 @@ void PipelineInterface::CreateTexture(const Texture* TextureInstance, unsigned i
     TextureDesc.Width = TextureInstance->Width;
     TextureDesc.Height = TextureInstance->Height;
     TextureDesc.DepthOrArraySize = 1;
-    TextureDesc.MipLevels = 1;  // 目前只支持单个mip级别
+    TextureDesc.MipLevels = 1;
     TextureDesc.Format = TextureInstance->Format;
     TextureDesc.SampleDesc.Count = 1;
     TextureDesc.SampleDesc.Quality = 0;
@@ -1251,7 +1336,7 @@ void PipelineInterface::CreateTexture(const Texture* TextureInstance, unsigned i
 
     if (FAILED(hResult))
     {
-        return;
+        return ErrorCode::CommittedResourceCreateFailed;
     }
 
     unsigned long long TextureUploadBufferSize = 0;
@@ -1274,7 +1359,7 @@ void PipelineInterface::CreateTexture(const Texture* TextureInstance, unsigned i
 
     if (FAILED(hResult))
     {
-        return;
+        return ErrorCode::CommittedResourceCreateFailed;
     }
 
     void* MappedData = nullptr;
@@ -1290,8 +1375,8 @@ void PipelineInterface::CreateTexture(const Texture* TextureInstance, unsigned i
         for (unsigned int Y = 0; Y < NumRows; ++Y)
         {
             memcpy(pData + Y * PlacedFootprint.Footprint.RowPitch, 
-                   SrcData + Y * SrcRowPitch, 
-                   min(static_cast<SIZE_T>(RowSizeInBytes), static_cast<SIZE_T>(SrcRowPitch)));
+                   SrcData + Y * SrcRowPitch,
+                   RowSizeInBytes);
         }
 
         TextureProxyInstance->UploadBuffer->Unmap(0, nullptr);
@@ -1325,9 +1410,8 @@ void PipelineInterface::CreateTexture(const Texture* TextureInstance, unsigned i
     SRVDesc.Texture2D.PlaneSlice = 0;
     SRVDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 
-    ID3D12DescriptorHeap* BindlessHeap = SimpleBindlessAllocator::GetInstance().GetHeap();
-    D3D12_CPU_DESCRIPTOR_HANDLE SRVHandle = BindlessHeap->GetCPUDescriptorHandleForHeapStart();
-    SRVHandle.ptr += DescriptorIndex * SimpleBindlessAllocator::GetInstance().GetDescriptorSize();
+    D3D12_CPU_DESCRIPTOR_HANDLE SRVHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
+    SRVHandle.ptr += (BindlessTextureStartIndex + DescriptorIndex) * D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
     D3DDevice->CreateShaderResourceView(TextureProxyInstance->Resource.Get(), &SRVDesc, SRVHandle);
 
@@ -1351,36 +1435,221 @@ void PipelineInterface::CreateTexture(const Texture* TextureInstance, unsigned i
             WaitForSingleObject(UploadFenceEvent, INFINITE);
         }
     }
+
+    ErrorCode::OK;
 }
 
-void PipelineInterface::CreateConstantBuffer(const CameraActor* CameraActorInstance)
+ErrorCode PipelineInterface::CreateCubemap(const CubemapTexture* CubemapInstance, unsigned int DescriptorIndex, CubemapTextureProxy* CubemapProxyInstance, bool ImmediateExecute)
 {
-    const unsigned int ByteSize = MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(CameraConstantBuffer));
-    ConstantBufferProxy* BufferProxy = CameraActorInstance->GetConstantBufferProxy();
-    BufferProxy->ElementByteSize = ByteSize;
+    if (!CubemapInstance || !CubemapProxyInstance)
+    {
+        return ErrorCode::InvalidedCubemapData;
+    }
 
-    CD3DX12_HEAP_PROPERTIES HeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(ByteSize);
-    D3DDevice->CreateCommittedResource(
-            &HeapProperties,
-            D3D12_HEAP_FLAG_NONE,
-            &BufferDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(&BufferProxy->UploadBuffer));
+    if (ImmediateExecute)
+    {
+        UploadCommandAllocator->Reset();
+        UploadCommandList->Reset(UploadCommandAllocator.Get(), nullptr);
+    }
 
-    BufferProxy->UploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&BufferProxy->MappedData));
+    D3D12_RESOURCE_DESC CubemapDesc = {};
+    CubemapDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    CubemapDesc.Alignment = 0;
+    CubemapDesc.Width = CubemapInstance->GetSize(0);
+    CubemapDesc.Height = CubemapInstance->GetSize(0);
+    CubemapDesc.DepthOrArraySize = 6;  // 6 faces for cubemap
+    CubemapDesc.MipLevels = CubemapInstance->GetMipLevels();
+    CubemapDesc.Format = CubemapInstance->GetFormat();
+    CubemapDesc.SampleDesc.Count = 1;
+    CubemapDesc.SampleDesc.Quality = 0;
+    CubemapDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    CubemapDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
+    HRESULT hResult = D3DDevice->CreateCommittedResource(
+        &DefaultHeapProperties,
+        D3D12_HEAP_FLAG_NONE,
+        &CubemapDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&CubemapProxyInstance->Resource));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+
+    int SubresourceCount = CubemapInstance->GetMipLevels() * 6;
+    
+    // Calculate upload buffer size for all faces and mip levels
+    unsigned long long UploadBufferSize = 0;
+    vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> PlacedFootprints(SubresourceCount);
+    vector<unsigned int> NumRows(SubresourceCount);
+    vector<unsigned long long> RowSizeInBytes(SubresourceCount);
+    
+    D3DDevice->GetCopyableFootprints(
+        &CubemapDesc,
+        0,
+        SubresourceCount,
+        0, 
+        PlacedFootprints.data(),
+        NumRows.data(), 
+        RowSizeInBytes.data(),
+        &UploadBufferSize);
+    
+    // DirectX12 uses Face-first ordering for cubemap subresources
+    vector<pair<int, int>> PhysicalToLogical; // (PhysicalIndex, LogicalIndex)
+    
+    for (int I = 0; I < SubresourceCount; ++I)
+    {
+        unsigned int Width = PlacedFootprints[I].Footprint.Width;
+        
+        // Determine MipLevel from size
+        int MipLevel = -1;
+        for (int Mip = 0; Mip < CubemapInstance->GetMipLevels(); ++Mip)
+        {
+            if (static_cast<unsigned int>(CubemapInstance->GetSize(Mip)) == Width)
+            {
+                MipLevel = Mip;
+                break;
+            }
+        }
+        
+        // Calculate FaceIndex from DirectX12's Face-first layout  
+        int FaceIndex = I / CubemapInstance->GetMipLevels();
+        int LogicalIndex = MipLevel * 6 + FaceIndex;
+        PhysicalToLogical.push_back({I, LogicalIndex});
+    }
+
+    CD3DX12_HEAP_PROPERTIES UploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC UploadBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(UploadBufferSize);
+    
+    hResult = D3DDevice->CreateCommittedResource(
+        &UploadHeapProperties,
+        D3D12_HEAP_FLAG_NONE,
+        &UploadBufferDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&CubemapProxyInstance->UploadBuffer));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+
+    void* MappedData = nullptr;
+    hResult = CubemapProxyInstance->UploadBuffer->Map(0, nullptr, &MappedData);
+    if (SUCCEEDED(hResult))
+    {
+        unsigned char* pData = static_cast<unsigned char*>(MappedData);
+
+        for (const auto& mapping : PhysicalToLogical)
+        {
+            int PhysicalIndex = mapping.first;
+            int LogicalIndex = mapping.second;
+            
+            // Extract MipLevel and FaceIndex from LogicalIndex
+            int MipLevel = LogicalIndex / 6;
+            int FaceIndex = LogicalIndex % 6;
+            int MipSize = CubemapInstance->GetSize(MipLevel);
+            
+            const void* FaceData = CubemapInstance->GetFaceData(MipLevel, static_cast<ECubeFace>(FaceIndex));
+            if (!FaceData)
+            {
+                continue;
+            }
+            
+            unsigned char* FaceDestData = pData + PlacedFootprints[PhysicalIndex].Offset;
+            const unsigned char* FaceSrcData = static_cast<const unsigned char*>(FaceData);
+            const unsigned int SrcRowPitch = MipSize * CubemapInstance->GetChannelCount() * sizeof(float);
+
+            for (unsigned int Y = 0; Y < NumRows[PhysicalIndex]; ++Y)
+            {
+                size_t SrcOffset = static_cast<size_t>(Y) * SrcRowPitch;
+                size_t DestOffset = static_cast<size_t>(Y) * PlacedFootprints[PhysicalIndex].Footprint.RowPitch;
+                
+                memcpy(FaceDestData + DestOffset, 
+                       FaceSrcData + SrcOffset, 
+                       RowSizeInBytes[PhysicalIndex]);
+            }
+        }
+
+        CubemapProxyInstance->UploadBuffer->Unmap(0, nullptr);
+    }
+
+    // Use direct 1:1 mapping since both source and destination use Face-first ordering
+    for (const auto& Mapping : PhysicalToLogical)
+    {
+        int PhysicalIndex = Mapping.first;
+        int DestinationIndex = PhysicalIndex;
+        
+        D3D12_TEXTURE_COPY_LOCATION SrcLocation = {};
+        SrcLocation.pResource = CubemapProxyInstance->UploadBuffer.Get();
+        SrcLocation.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        SrcLocation.PlacedFootprint = PlacedFootprints[PhysicalIndex];
+
+        D3D12_TEXTURE_COPY_LOCATION DstLocation = {};
+        DstLocation.pResource = CubemapProxyInstance->Resource.Get();
+        DstLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        DstLocation.SubresourceIndex = DestinationIndex;
+
+        UploadCommandList->CopyTextureRegion(&DstLocation, 0, 0, 0, &SrcLocation, nullptr);
+    }
+
+    CD3DX12_RESOURCE_BARRIER Barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        CubemapProxyInstance->Resource.Get(),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    
+    UploadCommandList->ResourceBarrier(1, &Barrier);
+
+    // Create SRV for cubemap
+    D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc = {};
+    SRVDesc.Format = CubemapInstance->GetFormat();
+    SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+    SRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    SRVDesc.TextureCube.MostDetailedMip = 0;
+    SRVDesc.TextureCube.MipLevels = CubemapInstance->GetMipLevels();
+    SRVDesc.TextureCube.ResourceMinLODClamp = 0.0f;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE SRVHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
+    SRVHandle.ptr += (BindlessTextureStartIndex + MaxTextureDescriptors + DescriptorIndex) * D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    D3DDevice->CreateShaderResourceView(CubemapProxyInstance->Resource.Get(), &SRVDesc, SRVHandle);
+
+    CubemapProxyInstance->Format = CubemapInstance->GetFormat();
+    CubemapProxyInstance->DescriptorIndex = DescriptorIndex;
+    CubemapProxyInstance->Size = CubemapInstance->GetSize(0);
+    CubemapProxyInstance->MipLevels = CubemapInstance->GetMipLevels();
+
+    if (ImmediateExecute)
+    {
+        UploadCommandList->Close();
+        ID3D12CommandList* CommandLists[] = { UploadCommandList.Get() };
+        UploadQueue->ExecuteCommandLists(_countof(CommandLists), CommandLists);
+
+        UploadFenceValue++;
+        UploadQueue->Signal(UploadFence.Get(), UploadFenceValue);
+
+        if (UploadFence->GetCompletedValue() < UploadFenceValue)
+        {
+            UploadFence->SetEventOnCompletion(UploadFenceValue, UploadFenceEvent);
+            WaitForSingleObject(UploadFenceEvent, INFINITE);
+        }
+    }
+
+    return ErrorCode::OK;
 }
 
-void PipelineInterface::CreateConstantBuffer(const StaticMeshActor* ActorInstance)
+ErrorCode PipelineInterface::CreateConstantBuffer(const Actor* ActorInstance) const
 {
-    const unsigned int ByteSize = MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(StaticMeshActorConstantBuffer));
+    const unsigned int ByteSize = MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(SkyLightConstantBuffer));
     ConstantBufferProxy* BufferProxy = ActorInstance->GetConstantBufferProxy();
     BufferProxy->ElementByteSize = ByteSize;
 
     CD3DX12_HEAP_PROPERTIES HeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(ByteSize);
-    D3DDevice->CreateCommittedResource(
+    HRESULT hResult = D3DDevice->CreateCommittedResource(
             &HeapProperties,
             D3D12_HEAP_FLAG_NONE,
             &BufferDesc,
@@ -1388,10 +1657,17 @@ void PipelineInterface::CreateConstantBuffer(const StaticMeshActor* ActorInstanc
             nullptr,
             IID_PPV_ARGS(&BufferProxy->UploadBuffer));
 
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+
     BufferProxy->UploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&BufferProxy->MappedData));
+
+    return ErrorCode::OK;
 }
 
-void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize)
+ErrorCode PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize)
 {
     bool SizeChanged = ViewportSize.x != NewViewportSize.x || ViewportSize.y != NewViewportSize.y;
     
@@ -1419,7 +1695,7 @@ void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 Ne
         ClearValue.Color[2] = 0.0f;
         ClearValue.Color[3] = 1.0f;
 
-        D3DDevice->CreateCommittedResource(
+        HRESULT hResult = D3DDevice->CreateCommittedResource(
             &HeapProps,
             D3D12_HEAP_FLAG_NONE,
             &RenderTargetDesc,
@@ -1427,6 +1703,11 @@ void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 Ne
             &ClearValue,
             IID_PPV_ARGS(FrameContexts[FrameContextIndex].RenderTarget.GetAddressOf()));
 
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+        
         D3DDevice->CreateRenderTargetView(FrameContexts[FrameContextIndex].RenderTarget.Get(), nullptr, FrameContexts[FrameContextIndex].RenderTargetCPUDescriptorHandle);
 
         D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc = {};
@@ -1464,7 +1745,7 @@ void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 Ne
         HeapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
         HeapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
 
-        D3DDevice->CreateCommittedResource(
+        hResult = D3DDevice->CreateCommittedResource(
             &HeapProps,
             D3D12_HEAP_FLAG_NONE,
             &DepthStencilDesc,
@@ -1472,6 +1753,11 @@ void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 Ne
             &DepthStencilClearValue,
             IID_PPV_ARGS(FrameContexts[FrameContextIndex].DepthStencilBuffer.GetAddressOf()));
 
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+        
         D3D12_DEPTH_STENCIL_VIEW_DESC DeptStencilViewDesc;
         DeptStencilViewDesc.Flags = D3D12_DSV_FLAG_NONE;
         DeptStencilViewDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
@@ -1498,6 +1784,8 @@ void PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVec2 Ne
     {
         bResizedLastFrame = false;
     }
+
+    return ErrorCode::OK;
 }
 
 void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const Level* LevelInstance) const
@@ -1530,105 +1818,40 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
     
     const unsigned int MainHeapDescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     
-    for (int I = 0; I < static_cast<int>(LevelInstance->GetStaticMeshActors().size()); ++I)
-    {
-        const StaticMeshActor* StaticMeshActorInstance = LevelInstance->GetStaticMeshActors()[I];
-        const Material* MaterialInstance = StaticMeshActorInstance->GetMaterial();
-        
-        // Copy albedo texture descriptor
-        const TextureProxy* AlbedoTextureProxyInstance = MaterialInstance->AlbedoTextureProxy.get();
-        if (AlbedoTextureProxyInstance)
-        {
-            D3D12_CPU_DESCRIPTOR_HANDLE SrcHandle = SimpleBindlessAllocator::GetInstance().GetHeap()->GetCPUDescriptorHandleForHeapStart();
-            SrcHandle.ptr += AlbedoTextureProxyInstance->DescriptorIndex * SimpleBindlessAllocator::GetInstance().GetDescriptorSize();
-            
-            D3D12_CPU_DESCRIPTOR_HANDLE DestHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
-            DestHandle.ptr += (BindlessTextureStartIndex + AlbedoTextureProxyInstance->DescriptorIndex) * MainHeapDescriptorSize;
-            
-            D3DDevice->CopyDescriptorsSimple(
-                1,
-                DestHandle,
-                SrcHandle,
-                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV
-            );
-        }
-        
-        // Copy normal texture descriptor
-        const TextureProxy* NormalTextureProxyInstance = MaterialInstance->NormalTextureProxy.get();
-        if (NormalTextureProxyInstance)
-        {
-            D3D12_CPU_DESCRIPTOR_HANDLE SrcHandle = SimpleBindlessAllocator::GetInstance().GetHeap()->GetCPUDescriptorHandleForHeapStart();
-            SrcHandle.ptr += NormalTextureProxyInstance->DescriptorIndex * SimpleBindlessAllocator::GetInstance().GetDescriptorSize();
-            
-            D3D12_CPU_DESCRIPTOR_HANDLE DestHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
-            DestHandle.ptr += (BindlessTextureStartIndex + NormalTextureProxyInstance->DescriptorIndex) * MainHeapDescriptorSize;
-            
-            D3DDevice->CopyDescriptorsSimple(
-                1,
-                DestHandle,
-                SrcHandle,
-                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV
-            );
-        }
-        
-        // Copy metallic texture descriptor
-        const TextureProxy* MetallicTextureProxyInstance = MaterialInstance->MetallicTextureProxy.get();
-        if (MetallicTextureProxyInstance)
-        {
-            D3D12_CPU_DESCRIPTOR_HANDLE SrcHandle = SimpleBindlessAllocator::GetInstance().GetHeap()->GetCPUDescriptorHandleForHeapStart();
-            SrcHandle.ptr += MetallicTextureProxyInstance->DescriptorIndex * SimpleBindlessAllocator::GetInstance().GetDescriptorSize();
-            
-            D3D12_CPU_DESCRIPTOR_HANDLE DestHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
-            DestHandle.ptr += (BindlessTextureStartIndex + MetallicTextureProxyInstance->DescriptorIndex) * MainHeapDescriptorSize;
-            
-            D3DDevice->CopyDescriptorsSimple(
-                1,
-                DestHandle,
-                SrcHandle,
-                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV
-            );
-        }
-        
-        // Copy roughness texture descriptor
-        const TextureProxy* RoughnessTextureProxyInstance = MaterialInstance->RoughnessTextureProxy.get();
-        if (RoughnessTextureProxyInstance)
-        {
-            D3D12_CPU_DESCRIPTOR_HANDLE SrcHandle = SimpleBindlessAllocator::GetInstance().GetHeap()->GetCPUDescriptorHandleForHeapStart();
-            SrcHandle.ptr += RoughnessTextureProxyInstance->DescriptorIndex * SimpleBindlessAllocator::GetInstance().GetDescriptorSize();
-            
-            D3D12_CPU_DESCRIPTOR_HANDLE DestHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
-            DestHandle.ptr += (BindlessTextureStartIndex + RoughnessTextureProxyInstance->DescriptorIndex) * MainHeapDescriptorSize;
-            
-            D3DDevice->CopyDescriptorsSimple(
-                1,
-                DestHandle,
-                SrcHandle,
-                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV
-            );
-        }
-    }
-    
-    // 绑定bindless纹理描述符表 (根参数2) - 指向主堆中的bindless区域
+    // 绑定bindless纹理描述符表 (根参数3) - 指向主堆中的bindless区域
     D3D12_GPU_DESCRIPTOR_HANDLE BindlessTextureHandle = D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart();
     BindlessTextureHandle.ptr += BindlessTextureStartIndex * MainHeapDescriptorSize;
-    CommandList->SetGraphicsRootDescriptorTable(2, BindlessTextureHandle);
+    CommandList->SetGraphicsRootDescriptorTable(3, BindlessTextureHandle);
 
-    if (LevelInstance->GetCameraActors().size() > 0)
+    // 绑定bindless cubemap描述符表 (根参数4) - 指向cubemap专用堆
+    D3D12_GPU_DESCRIPTOR_HANDLE BindlessCubemapHandle = D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart();
+    BindlessCubemapHandle.ptr += (BindlessTextureStartIndex + MaxTextureDescriptors) * MainHeapDescriptorSize;
+    CommandList->SetGraphicsRootDescriptorTable(4, BindlessCubemapHandle);
+
+    if (LevelInstance->GetCameras().size() > 0)
     {
-        const CameraActor* CameraActorInstance = LevelInstance->GetCameraActors()[0];
-        const D3D12_GPU_VIRTUAL_ADDRESS CameraConstantBufferAddress = CameraActorInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
+        const Camera* CameraInstance = LevelInstance->GetCameras()[0];
+        const D3D12_GPU_VIRTUAL_ADDRESS CameraConstantBufferAddress = CameraInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
         CommandList->SetGraphicsRootConstantBufferView(0, CameraConstantBufferAddress);
     }
-
-    for (int I = 0; I < static_cast<int>(LevelInstance->GetStaticMeshActors().size()); ++I)
+    
+    // 绑定SkyLight常量缓冲区 (根参数2)
+    if (LevelInstance->GetSkyLights().size() > 0)
     {
-        const StaticMeshActor* StaticMeshActorInstance = LevelInstance->GetStaticMeshActors()[I];
+        const SkyLight* SkyLightInstance = LevelInstance->GetSkyLights()[0];
+        const D3D12_GPU_VIRTUAL_ADDRESS SkyLightConstantBufferAddress = SkyLightInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
+        CommandList->SetGraphicsRootConstantBufferView(2, SkyLightConstantBufferAddress);
+    }
+
+    for (int I = 0; I < static_cast<int>(LevelInstance->GetStaticMeshes().size()); ++I)
+    {
+        const StaticMesh* StaticMeshInstance = LevelInstance->GetStaticMeshes()[I];
         
-        const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = StaticMeshActorInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
+        const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = StaticMeshInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
         CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
         
-        const auto& MeshletDataProxyInstances = StaticMeshActorInstance->GetMeshletDataProxyInstances();
-        const auto& MeshletDataInstances = StaticMeshActorInstance->GetMeshletDataInstances();
+        const auto& MeshletDataProxyInstances = StaticMeshInstance->GetMeshletDataProxyInstances();
+        const auto& MeshletDataInstances = StaticMeshInstance->GetMeshletDataInstances();
 
         //  XXX:    We have hard recorded the number of LODs.
         for (int lodLevel = 0; lodLevel < MeshLODSettings::GetInstance().NumLODs; ++lodLevel)
@@ -1636,8 +1859,10 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
             if (MeshletDataProxyInstances.size() > lodLevel && MeshletDataProxyInstances[lodLevel])
             {
                 const auto& ProxyInstance = MeshletDataProxyInstances[lodLevel];
-                // XXX: Bindless texture descriptor table at index 2, we follow it.
-                const int BaseParamIndex = 3 + lodLevel * 5;
+                // XXX: - Parameter 0-2: CBVs
+                //      - Parameter 3-4: Descriptor tables  
+                //      - Parameter 5+: LOD SRVs (BaseParamIndex = 5)
+                const int BaseParamIndex = 5 + lodLevel * 5;
                 
                 CommandList->SetGraphicsRootShaderResourceView(BaseParamIndex + 0, ProxyInstance->VertexBuffer->GetGPUVirtualAddress());
                 CommandList->SetGraphicsRootShaderResourceView(BaseParamIndex + 1, ProxyInstance->MeshletsBuffer->GetGPUVirtualAddress());

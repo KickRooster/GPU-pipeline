@@ -7,7 +7,7 @@ cbuffer cbCamera : register(b0)
     uint     gLODCount;
 };
 
-cbuffer cbStaticMeshActor : register(b1)
+cbuffer cbStaticMesh : register(b1)
 {
     float4x4 gWorld;
     float4x4 gWorldInvTranspose;
@@ -16,7 +16,15 @@ cbuffer cbStaticMeshActor : register(b1)
     uint     gPBRTextureIndices[4];
 };
 
+cbuffer cbSkyLight : register(b2)
+{
+    uint gIrradianceMapIndex;
+    uint gPrefilteredMapIndex;
+    uint gBRDFLUTIndex;
+};
+
 Texture2D gBindlessTextures[] : register(t20, space0);
+TextureCube gBindlessCubemaps[] : register(t0, space1);
 
 SamplerState gLinearSampler : register(s0);
 
@@ -64,6 +72,11 @@ float3 FresnelSchlick(float cosTheta, float3 F0)
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
+{
+    return F0 + (max(float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
 struct VertexOut
 {
     float4 PositionHS : SV_Position;
@@ -83,9 +96,10 @@ struct PrimitiveOut
 float4 main(VertexOut input, PrimitiveOut primitive) : SV_Target
 {
     // PBR material parameters from textures
-    float3 albedo = float3(0.5, 0.5, 0.5); // Default albedo
+    float3 albedo = float3(0.5, 0.5, 0.5);
     float metallic = 0.0;
     float roughness = 0.5;
+    float ao = 1.0;
     
     if (gPBRTextureIndices[0] != 0xFFFFFFFF)
     {
@@ -94,7 +108,6 @@ float4 main(VertexOut input, PrimitiveOut primitive) : SV_Target
     
     if (gPBRTextureIndices[1] != 0xFFFFFFFF)
     {
-        // Sample normal map and transform to world space
         float3 normalTS = gBindlessTextures[gPBRTextureIndices[1]].Sample(gLinearSampler, input.UV0).rgb;
         normalTS = normalTS * 2.0 - 1.0;
         float3x3 TBN = float3x3(input.Tangent, input.Bitangent, input.Normal);
@@ -118,32 +131,40 @@ float4 main(VertexOut input, PrimitiveOut primitive) : SV_Target
     float3 F0 = float3(0.04, 0.04, 0.04);
     F0 = lerp(F0, albedo, metallic);
     
-    // Direct lighting from virtual light
-    float3 L = normalize(float3(0.0, -1.0, 0.0)); // Virtual light direction
-    float3 H = normalize(V + L);
-    float3 lightColor = float3(1.0, 1.0, 1.0); // White light
+    // Pure IBL lighting only
+    float3 color = float3(0.0, 0.0, 0.0);
     
-    // Calculate Cook-Torrance BRDF
-    float NDF = DistributionGGX(N, H, roughness);
-    float G = GeometrySmith(N, V, L, roughness);
-    float3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+    // === IBL DIFFUSE ===
+    float3 irradiance = gBindlessCubemaps[gIrradianceMapIndex].Sample(gLinearSampler, N).rgb;
     
-    // Specular BRDF (Cook-Torrance)
-    float3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-    float3 specular = numerator / denominator;
-    
-    // Energy conservation: kS = F, kD = 1 - F
+    float NdotV = max(dot(N, V), 0.0);
+    float3 F = FresnelSchlickRoughness(NdotV, F0, roughness);
     float3 kS = F;
-    float3 kD = float3(1.0, 1.0, 1.0) - kS;
+    float3 kD = 1.0 - kS;
     kD *= 1.0 - metallic;
     
-    // Diffuse BRDF (Lambert)
-    float3 diffuse = kD * albedo / PI;
+    float3 diffuse = kD * irradiance * albedo;
     
-    // Calculate outgoing radiance Lo
-    float NdotL = max(dot(N, L), 0.0);
-    float3 Lo = (diffuse + specular) * lightColor * NdotL;
+    // === IBL SPECULAR ===
+    float3 R = reflect(-V, N);
     
-    return float4(Lo, 1.0);
+    // Sample prefiltered environment map with appropriate mip level
+    float MaxMipLevel = 4.0; // Should match mip levels from C++ (5 levels = 0-4)
+    float MipLevel = roughness * MaxMipLevel;
+    float3 prefilteredColor = gBindlessCubemaps[gPrefilteredMapIndex].SampleLevel(gLinearSampler, R, MipLevel).rgb;
+    
+    // Sample BRDF integration map
+    float2 envBRDF = gBindlessTextures[gBRDFLUTIndex].Sample(gLinearSampler, float2(NdotV, roughness)).rg;
+    
+    // Split-sum approximation
+    float3 specular = prefilteredColor * (F0 * envBRDF.x + envBRDF.y);
+    
+    // Combine diffuse and specular
+    color = (diffuse + specular) * ao;
+    
+    // Tone mapping and gamma correction
+    color = color / (color + float3(1.0, 1.0, 1.0)); // Reinhard tone mapping
+    color = pow(color, float3(1.0/2.2, 1.0/2.2, 1.0/2.2)); // Gamma correction
+    
+    return float4(color, 1.0);
 }

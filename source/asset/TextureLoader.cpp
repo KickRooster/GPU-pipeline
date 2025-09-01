@@ -55,7 +55,7 @@ DXGI_FORMAT TextureLoader::GetDXGIFormat(int Channels, bool IsHDR, bool IsSRGB)
 
 ErrorCode TextureLoader::LoadTexture(const std::string& FilePath, bool IsSRGB, Texture& OutTextureInstance)
 {
-    string TextureFullPath = FileTool::GetInstance().GetTextureFullPath(FilePath);
+    const string TextureFullPath = FileTool::GetInstance().GetTextureFullPath(FilePath);
     
     std::ifstream File(TextureFullPath);
     if (!File.good())

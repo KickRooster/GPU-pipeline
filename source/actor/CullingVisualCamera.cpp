@@ -1,13 +1,13 @@
-#include "CullingVisualCameraActor.h"
+#include "CullingVisualCamera.h"
 
 using namespace std;
 using namespace DirectX;
 
-CullingVisualCameraActor::CullingVisualCameraActor(
+CullingVisualCamera::CullingVisualCamera(
     unique_ptr<Mesh> InMeshInstance,
     vector<unique_ptr<MeshletData>> InMeshletDataInstances,
     vector<unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances)
-:StaticMeshActor(
+:StaticMesh(
     &InMeshInstance->Local2WorldMatrix,
     InMeshInstance->BoundingSphere,
     move(InMeshletDataInstances),
@@ -15,14 +15,19 @@ CullingVisualCameraActor::CullingVisualCameraActor(
 {
 }
 
-void CullingVisualCameraActor::Update(float DeltaTime)
+void CullingVisualCamera::Update(float DeltaTime)
 {
-    StaticMeshActor::Update(DeltaTime);
+    StaticMesh::Update(DeltaTime);
 
-    //  Cause CullingVisualCameraActor is a proxy for debugging, and are transformed manually by editor at 3rd player view,
+    //  Cause CullingVisualCamera is a proxy for debugging, and are transformed manually by editor at 3rd player view,
     //  we update its' ViewMatrix using the inverse of TransformationMatrix.
     ViewMatrix = XMMatrixInverse(nullptr, TransformationMatrix);
     
     ProjectionMatrix = MathTool::GetInstance().XMMatrixPerspectiveFovLHReverseZ(FovY * XM_PI / 180.f, AspectRatio, NearPlane, FarPlane);
     ViewProjectionMatrix = ViewMatrix * ProjectionMatrix;
+}
+
+ConstantBufferProxy* CullingVisualCamera::GetConstantBufferProxy() const
+{
+    return ConstantBufferProxyInstance.get();   
 }

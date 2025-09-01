@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include <DirectXMath.h>
 
-enum class ErrorCode
+enum class ErrorCode : int
 {
     Illegal = -1,
     OK,
@@ -10,9 +10,8 @@ enum class ErrorCode
     DebugInterfaceNotFound,
     SerializeVersionedRootSignatureFailed,
     RootSignatureCreationFailed,
-    DxcUtilsCreateFailed,
-    DxcCompilerCreateFailed,
-    DxcCompileResultGetOutputFailed,
+    UtilsCreateFailed,
+    CompilerCreateFailed,
     DefaultIncludeHandlerCreateFailed,
     ShaderLoadFailed,
     GetShaderByteCodeFailed,
@@ -29,6 +28,9 @@ enum class ErrorCode
     DXGIFactoryCreateFailed,
     SwapChainForHwndCreateFailed,
     QueryIDXGISwapChain3InterfaceFailed,
+    CommittedResourceCreateFailed,
+    InvalidedTextureData,
+    InvalidedCubemapData,
     //  Assimp begin.
     MeshDataIncomplete,
     //  Texture begin.

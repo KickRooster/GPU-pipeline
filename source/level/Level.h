@@ -2,21 +2,25 @@
 #include <vector>
 #include <memory>
 #include <string>
-#include "../actor/StaticMeshActor.h"
-#include "../actor/CameraActor.h"
+#include "../actor/StaticMesh.h"
+#include "../actor/Camera.h"
+#include "../actor/SkyLight.h"
 #include "../misc/DesignPatterns.h"
 
 class Level : public Singleton<Level>
 {
-    std::vector<std::unique_ptr<StaticMeshActor>> StaticMeshActors;
-    std::vector<std::unique_ptr<CameraActor>> CameraActors;
+    std::vector<std::unique_ptr<StaticMesh>> StaticMeshes;
+    std::vector<std::unique_ptr<Camera>> Cameras;
+    std::vector<std::unique_ptr<SkyLight>> SkyLights;
     
 public:
-    int InstantiateStaticMeshActors(const std::string& Path);
-    StaticMeshActor* InstantiateCullingVisualCameraActor();
-    CameraActor* InstantiateCameraActor();
+    int InstantiateStaticMeshes(const std::string& Path);
+    StaticMesh* InstantiateCullingVisualCamera();
+    Camera* InstantiateCamera();
+    SkyLight* InstantiateSkyLight();
     void Update(float DeletaTime) const;
-    std::vector<StaticMeshActor*> GetStaticMeshActors() const;
-    std::vector<CameraActor*> GetCameraActors() const;
+    std::vector<StaticMesh*> GetStaticMeshes() const;
+    std::vector<Camera*> GetCameras() const;
+    std::vector<SkyLight*> GetSkyLights() const;
     ~Level();
 };
