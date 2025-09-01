@@ -17,10 +17,9 @@
 #include <tchar.h>
 #include "dx12/PipelineInterface.h"
 #include "level/Level.h"
-#include "misc/Math.h"
-#include "actor/CameraActor.h"
-#include "actor/StaticMeshActor.h"
-#include "actor/CullingVisualCameraActor.h"
+#include "actor/Camera.h"
+#include "actor/StaticMesh.h"
+#include "actor/CullingVisualCamera.h"
 #include "misc/FileTool.h"
 #include "../thirdpatry/ImGuizmo/ImGuizmo.h"
 #include "../thirdpatry/imGuIZMO.quat/imguizmo_quat/imGuIZMOquat.h"
@@ -31,7 +30,7 @@ using namespace DirectX;
 unsigned long FenceLastSignaledValue = 0;
 bool SwapChainOccluded = false;
 UIState State;
-StaticMeshActor* SelectedActor = nullptr;
+StaticMesh* SelectedActor = nullptr;
 ImGuizmo::OPERATION GizmoOperation = ImGuizmo::TRANSLATE;
 
 void RefreshInput(UIState& OutState)
@@ -89,11 +88,14 @@ int main(int, char**)
 	//	Initialize the level manually.
 
 	//	Culling Visual Camera Actor.
-	StaticMeshActor* CullingCameraActorInstance = Level::GetInstance().InstantiateCullingVisualCameraActor();
+	StaticMesh* CullingCameraInstance = Level::GetInstance().InstantiateCullingVisualCamera();
 	
 	// Camera Actor.
-	CameraActor* CameraActorInstance = Level::GetInstance().InstantiateCameraActor();
-	PipelineInterface::GetInstance().CreateConstantBuffer(CameraActorInstance);
+	Camera* CameraInstance = Level::GetInstance().InstantiateCamera();
+	PipelineInterface::GetInstance().CreateConstantBuffer(CameraInstance);
+
+	//	SkyLight Actor.
+	Level::GetInstance().InstantiateSkyLight();
 	
 	// Show the window
 	::ShowWindow(hwnd, SW_SHOWDEFAULT);
@@ -204,9 +206,9 @@ int main(int, char**)
 				{
 					if (ImGui::MenuItem("Mesh"))
 					{
-						//Level::GetInstance().InstantiateStaticMeshActors("D:\\GPU-pipeline\\content\\mesh\\sponza.obj");
-						Level::GetInstance().InstantiateStaticMeshActors("D:\\GPU-pipeline\\content\\mesh\\Cerberus_LP.FBX");
-						//Level::GetInstance().InstantiateStaticMeshActors("D:\\GPU-pipeline\\content\\mesh\\NewSponza_Main.fbx");
+						//Level::GetInstance().InstantiateStaticMeshes("D:\\GPU-pipeline\\content\\mesh\\sponza.obj");
+						Level::GetInstance().InstantiateStaticMeshes("D:\\GPU-pipeline\\content\\mesh\\Cerberus_LP.FBX");
+						//Level::GetInstance().InstantiateStaticMeshes("D:\\GPU-pipeline\\content\\mesh\\NewSponza_Main.fbx");
 					}
 					ImGui::EndMenu();
 				}
@@ -229,7 +231,7 @@ int main(int, char**)
 
 		ImGui::Begin("Outliner");
 		{
-			vector<StaticMeshActor*> AllActors = Level::GetInstance().GetStaticMeshActors();
+			vector<StaticMesh*> AllActors = Level::GetInstance().GetStaticMeshes();
 
 			for (unsigned int I = 0; I < AllActors.size(); ++I)
 			{
@@ -292,24 +294,24 @@ int main(int, char**)
 					}
 				}
 				
-				CullingVisualCameraActor* CullingCamera = dynamic_cast<CullingVisualCameraActor*>(SelectedActor);
+				CullingVisualCamera* CullingCamera = dynamic_cast<CullingVisualCamera*>(SelectedActor);
 				if (CullingCamera != nullptr)
 				{
 					if (ImGui::CollapsingHeader("Culling Visual Camera Actor", ImGuiTreeNodeFlags_DefaultOpen))
 					{
-						bool IsCullingCamera = (CameraActorInstance->GetCullingCamera() == CullingCamera);
+						bool IsCullingCamera = (CameraInstance->GetCullingCamera() == CullingCamera);
 						
 						if (ImGui::Checkbox("UseAsCullingCamera", &IsCullingCamera))
 						{
-							if (Level::GetInstance().GetCameraActors().size() > 0)
+							if (Level::GetInstance().GetCameras().size() > 0)
 							{
 								if (IsCullingCamera)
 								{
-									CameraActorInstance->SetCullingCamera(CullingCamera);
+									CameraInstance->SetCullingCamera(CullingCamera);
 								}
 								else
 								{
-									CameraActorInstance->SetCullingCamera(nullptr);
+									CameraInstance->SetCullingCamera(nullptr);
 								}
 							}
 						}
@@ -473,18 +475,18 @@ int main(int, char**)
 		ImGui::Begin("Scene View");
 		{
 			float DeltaTime = 1000.0f / io.Framerate;
-			CameraActorInstance->ResponseToUI(State, DeltaTime); 
+			CameraInstance->ResponseToUI(State, DeltaTime); 
 			ImVec2 ViewportSize = ImGui::GetContentRegionAvail();
 			PipelineInterface::GetInstance().UpdateViewport(FrameContextIndex, ViewportSize);
-			CameraActorInstance->AspectRatio = ViewportSize.x / ViewportSize.y;
-			static_cast<CullingVisualCameraActor*>(CullingCameraActorInstance)->AspectRatio = CameraActorInstance->AspectRatio;
+			CameraInstance->AspectRatio = ViewportSize.x / ViewportSize.y;
+			static_cast<CullingVisualCamera*>(CullingCameraInstance)->AspectRatio = CameraInstance->AspectRatio;
 			Level::GetInstance().Update(DeltaTime);
 			PipelineInterface::GetInstance().RenderLevelMeshlet(FrameContextIndex, &Level::GetInstance());
 			ImGui::Image(static_cast<ImTextureID>(PipelineInterface::GetInstance().GetRenderTargetSRVGPUHandle(FrameContextIndex).ptr), ViewportSize);
 			
-			XMMATRIX ViewMatrix = CameraActorInstance->GetViewMatrix();
+			XMMATRIX ViewMatrix = CameraInstance->GetViewMatrix();
 			XMMATRIX ViewMatrixInv = XMMatrixInverse(nullptr, ViewMatrix);
-			XMMATRIX ProjectionMatrix = CameraActorInstance->GetProjectionMatrix();
+			XMMATRIX ProjectionMatrix = CameraInstance->GetProjectionMatrix();
 			XMFLOAT4X4 ViewMatrix4x4;
 			XMFLOAT4X4 ViewMatrixInv4x;
 			XMFLOAT4X4 ProjectionMatrix4x4;

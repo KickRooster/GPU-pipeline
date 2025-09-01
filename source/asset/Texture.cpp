@@ -1,7 +1,9 @@
 ﻿#include "Texture.h"
 #include "../../thirdpatry/stb/stb_image.h"
 
-Texture::Texture(Texture&& InTexture)
+using namespace DirectX;
+
+Texture::Texture(Texture&& InTexture) noexcept
 {
     Data = InTexture.Data;
     Width = InTexture.Width;
@@ -17,6 +19,32 @@ Texture::Texture(Texture&& InTexture)
     InTexture.Width = 0;
     InTexture.Height = 0;
     InTexture.ByteSize = 0;
+}
+
+XMFLOAT4 Texture::Sample(const XMFLOAT2& UV) const
+{
+    float PixelU = UV.x * static_cast<float>(Width - 1);
+    float PixelV = UV.y * static_cast<float>(Height - 1);
+    
+    int PixelX = static_cast<int>(PixelU) % Width;
+    int PixelY = static_cast<int>(PixelV);
+    
+    const float* PixelData = static_cast<const float*>(Data);
+    int PixelIndex = (PixelY * Width + PixelX) * Channels;
+    
+    XMFLOAT4 Color;
+    Color.x = PixelData[PixelIndex];
+    Color.y = PixelData[PixelIndex + 1];
+    Color.z = PixelData[PixelIndex + 2];
+    //  Assign a default value to alpha.
+    Color.w = 1.0f;
+    
+    if (Channels == 4)
+    {
+        Color.w = PixelData[PixelIndex + 3];
+    }
+    
+    return Color;
 }
 
 Texture::~Texture()

@@ -3,16 +3,16 @@
 #include "Actor.h"
 #include "../dx12/ConstantBuffer.h"
 #include "../dx12/ConstantBufferProxy.h"
-#include "CullingVisualCameraActor.h"
+#include "CullingVisualCamera.h"
 
-class CameraActor : public Actor
+class Camera : public Actor
 {
 protected:
     DirectX::XMMATRIX ViewMatrix;
     DirectX::XMMATRIX ProjectionMatrix;
     std::unique_ptr<CameraConstantBuffer> ConstantBufferInstance;
     std::unique_ptr<ConstantBufferProxy> ConstantBufferProxyInstance;
-    CullingVisualCameraActor* CullingCamera;
+    CullingVisualCamera* CullingCamera;
 
 public:
     DirectX::XMFLOAT3 LookDirection;
@@ -22,15 +22,14 @@ public:
     float NearPlane;
     float FarPlane;
     
-
-    CameraActor();
+    Camera();
     void ResponseToUI(const UIState& State, float DeltaTime);
-    void SetCullingCamera(CullingVisualCameraActor* CullingCamera);
-    CullingVisualCameraActor* GetCullingCamera() const;
+    void SetCullingCamera(CullingVisualCamera* CullingCamera);
+    CullingVisualCamera* GetCullingCamera() const;
     void Update(float DeltaTime) override;
+    ConstantBufferProxy* GetConstantBufferProxy() const override;
     CameraConstantBuffer* GetConstantBuffer() const;
-    ConstantBufferProxy* GetConstantBufferProxy() const;
     DirectX::XMMATRIX GetViewMatrix() const;
     DirectX::XMMATRIX GetProjectionMatrix() const;
-    ~CameraActor() override = default;
+    ~Camera() override = default;
 };

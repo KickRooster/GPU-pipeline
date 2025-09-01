@@ -11,20 +11,41 @@ struct CameraConstantBuffer
     unsigned int        LODCount;
 };
 
-struct StaticMeshActorConstantBuffer
+struct StaticMeshConstantBuffer
 {
     DirectX::XMFLOAT4X4 World = MathTool::GetInstance().Identity4x4();
     DirectX::XMFLOAT4X4 WorldInvTranspose = MathTool::GetInstance().Identity4x4();
     DirectX::XMFLOAT4   BoundingSphere;
     
-    // HLSL中每个数组元素占16字节，直接模拟布局
-    struct {
+    // HLSL中每个数组元素占16字节,直接模拟布局
+    struct
+    {
         unsigned int Value;
         unsigned int Padding[3];
     } MeshletCounts[4];
     
-    struct {
+    struct
+    {
         unsigned int Value;
         unsigned int Padding[3];
     } PBRTextureIndices[4];
+};
+
+struct SkyLightConstantBuffer
+{
+    struct
+    {
+        unsigned int Value;
+        unsigned int Padding[3];
+    } IrradianceMapIndex;
+    
+    struct {
+        unsigned int Value;
+        unsigned int Padding[3];
+    } PrefilteredMapIndex;
+    
+    struct {
+        unsigned int Value;
+        unsigned int Padding[3];
+    } BRDFLUTIndex;
 };

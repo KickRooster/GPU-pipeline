@@ -1,7 +1,7 @@
 #pragma once
-#include "StaticMeshActor.h"
+#include "StaticMesh.h"
 
-class CullingVisualCameraActor : public StaticMeshActor
+class CullingVisualCamera : public StaticMesh
 {
 public:
     DirectX::XMMATRIX ViewMatrix;
@@ -12,11 +12,12 @@ public:
     float NearPlane;
     float FarPlane;
 
-    CullingVisualCameraActor(
+    CullingVisualCamera(
         std::unique_ptr<Mesh> InMeshInstance,
         std::vector<std::unique_ptr<MeshletData>> InMeshletDataInstances,
         std::vector<std::unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances);
     
     void Update(float DeltaTime) override;
-    virtual ~CullingVisualCameraActor() override = default;
+    ConstantBufferProxy* GetConstantBufferProxy() const override;
+    virtual ~CullingVisualCamera() override = default;
 };

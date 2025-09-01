@@ -1,17 +1,17 @@
-#include "CameraActor.h"
+#include "Camera.h"
 #include "../asset/MeshLoader.h"
 
 using namespace std;
 using namespace DirectX;
 
-CameraActor::CameraActor()
+Camera::Camera()
     :CullingCamera(nullptr)
 {
     ConstantBufferInstance = make_unique<CameraConstantBuffer>();
     ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
 }
 
-void CameraActor::ResponseToUI(const UIState& State, float DeltaTime)
+void Camera::ResponseToUI(const UIState& State, float DeltaTime)
 {
     //  Translation
     if (State.RightButtonDown)
@@ -91,17 +91,17 @@ void CameraActor::ResponseToUI(const UIState& State, float DeltaTime)
     }
 }
 
-void CameraActor::SetCullingCamera(CullingVisualCameraActor* CullingCamera)
+void Camera::SetCullingCamera(CullingVisualCamera* CullingCamera)
 {
     this->CullingCamera = CullingCamera;    
 }
 
-CullingVisualCameraActor* CameraActor::GetCullingCamera() const
+CullingVisualCamera* Camera::GetCullingCamera() const
 {
     return CullingCamera;
 }
 
-void CameraActor::Update(float DeltaTime)
+void Camera::Update(float DeltaTime)
 {
     ViewMatrix = XMMatrixLookToLH(
         XMLoadFloat3(&Transform.Position),
@@ -166,22 +166,22 @@ void CameraActor::Update(float DeltaTime)
     }
 }
 
-CameraConstantBuffer* CameraActor::GetConstantBuffer() const
+CameraConstantBuffer* Camera::GetConstantBuffer() const
 {
     return ConstantBufferInstance.get();    
 }
 
-ConstantBufferProxy* CameraActor::GetConstantBufferProxy() const
+ConstantBufferProxy* Camera::GetConstantBufferProxy() const
 {
     return ConstantBufferProxyInstance.get();   
 }
 
-XMMATRIX CameraActor::GetViewMatrix() const
+XMMATRIX Camera::GetViewMatrix() const
 {
     return ViewMatrix;
 }
 
-XMMATRIX CameraActor::GetProjectionMatrix() const
+XMMATRIX Camera::GetProjectionMatrix() const
 {
     return ProjectionMatrix;
 }
