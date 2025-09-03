@@ -162,9 +162,6 @@ float4 main(VertexOut input, PrimitiveOut primitive) : SV_Target
     // Combine diffuse and specular
     color = (diffuse + specular) * ao;
     
-    // Tone mapping and gamma correction
-    color = color / (color + float3(1.0, 1.0, 1.0)); // Reinhard tone mapping
-    color = pow(color, float3(1.0/2.2, 1.0/2.2, 1.0/2.2)); // Gamma correction
-    
+    // Return HDR color without tone mapping (now handled in post-process)
     return float4(color, 1.0);
 }

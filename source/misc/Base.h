@@ -17,6 +17,7 @@ enum class ErrorCode : int
     GetShaderByteCodeFailed,
     ShaderCompileFailed,
     MeshShaderPipelineStateCreateFailed,
+    ComputePipelineStateCreateFailed,
     DeviceCreateFailed,
     DescriptorHeapCreateFailed,
     CommandQueueCreateFailed,

@@ -482,6 +482,10 @@ int main(int, char**)
 			static_cast<CullingVisualCamera*>(CullingCameraInstance)->AspectRatio = CameraInstance->AspectRatio;
 			Level::GetInstance().Update(DeltaTime);
 			PipelineInterface::GetInstance().RenderLevelMeshlet(FrameContextIndex, &Level::GetInstance());
+			
+			// Post-processing pass: ACES tone mapping (RenderTarget → TransitionTexture → RenderTarget)
+			PipelineInterface::GetInstance().RenderPostProcessCompute(FrameContextIndex);
+			
 			ImGui::Image(static_cast<ImTextureID>(PipelineInterface::GetInstance().GetRenderTargetSRVGPUHandle(FrameContextIndex).ptr), ViewportSize);
 			
 			XMMATRIX ViewMatrix = CameraInstance->GetViewMatrix();

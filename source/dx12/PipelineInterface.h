@@ -94,7 +94,10 @@ struct FrameContext
     D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilCPUDescriptorHandle;
     D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetSRVCPUDescriptorHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE RenderTargetSRVGPUDescriptorHandle;
+    D3D12_CPU_DESCRIPTOR_HANDLE TransitionUAVCPUDescriptorHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE TransitionUAVGPUDescriptorHandle;
     Microsoft::WRL::ComPtr<ID3D12Resource> RenderTarget = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Resource> TransitionTexture = nullptr;
     Microsoft::WRL::ComPtr<ID3D12Resource> DepthStencilBuffer = nullptr;
 };
 
@@ -110,7 +113,7 @@ class PipelineInterface : public Singleton<PipelineInterface>
     const int FrameNumInFlight = 2;
     const unsigned int BindlessTextureStartIndex = 32;
     const int SRVHeapSize = 32768;
-    //  Less than SRVHeapSize - BindlessTextureStartIndex - FrameNumInFlight(SRV)
+    //  Less than SRVHeapSize - BindlessTextureStartIndex - FrameNumInFlight*2(SRV+TransitionUAV)
     const unsigned int MaxTextureDescriptors = 16384;
     const unsigned int MaxCubemapDescriptors = 1024;
     
@@ -138,8 +141,10 @@ class PipelineInterface : public Singleton<PipelineInterface>
     Microsoft::WRL::ComPtr<ID3D12Fence> Fence = nullptr;
     unsigned int FrameIndex = 0;
     
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> RootSignature;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> MeshShaderRootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> MeshShaderPipelineState;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> ComputeShaderRootSignature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> ComputeShaderPipelineState;
 
     BindlessAllocator TextureAllocator;
     BindlessAllocator CubemapAllocator;
@@ -153,6 +158,7 @@ public:
     ErrorCode CompileShaderDXC(const std::string& ShaderPath, const std::wstring& EntryPoint, const std::wstring& TargetProfile, Microsoft::WRL::ComPtr<IDxcBlob>& OutShaderBlob) const;
     ErrorCode RecompileShaders();
     ErrorCode CreateMeshShaderPipelineState();
+    ErrorCode CreatePostProcessComputePipelineState();
     ErrorCode Initialize(HWND hWnd);
     void CleanUp();
     void PackImGuiInitInfo(ImGui_ImplDX12_InitInfo& OutInitInfo);
@@ -183,4 +189,5 @@ public:
     ErrorCode CreateConstantBuffer(const Actor* ActorInstance) const;
     ErrorCode UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);
     void RenderLevelMeshlet(unsigned int FrameContextIndex, const Level* LevelInstance) const;
+    void RenderPostProcessCompute(unsigned int FrameContextIndex) const;
 };

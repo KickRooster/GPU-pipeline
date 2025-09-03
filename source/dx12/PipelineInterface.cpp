@@ -178,7 +178,7 @@ ErrorCode PipelineInterface::CreateRootSignature()
     }
     
     hResult = D3DDevice->CreateRootSignature(0, Signature->GetBufferPointer(), Signature->GetBufferSize(), 
-                                      IID_PPV_ARGS(&RootSignature));
+                                      IID_PPV_ARGS(&MeshShaderRootSignature));
     
     if (FAILED(hResult))
     {
@@ -354,7 +354,7 @@ ErrorCode PipelineInterface::CreateMeshShaderPipelineState()
     }
     
     D3DX12_MESH_SHADER_PIPELINE_STATE_DESC PSODesc = {};
-    PSODesc.pRootSignature = RootSignature.Get();
+    PSODesc.pRootSignature = MeshShaderRootSignature.Get();
     
     PSODesc.AS = CD3DX12_SHADER_BYTECODE(AmplificationShader->GetBufferPointer(), AmplificationShader->GetBufferSize());
     PSODesc.MS = CD3DX12_SHADER_BYTECODE(MeshShader->GetBufferPointer(), MeshShader->GetBufferSize());
@@ -389,6 +389,86 @@ ErrorCode PipelineInterface::CreateMeshShaderPipelineState()
         sprintf_s(buffer, "Failed to create mesh shader pipeline state. HRESULT: 0x%08X\n", hResult);
         OutputDebugStringA(buffer);
         return ErrorCode::MeshShaderPipelineStateCreateFailed;
+    }
+
+    return ErrorCode::OK;
+}
+
+ErrorCode PipelineInterface::CreatePostProcessComputePipelineState()
+{
+    ComPtr<ID3DBlob> ComputeShader;
+    
+    ErrorCode Result = CompileShaderFXC(FileTool::GetInstance().GetToneMappingPath(), "main", "cs_5_0", ComputeShader);
+    if (Result != ErrorCode::OK)
+    {
+        return Result;
+    }
+    
+    // Create compute root signature
+    D3D12_FEATURE_DATA_ROOT_SIGNATURE FeatureData = {};
+    FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+    if (FAILED(D3DDevice->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &FeatureData, sizeof(FeatureData))))
+    {
+        FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+    }
+    
+    CD3DX12_ROOT_PARAMETER1 RootParameters[3];
+    
+    // Parameter 0: Viewport constants CBV  
+    RootParameters[0].InitAsConstants(6, 0, 0, D3D12_SHADER_VISIBILITY_ALL); // 6 32-bit values for 2 float2 + 2 float
+    
+    // Parameter 1: Input texture SRV
+    CD3DX12_DESCRIPTOR_RANGE1 SRVRange = {};
+    SRVRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    SRVRange.NumDescriptors = 1;
+    SRVRange.BaseShaderRegister = 0;
+    SRVRange.RegisterSpace = 0;
+    SRVRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE;
+    SRVRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    
+    RootParameters[1].InitAsDescriptorTable(1, &SRVRange, D3D12_SHADER_VISIBILITY_ALL);
+    
+    // Parameter 2: Output texture UAV
+    CD3DX12_DESCRIPTOR_RANGE1 UAVRange = {};
+    UAVRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+    UAVRange.NumDescriptors = 1;
+    UAVRange.BaseShaderRegister = 0;
+    UAVRange.RegisterSpace = 0;
+    UAVRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE;
+    UAVRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    
+    RootParameters[2].InitAsDescriptorTable(1, &UAVRange, D3D12_SHADER_VISIBILITY_ALL);
+
+    D3D12_ROOT_SIGNATURE_FLAGS RootSignatureFlags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+    
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC RootSignatureDesc;
+    RootSignatureDesc.Init_1_1(_countof(RootParameters), RootParameters, 0, nullptr, RootSignatureFlags);
+
+    ComPtr<ID3DBlob> Signature;
+    ComPtr<ID3DBlob> Error;
+    
+    HRESULT hResult = D3DX12SerializeVersionedRootSignature(&RootSignatureDesc, FeatureData.HighestVersion, &Signature, &Error);
+    if (FAILED(hResult))
+    {
+        return ErrorCode::SerializeVersionedRootSignatureFailed;
+    }
+    
+    hResult = D3DDevice->CreateRootSignature(0, Signature->GetBufferPointer(), Signature->GetBufferSize(), 
+                                      IID_PPV_ARGS(&ComputeShaderRootSignature));
+    if (FAILED(hResult))
+    {
+        return ErrorCode::RootSignatureCreationFailed;
+    }
+
+    // Create compute PSO
+    D3D12_COMPUTE_PIPELINE_STATE_DESC ComputePSODesc = {};
+    ComputePSODesc.pRootSignature = ComputeShaderRootSignature.Get();
+    ComputePSODesc.CS = CD3DX12_SHADER_BYTECODE(ComputeShader->GetBufferPointer(), ComputeShader->GetBufferSize());
+
+    hResult = D3DDevice->CreateComputePipelineState(&ComputePSODesc, IID_PPV_ARGS(&ComputeShaderPipelineState));
+    if (FAILED(hResult))
+    {
+        return ErrorCode::ComputePipelineStateCreateFailed;
     }
 
     return ErrorCode::OK;
@@ -532,16 +612,21 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
         D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle = D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart();
         unsigned int IncrementSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        //  First FrameNumInFlight D3D12_CPU_DESCRIPTOR_HANDLE of D3DSRVDescHeap is reserved for level's render target.
+        //  First FrameNumInFlight*2 D3D12_CPU_DESCRIPTOR_HANDLE of D3DSRVDescHeap is reserved for level's render target (SRV+TransitionUAV).
         for (int I = 0; I < FrameNumInFlight; ++I)
         {
             FrameContexts[I].RenderTargetSRVCPUDescriptorHandle = CPUHandle;
             FrameContexts[I].RenderTargetSRVGPUDescriptorHandle = GPUHandle;
             CPUHandle.ptr += IncrementSize;
             GPUHandle.ptr += IncrementSize;
+            
+            FrameContexts[I].TransitionUAVCPUDescriptorHandle = CPUHandle;
+            FrameContexts[I].TransitionUAVGPUDescriptorHandle = GPUHandle;
+            CPUHandle.ptr += IncrementSize;
+            GPUHandle.ptr += IncrementSize;
         }
 
-        D3DSRVDescriptorHeapAllocator.Create(D3DDevice.Get(), D3DSRVCBVDescHeap.Get(), FrameNumInFlight);
+        D3DSRVDescriptorHeapAllocator.Create(D3DDevice.Get(), D3DSRVCBVDescHeap.Get(), FrameNumInFlight * 2);
     }
 
     D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
@@ -643,7 +728,13 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
     if (Result != ErrorCode::OK)
     {
         return Result;
-        }
+    }
+    
+    Result = CreatePostProcessComputePipelineState();
+    if (Result != ErrorCode::OK)
+    {
+        return Result;
+    }
 
     Result = TextureAllocator.Initialize(
         D3DSRVCBVDescHeap.Get(),
@@ -806,16 +897,28 @@ void PipelineInterface::CleanUp()
         FenceEvent = nullptr;
     }
 
-    if (RootSignature)
+    if (MeshShaderRootSignature)
     {
-        RootSignature->Release();
-        RootSignature = nullptr;
+        MeshShaderRootSignature->Release();
+        MeshShaderRootSignature = nullptr;
     }
 
     if (MeshShaderPipelineState)
     {
         MeshShaderPipelineState->Release();
         MeshShaderPipelineState = nullptr;
+    }
+    
+    if (ComputeShaderPipelineState)
+    {
+        ComputeShaderPipelineState->Release();
+        ComputeShaderPipelineState = nullptr;
+    }
+    
+    if (ComputeShaderRootSignature)
+    {
+        ComputeShaderRootSignature->Release();
+        ComputeShaderRootSignature = nullptr;
     }
 
     if (D3DDevice)
@@ -1436,7 +1539,7 @@ ErrorCode PipelineInterface::CreateTexture(const Texture* TextureInstance, unsig
         }
     }
 
-    ErrorCode::OK;
+    return ErrorCode::OK;
 }
 
 ErrorCode PipelineInterface::CreateCubemap(const CubemapTexture* CubemapInstance, unsigned int DescriptorIndex, CubemapTextureProxy* CubemapProxyInstance, bool ImmediateExecute)
@@ -1717,6 +1820,31 @@ ErrorCode PipelineInterface::UpdateViewport(unsigned int FrameContextIndex, ImVe
         SRVDesc.Texture2D.MipLevels = 1;
         D3DDevice->CreateShaderResourceView(FrameContexts[FrameContextIndex].RenderTarget.Get(), &SRVDesc, FrameContexts[FrameContextIndex].RenderTargetSRVCPUDescriptorHandle);
         
+        // Create transition texture for post-processing (same size and format as render target)
+        D3D12_RESOURCE_DESC TransitionTextureDesc = RenderTargetDesc;
+        TransitionTextureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS; // Only need UAV for transition texture
+        
+        hResult = D3DDevice->CreateCommittedResource(
+            &HeapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &TransitionTextureDesc,
+            D3D12_RESOURCE_STATE_COPY_SOURCE,
+            nullptr,
+            IID_PPV_ARGS(FrameContexts[FrameContextIndex].TransitionTexture.GetAddressOf()));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+        
+        // Create UAV for transition texture  
+        D3D12_UNORDERED_ACCESS_VIEW_DESC UAVDesc = {};
+        UAVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        UAVDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        UAVDesc.Texture2D.MipSlice = 0;
+        D3DDevice->CreateUnorderedAccessView(FrameContexts[FrameContextIndex].TransitionTexture.Get(), nullptr, &UAVDesc, FrameContexts[FrameContextIndex].TransitionUAVCPUDescriptorHandle);
+        // Note: TransitionUAVGPUDescriptorHandle is already set during descriptor allocation
+        
         D3D12_RESOURCE_DESC DepthStencilDesc;
         DepthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
         DepthStencilDesc.Alignment = 0;
@@ -1813,7 +1941,7 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
     CommandList->RSSetViewports(1, &ViewPort);
     CommandList->RSSetScissorRects(1, &ScissorRect);
 
-    CommandList->SetGraphicsRootSignature(RootSignature.Get());
+    CommandList->SetGraphicsRootSignature(MeshShaderRootSignature.Get());
     CommandList->SetPipelineState(MeshShaderPipelineState.Get());
     
     const unsigned int MainHeapDescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -1879,4 +2007,89 @@ void PipelineInterface::RenderLevelMeshlet(unsigned int FrameContextIndex, const
     Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     CommandList->ResourceBarrier(1, &Barrier);
+}
+
+void PipelineInterface::RenderPostProcessCompute(unsigned int FrameContextIndex) const
+{
+    // Transition RenderTarget from PIXEL_SHADER_RESOURCE to NON_PIXEL_SHADER_RESOURCE for compute shader access
+    D3D12_RESOURCE_BARRIER InputBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        FrameContexts[FrameContextIndex].RenderTarget.Get(),
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    
+    CommandList->ResourceBarrier(1, &InputBarrier);
+    
+    // TransitionTexture is always in COPY_SOURCE state (both initial creation and end of previous frame)
+    // Transition it to UNORDERED_ACCESS for compute shader writing
+    D3D12_RESOURCE_BARRIER TransitionToUAV = CD3DX12_RESOURCE_BARRIER::Transition(
+        FrameContexts[FrameContextIndex].TransitionTexture.Get(),
+        D3D12_RESOURCE_STATE_COPY_SOURCE,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    
+    CommandList->ResourceBarrier(1, &TransitionToUAV);
+    
+    // Set descriptor heap for compute shader
+    ID3D12DescriptorHeap* Heaps[] = { D3DSRVCBVDescHeap.Get() };
+    CommandList->SetDescriptorHeaps(1, Heaps);
+    
+    // Set compute pipeline
+    CommandList->SetComputeRootSignature(ComputeShaderRootSignature.Get());
+    CommandList->SetPipelineState(ComputeShaderPipelineState.Get());
+    
+    // Get actual render target dimensions (not viewport size, in case of mismatch)
+    D3D12_RESOURCE_DESC RTDesc = FrameContexts[FrameContextIndex].RenderTarget->GetDesc();
+    const unsigned int ActualWidth = static_cast<unsigned int>(RTDesc.Width);
+    const unsigned int ActualHeight = RTDesc.Height;
+    
+    // Bind viewport constants (Parameter 0)
+    // Layout: float2 InputSize, float2 OutputSize, float Exposure, float Contrast
+    const float ViewportConstants[6] = {
+        static_cast<float>(ActualWidth),      // InputSize.x
+        static_cast<float>(ActualHeight),     // InputSize.y
+        static_cast<float>(ActualWidth),      // OutputSize.x (same as input - 1:1 mapping)
+        static_cast<float>(ActualHeight),     // OutputSize.y (same as input - 1:1 mapping)
+        1.0f,                                 // Exposure (default: 1.0)
+        1.0f                                  // Contrast (default: 1.0)
+    };
+    CommandList->SetComputeRoot32BitConstants(0, 6, ViewportConstants, 0);
+    
+    // Bind input: scene render target SRV (Parameter 1)
+    CommandList->SetComputeRootDescriptorTable(1, FrameContexts[FrameContextIndex].RenderTargetSRVGPUDescriptorHandle);
+    
+    // Bind output: transition texture UAV (Parameter 2) 
+    CommandList->SetComputeRootDescriptorTable(2, FrameContexts[FrameContextIndex].TransitionUAVGPUDescriptorHandle);
+    
+    // Calculate dispatch dimensions (8x8 thread groups) based on render target size
+    const unsigned int GroupsX = (ActualWidth + 7) / 8;
+    const unsigned int GroupsY = (ActualHeight + 7) / 8;
+    
+    // Dispatch compute shader
+    CommandList->Dispatch(GroupsX, GroupsY, 1);
+    
+    // Transition texture from UAV to copy source
+    D3D12_RESOURCE_BARRIER TransitionToCopySource = CD3DX12_RESOURCE_BARRIER::Transition(
+        FrameContexts[FrameContextIndex].TransitionTexture.Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_COPY_SOURCE);
+        
+    // Transition render target from NON_PIXEL_SHADER_RESOURCE to copy dest
+    D3D12_RESOURCE_BARRIER RenderTargetToCopyDest = CD3DX12_RESOURCE_BARRIER::Transition(
+        FrameContexts[FrameContextIndex].RenderTarget.Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_COPY_DEST);
+    
+    D3D12_RESOURCE_BARRIER PreCopyBarriers[] = { TransitionToCopySource, RenderTargetToCopyDest };
+    CommandList->ResourceBarrier(2, PreCopyBarriers);
+    
+    // Copy processed result back to render target
+    CommandList->CopyResource(FrameContexts[FrameContextIndex].RenderTarget.Get(), 
+                             FrameContexts[FrameContextIndex].TransitionTexture.Get());
+    
+    // Transition render target back to SRV state for ImGui display
+    D3D12_RESOURCE_BARRIER FinalBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        FrameContexts[FrameContextIndex].RenderTarget.Get(),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    
+    CommandList->ResourceBarrier(1, &FinalBarrier);
 }
