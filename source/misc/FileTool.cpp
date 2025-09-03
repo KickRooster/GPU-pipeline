@@ -50,6 +50,12 @@ string FileTool::GetPixelShaderPath() const
     return PixelShaderPath;
 }
 
+
+string FileTool::GetToneMappingPath() const
+{
+    return ToneMappingCSPath;
+}
+
 std::string FileTool::GetTextureFolderPath() const
 {
     return TexturePath;
