@@ -6,6 +6,7 @@
 #include "../asset/TextureLoader.h"
 #include "../dx12/PipelineInterface.h"
 #include "../dx12/TextureProxy.h"
+#include "../misc/FileTool.h"
 #include <map>
 
 using namespace std;
@@ -211,7 +212,7 @@ int Level::InstantiateStaticMeshes(const string& Path)
 StaticMesh* Level::InstantiateCullingVisualCamera()
 {
     //  XXX:    Hard recorded file path, and it must has 1 sub mesh only.
-    const string CameraPath = "D:\\GPU-pipeline\\content\\mesh\\mp5_sil.fbx";
+    const string CameraPath = FileTool::GetInstance().GetMeshFullPath("mp5_sil.fbx");
 
     vector<Mesh> Meshes;
     vector<PBRTextureNamesPatch> TextureNamesPatches;
