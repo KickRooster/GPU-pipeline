@@ -5,15 +5,26 @@
 
 class FileTool : public Singleton<FileTool>
 {
-    const std::string TexturePath = "D:\\GPU-pipeline\\content\\texture";
-    const std::string ShaderPath = "D:\\GPU-pipeline\\content\\shader";
+    std::string ProjectRootPath;
+    std::string TexturePath;
+    std::string ShaderPath;
+    std::string MeshPath;
 
-    const std::string AmplificationShaderPath = "D:\\GPU-pipeline\\content\\shader\\meshlet_as.hlsl";
-    const std::string MeshShaderPath = "D:\\GPU-pipeline\\content\\shader\\meshlet_ms.hlsl";
-    const std::string PixelShaderPath = "D:\\GPU-pipeline\\content\\shader\\meshlet_ps.hlsl";
-    const std::string ToneMappingCSPath = "D:\\GPU-pipeline\\content\\shader\\tonemapping_cs.hlsl";
-    
+    std::string AmplificationShaderPath;
+    std::string MeshShaderPath;
+    std::string PixelShaderPath;
+    std::string ToneMappingCSPath;
+
+private:
+    std::string GetExecutableDirectory() const;
+    std::string FindProjectRoot(const std::string& StartPath) const;
+    void InitializePaths();
+
 public:
+    FileTool();
+
+    std::string GetProjectRootPath() const;
+    std::string GetMeshFullPath(const std::string& RelativePath) const;
     std::wstring StringToWString(const std::string& String) const;
     std::string WStringToString(const std::wstring& WString) const;
     std::string GetTextureFullPath(const std::string& FilePath) const;

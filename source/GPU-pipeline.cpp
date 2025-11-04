@@ -206,9 +206,9 @@ int main(int, char**)
 				{
 					if (ImGui::MenuItem("Mesh"))
 					{
-						//Level::GetInstance().InstantiateStaticMeshes("D:\\GPU-pipeline\\content\\mesh\\sponza.obj");
-						Level::GetInstance().InstantiateStaticMeshes("D:\\GPU-pipeline\\content\\mesh\\Cerberus_LP.FBX");
-						//Level::GetInstance().InstantiateStaticMeshes("D:\\GPU-pipeline\\content\\mesh\\NewSponza_Main.fbx");
+						//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("sponza.obj"));
+						Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("Cerberus_LP.FBX"));
+						//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("NewSponza_Main.fbx"));
 					}
 					ImGui::EndMenu();
 				}

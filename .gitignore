@@ -26,7 +26,7 @@
 *.a
 *.lib
 
-# Debug
+# Debug symbols
 *.pdb
 
 # Executables
@@ -34,12 +34,82 @@
 *.out
 *.app
 
-# Folders
-.vscode
-Debug
-x64
-.vs
+# Visual Studio folders
+.vscode/
+.vs/
+Debug/
+Release/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
 
-# Log file
+# Visual Studio user-specific files
+*.user
+*.suo
+*.sln.docstates
+*.vcxproj.user
+*.opensdf
+*.sdf
+*.opendb
+*.VC.db
+*.VC.VC.opendb
+
+# Visual Studio intermediate files
+*.ilk
+*.idb
+*.iobj
+*.ipdb
+*.exp
+*.tlog
+*.recipe
+*.lastbuildstate
+*.log
+
+# Visual Studio profiler
+*.psess
+*.vsp
+*.vspx
+
+# ReSharper/JetBrains Rider
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+.idea/
+*.sln.iml
+
+# NuGet Packages (keep configuration files)
+*.nupkg
+packages/
+!packages/repositories.config
+!packages/*.props
+!packages/*.targets
+
+# Assimp build outputs
+thirdpatry/assimp/build_v143/bin/
+thirdpatry/assimp/build_v143/lib/
+thirdpatry/assimp/build_v143/obj/
+thirdpatry/assimp/build_v143/code/assimp.dir/
+thirdpatry/assimp/build_v143/contrib/zlib/Debug/
+thirdpatry/assimp/build_v143/contrib/zlib/Release/
+thirdpatry/assimp/build_v143/contrib/zlib/MinSizeRel/
+thirdpatry/assimp/build_v143/contrib/zlib/RelWithDebInfo/
+thirdpatry/assimp/build_v143/contrib/zlib/zlibstatic.dir/
+
+# ImGui settings (user preferences)
+imgui.ini
+
+# Windows system files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE_BIN/
+
+# Windows shortcuts
+*.lnk
+
+# Claude Code artifacts
+.claude/
+
+# Log file (project specific)
 Log.cpp
-*.pdb
