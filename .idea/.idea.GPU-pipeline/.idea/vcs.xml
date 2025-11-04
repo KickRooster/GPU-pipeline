@@ -2,6 +2,15 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/imgui" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/thirdpatry/ImGuizmo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/thirdpatry/assimp" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/thirdpatry/imGuIZMO.quat" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/thirdpatry/imGuIZMO.quat/libs/imgui" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/thirdpatry/imgui" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/thirdpatry/meshoptimizer" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/thirdpatry/nv_cluster_lod_builder" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/thirdpatry/nv_cluster_lod_builder/meshoptimizer" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/thirdpatry/nv_cluster_lod_builder/nv_cluster_builder" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/thirdpatry/stb" vcs="Git" />
   </component>
 </project>
