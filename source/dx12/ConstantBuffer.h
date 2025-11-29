@@ -33,19 +33,7 @@ struct StaticMeshConstantBuffer
 
 struct SkyLightConstantBuffer
 {
-    struct
-    {
-        unsigned int Value;
-        unsigned int Padding[3];
-    } IrradianceMapIndex;
-    
-    struct {
-        unsigned int Value;
-        unsigned int Padding[3];
-    } PrefilteredMapIndex;
-    
-    struct {
-        unsigned int Value;
-        unsigned int Padding[3];
-    } BRDFLUTIndex;
+    unsigned int IrradianceMapIndex;
+    unsigned int PrefilteredMapIndex;
+    unsigned int BRDFLUTIndex;
 };
