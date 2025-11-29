@@ -18,10 +18,10 @@ void SkyLight::Update(float DeltaTime)
 {
     if (ConstantBufferInstance)
     {
-        ConstantBufferInstance->IrradianceMapIndex.Value = IrradianceMapProxy->DescriptorIndex;
-        ConstantBufferInstance->PrefilteredMapIndex.Value = PrefilteredMapProxy->DescriptorIndex;
-        ConstantBufferInstance->BRDFLUTIndex.Value = BRDFLUTProxy->DescriptorIndex;
-        
+        ConstantBufferInstance->IrradianceMapIndex = IrradianceMapProxy->DescriptorIndex;
+        ConstantBufferInstance->PrefilteredMapIndex = PrefilteredMapProxy->DescriptorIndex;
+        ConstantBufferInstance->BRDFLUTIndex = BRDFLUTProxy->DescriptorIndex;
+
         if (ConstantBufferProxyInstance->MappedData != nullptr)
         {
             memcpy(
