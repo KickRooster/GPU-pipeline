@@ -8,6 +8,7 @@ Camera::Camera()
     :CullingCamera(nullptr)
 {
     ConstantBufferInstance = make_unique<CameraConstantBuffer>();
+    ConstantBufferInstance->LODErrorThreshold = 4.0f;
     ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
 }
 
@@ -154,8 +155,10 @@ void Camera::Update(float DeltaTime)
         ConstantBufferInstance->ViewPosition = Transform.Position;
     }
     
+    ConstantBufferInstance->ScreenWidth = ViewportWidth;
+    ConstantBufferInstance->ScreenHeight = ViewportHeight;
     ConstantBufferInstance->RecipTanHalfFovy = 1.0f / tanf((FovY * XM_PI / 180.f) * 0.5f);
-    ConstantBufferInstance->LODCount = MeshLODSettings::GetInstance().NumLODs;
+    ConstantBufferInstance->NearPlane = NearPlane;
     
     if (ConstantBufferProxyInstance->MappedData != nullptr)
     {
@@ -164,11 +167,6 @@ void Camera::Update(float DeltaTime)
             ConstantBufferInstance.get(),
             MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(CameraConstantBuffer)));
     }
-}
-
-CameraConstantBuffer* Camera::GetConstantBuffer() const
-{
-    return ConstantBufferInstance.get();    
 }
 
 ConstantBufferProxy* Camera::GetConstantBufferProxy() const

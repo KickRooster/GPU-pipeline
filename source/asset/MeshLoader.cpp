@@ -2,9 +2,27 @@
 #include "Texture.h"
 #include "../misc/Math.h"
 #include "DirectXMath.h"
+#include <algorithm>
+#include <stdio.h>
+#include <assimp/postprocess.h>
+
+#define CLUSTERLOD_IMPLEMENTATION
+#include "../../thirdpatry/meshoptimizer/src/meshoptimizer.h"
+#include "../../thirdpatry/meshoptimizer/demo/clusterlod.h"
 
 using namespace std;
 using namespace DirectX;
+
+// computes approximate (perspective) projection error of a cluster in screen space (0..1; multiply by screen height to get pixels)
+// camera_proj is projection[1][1], or cot(fovy/2); camera_znear is *positive* near plane distance
+// for DAG cut to be valid, boundsError must be monotonic: it must return a larger error for parent cluster
+// for simplicity, we ignore perspective distortion and use rotationally invariant projection size estimation
+static float boundsError(const clodBounds& bounds, float camera_x, float camera_y, float camera_z, float camera_proj, float camera_znear)
+{
+    float dx = bounds.center[0] - camera_x, dy = bounds.center[1] - camera_y, dz = bounds.center[2] - camera_z;
+    float d = sqrtf(dx * dx + dy * dy + dz * dz) - bounds.radius;
+    return bounds.error / (d > camera_znear ? d : camera_znear) * (camera_proj * 0.5f);
+}
 
 void MeshLoader::ExtractPBRTextures(const aiMaterial* Material, PBRTextureNamesPatch& OutTextureNamesPatch)
 {
@@ -124,21 +142,6 @@ void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, const XMM
             Vertex.Tangent = XMFLOAT3(1.0f, 0.0f, 0.0f);
         }
 
-        if (AssimpMesh->HasVertexColors(0))
-        {
-            Vertex.Color.x = AssimpMesh->mColors[0]->r;
-            Vertex.Color.y = AssimpMesh->mColors[0]->g;
-            Vertex.Color.z = AssimpMesh->mColors[0]->b;
-            Vertex.Color.w = AssimpMesh->mColors[0]->a;
-        }
-        else
-        {
-            Vertex.Color.x = 1.0f;
-            Vertex.Color.y = 1.0f;
-            Vertex.Color.z = 1.0f;
-            Vertex.Color.w = 1.0f;
-        }
-
         if (AssimpMesh->mTextureCoords[0])
         {
             Vertex.UV0.x = AssimpMesh->mTextureCoords[0][I].x;
@@ -207,73 +210,6 @@ void MeshLoader::ProcessNode(aiNode* Node, const aiScene* Scene, const XMMATRIX&
     }
 }
 
-void MeshLoader::GenerateMeshletData(const vector<Vertex>& Vertices, const vector<unsigned int>& Indices, MeshletData& OutMeshletData) const
-{
-    constexpr size_t MaxVertexCountPerMeshlet = 64;
-    constexpr size_t MaxTriangleCountPerMeshlet = 124;
-    constexpr float ConeWeight = 0.25f;
-    
-    MeshletDataForMeshOptimizer NativeMeshletData;
-    
-    const size_t MaxMeshletCount = meshopt_buildMeshletsBound(
-        Indices.size(), MaxVertexCountPerMeshlet, MaxTriangleCountPerMeshlet);
-
-    NativeMeshletData.Meshlets.resize(MaxMeshletCount);
-    NativeMeshletData.MeshletVertices.resize(MaxMeshletCount * MaxVertexCountPerMeshlet);
-    NativeMeshletData.MeshletIndices.resize(MaxMeshletCount * MaxTriangleCountPerMeshlet * 3);
-    
-    const size_t MeshletCount = meshopt_buildMeshlets(
-        NativeMeshletData.Meshlets.data(),
-        NativeMeshletData.MeshletVertices.data(),
-        NativeMeshletData.MeshletIndices.data(),
-        Indices.data(),
-        Indices.size(),
-        &Vertices[0].Position.x,
-        Vertices.size(),
-        sizeof(Vertex),
-        MaxVertexCountPerMeshlet,
-        MaxTriangleCountPerMeshlet,
-        ConeWeight);
-
-    const meshopt_Meshlet& LastMeshlet = NativeMeshletData.Meshlets[MeshletCount - 1];
-    NativeMeshletData.MeshletVertices.resize(LastMeshlet.vertex_offset + LastMeshlet.vertex_count);
-    NativeMeshletData.MeshletIndices.resize(LastMeshlet.triangle_offset + ((LastMeshlet.triangle_count * 3 + 3) & ~3));
-    NativeMeshletData.Meshlets.resize(MeshletCount);
-
-    for (size_t J = 0; J < NativeMeshletData.Meshlets.size(); ++J)
-    {
-        const meshopt_Meshlet& CurrentMeshlet = NativeMeshletData.Meshlets[J];
-        meshopt_optimizeMeshlet(
-            &NativeMeshletData.MeshletVertices[CurrentMeshlet.vertex_offset],
-            &NativeMeshletData.MeshletIndices[CurrentMeshlet.triangle_offset],
-            CurrentMeshlet.triangle_count,
-            CurrentMeshlet.vertex_count);
-    }
-
-    for (size_t J = 0; J < NativeMeshletData.Meshlets.size(); ++J)
-    {
-        const meshopt_Meshlet& CurrentMeshlet = NativeMeshletData.Meshlets[J];
-        meshopt_Bounds Bounds = meshopt_computeMeshletBounds(
-                &NativeMeshletData.MeshletVertices[CurrentMeshlet.vertex_offset],
-                &NativeMeshletData.MeshletIndices[CurrentMeshlet.triangle_offset],
-                CurrentMeshlet.triangle_count,
-                &Vertices[0].Position.x,
-                Vertices.size(),
-                sizeof(Vertex));
-        NativeMeshletData.MeshletBounds.push_back(Bounds);
-    }
-    
-    OutMeshletData.Meshlets = move(NativeMeshletData.Meshlets);
-    OutMeshletData.MeshletVertices = move(NativeMeshletData.MeshletVertices);
-    
-    OutMeshletData.MeshletIndices.resize(NativeMeshletData.MeshletIndices.size());
-    for (size_t I = 0; I < NativeMeshletData.MeshletIndices.size(); ++I)
-    {
-        OutMeshletData.MeshletIndices[I] = static_cast<unsigned int>(NativeMeshletData.MeshletIndices[I]);
-    }
-    
-    OutMeshletData.MeshletBounds = move(NativeMeshletData.MeshletBounds);
-}
 
 ErrorCode MeshLoader::LoadMesh(const string& Path, vector<Mesh>& OutMeshes, std::vector<PBRTextureNamesPatch>& OutTextureNamesPatches)
 {
@@ -299,117 +235,95 @@ ErrorCode MeshLoader::LoadMesh(const string& Path, vector<Mesh>& OutMeshes, std:
     return ErrorCode::OK;
 }
 
-void MeshLoader::GenerateWholeMeshLODData(const Mesh& Mesh, const MeshLODSettings& Settings, vector<MeshLODData>& OutLODDatas) const
+ErrorCode MeshLoader::Nanite(const Mesh& Mesh, std::vector<ClusterData>& OutClusters, std::vector<CLODBound>& OutGroupBounds)
 {
-    constexpr float ScreenPercentages[] = {1.0f, 0.5f, 0.25f, 0.125f};
-    constexpr float TargetRetainPercentages[] = {1.0f, 0.75f, 0.5f, 0.25f};
-    
-    const size_t OriginalTriCount = Mesh.Indices.size() / 3;
-    
-    for (int I = 0; I < Settings.NumLODs; ++I)
-    {
-        MeshLODData LodLevel;
-        
-        if (I == 0)
-        {
-            LodLevel.Vertices = Mesh.Vertices;
-            LodLevel.Indices = Mesh.Indices;
-        }
-        else
-        {
-            const float TargetRetainPercentage = TargetRetainPercentages[I];
-            size_t TargetTriCount = static_cast<size_t>(OriginalTriCount * TargetRetainPercentage);
-            
-            size_t MinTriCount = max(static_cast<size_t>(4), OriginalTriCount / 100); // 至少保留1%的三角形
-            TargetTriCount = max(TargetTriCount, MinTriCount);
-            
-            const size_t TargetIndexCount = TargetTriCount * 3;
-            
-            // 使用业界标准的error threshold
-            const float TargetError = 1e-2f;
-            
-            const vector<unsigned int>* SourceIndices = &Mesh.Indices;
-            
-            if (SourceIndices->size() <= TargetIndexCount)
-            {
-                LodLevel.Vertices = Mesh.Vertices;
-                LodLevel.Indices = *SourceIndices;
-            }
-            else
-            {
-                vector<unsigned int> SimplifiedIndices(SourceIndices->size());
-                
-                const size_t SimplifiedSize = meshopt_simplifySloppy(
-                    SimplifiedIndices.data(),
-                    SourceIndices->data(),
-                    SourceIndices->size(),
-                    &Mesh.Vertices[0].Position.x,
-                    Mesh.Vertices.size(),
-                    sizeof(Vertex),
-                    TargetIndexCount,
-                    TargetError);
-                
-                if (SimplifiedSize == 0)
-                {
-                    const vector<unsigned int>* FallbackIndices = (I == 1) ? &Mesh.Indices : &OutLODDatas[I-1].Indices;
-                    const vector<Vertex>* FallbackVertices = (I == 1) ? &Mesh.Vertices : &OutLODDatas[I-1].Vertices;
-                    
-                    LodLevel.Vertices = *FallbackVertices;
-                    LodLevel.Indices = *FallbackIndices;
-                }
-                else
-                {
-                    SimplifiedIndices.resize(SimplifiedSize);
-                    
-                    meshopt_optimizeVertexCache(
-                        SimplifiedIndices.data(),
-                        SimplifiedIndices.data(),
-                        SimplifiedIndices.size(),
-                        Mesh.Vertices.size());
-                        
-                    meshopt_optimizeOverdraw(
-                        SimplifiedIndices.data(),
-                        SimplifiedIndices.data(),
-                        SimplifiedIndices.size(),
-                        &Mesh.Vertices[0].Position.x,
-                        Mesh.Vertices.size(),
-                        sizeof(Vertex),
-                        1.05f);
-                    
-                    LodLevel.Vertices.resize(Mesh.Vertices.size());
-                    vector<unsigned int> RemappedIndices = SimplifiedIndices;
-                    
-                    const size_t OptimizedVertexCount = meshopt_optimizeVertexFetch(
-                        LodLevel.Vertices.data(),
-                        RemappedIndices.data(),
-                        RemappedIndices.size(),
-                        &Mesh.Vertices[0],
-                        Mesh.Vertices.size(),
-                        sizeof(Vertex));
-                    
-                    LodLevel.Vertices.resize(OptimizedVertexCount);
-                    LodLevel.Indices = RemappedIndices;
-                }
-            }
-        }
-        
-        LodLevel.ScreenSizePercentage = ScreenPercentages[I];
-        LodLevel.ReductionPercentage = 1.0f - TargetRetainPercentages[I];
-        LodLevel.MaxDeviation = (I > 0) ? 1e-2f : 0.0f;
-        LodLevel.WeldingThreshold = 0.0f;
-        LodLevel.bLockBoundaries = Settings.bEnableBoundaryProtection;
-        LodLevel.bLockUVBoundaries = Settings.bEnableBoundaryProtection;
-        LodLevel.MinTriangleCount = (I > 0) ? static_cast<int>(max(static_cast<size_t>(4), OriginalTriCount / 100)) : static_cast<int>(OriginalTriCount);
+    // Configure Nanite LOD hierarchy generation
+    clodConfig Config = clodDefaultConfig(126);
 
-        OutLODDatas.push_back(LodLevel);
-    }
-}
+    // Mesh Shader hardware limit: 64 vertices per cluster
+    Config.max_vertices = 64;
 
-void MeshLoader::GenerateWholeMeshletData(const vector<MeshLODData>& LODDatas, vector<unique_ptr<MeshletData>>& OutMeshletDatas) const
-{
-    for (size_t LodIndex = 0; LodIndex < LODDatas.size(); ++LodIndex)
-    {
-        OutMeshletDatas.emplace_back(make_unique<MeshletData>());
-        GenerateMeshletData(LODDatas[LodIndex].Vertices, LODDatas[LodIndex].Indices, *OutMeshletDatas[LodIndex]);
-    }
+    // Reduce 50% triangles per level (UE5 Nanite standard)
+    Config.simplify_ratio = 0.5f;
+
+    // Skip level if simplification < 20% effective
+    Config.simplify_threshold = 0.80f;
+
+    // Parent error additive factor for smooth LOD transitions
+    Config.simplify_error_merge_additive = 0.5f;
+
+    // Normal attribute weights (equal importance to position)
+    const float AttributeWeights[3] = {0.5f, 0.5f, 0.5f};
+
+    // Setup input mesh data
+    clodMesh CMesh = {};
+    CMesh.indices = Mesh.Indices.data();
+    CMesh.index_count = Mesh.Indices.size();
+    CMesh.vertex_count = Mesh.Vertices.size();
+    CMesh.vertex_positions = &Mesh.Vertices[0].Position.x;
+    CMesh.vertex_positions_stride = sizeof(Vertex);
+    CMesh.vertex_attributes = &Mesh.Vertices[0].Normal.x;
+    CMesh.vertex_attributes_stride = sizeof(Vertex);
+    CMesh.attribute_weights = AttributeWeights;
+    CMesh.attribute_count = 3;
+
+    // Protect UV seams from simplification (bits 6-7 are UV coords)
+    CMesh.attribute_protect_mask = (1 << 6) | (1 << 7);
+    CMesh.vertex_lock = nullptr;
+
+    OutClusters.clear();
+    OutGroupBounds.clear();
+
+    // Build Nanite LOD hierarchy
+    clodBuild(Config, CMesh, [&](clodGroup Group, const clodCluster* Clusters,
+                                 size_t ClusterCount) -> int {
+
+        for (size_t I = 0; I < ClusterCount; ++I)
+        {
+            const clodCluster& Cluster = Clusters[I];
+            ClusterData Data;
+
+            // Deduplicate vertices: global indices -> unique vertices + local indices (0-255)
+            Data.UniqueVertices.resize(Cluster.vertex_count);
+            Data.LocalIndices.resize(Cluster.index_count);
+
+            size_t UniqueCount = clodLocalIndices(
+                Data.UniqueVertices.data(),
+                Data.LocalIndices.data(),
+                Cluster.indices,
+                Cluster.index_count
+            );
+
+            Data.UniqueVertices.resize(UniqueCount);
+
+            // Refined: index to finer group (-1 = leaf node)
+            Data.Refined = Cluster.refined;
+
+            // Bounds: center/radius for frustum culling, error for LOD selection
+            Data.Bound.Center[0] = Cluster.bounds.center[0];
+            Data.Bound.Center[1] = Cluster.bounds.center[1];
+            Data.Bound.Center[2] = Cluster.bounds.center[2];
+            Data.Bound.Radius = Cluster.bounds.radius;
+            Data.Bound.Error = Cluster.bounds.error;
+
+            // GroupId: index to OutGroupBounds for runtime cluster selection
+            Data.GroupId = int(OutGroupBounds.size());
+
+            OutClusters.push_back(std::move(Data));
+        }
+
+        // Group simplified bounds (monotonic error: parent > child)
+        CLODBound GroupBound;
+        GroupBound.Center[0] = Group.simplified.center[0];
+        GroupBound.Center[1] = Group.simplified.center[1];
+        GroupBound.Center[2] = Group.simplified.center[2];
+        GroupBound.Radius = Group.simplified.radius;
+        GroupBound.Error = Group.simplified.error;
+        OutGroupBounds.push_back(GroupBound);
+
+        // Return group index for parent cluster's refined field
+        return int(OutGroupBounds.size() - 1);
+    });
+
+    return ErrorCode::OK;
 }

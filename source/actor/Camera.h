@@ -18,6 +18,8 @@ public:
     DirectX::XMFLOAT3 LookDirection;
     DirectX::XMFLOAT3 UpDirection;
     float FovY;
+    float ViewportWidth;
+    float ViewportHeight;
     float AspectRatio;
     float NearPlane;
     float FarPlane;
@@ -28,7 +30,6 @@ public:
     CullingVisualCamera* GetCullingCamera() const;
     void Update(float DeltaTime) override;
     ConstantBufferProxy* GetConstantBufferProxy() const override;
-    CameraConstantBuffer* GetConstantBuffer() const;
     DirectX::XMMATRIX GetViewMatrix() const;
     DirectX::XMMATRIX GetProjectionMatrix() const;
     ~Camera() override = default;

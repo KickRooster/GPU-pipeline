@@ -12,11 +12,10 @@ public:
     float NearPlane;
     float FarPlane;
 
-    CullingVisualCamera(
-        std::unique_ptr<Mesh> InMeshInstance,
-        std::vector<std::unique_ptr<MeshletData>> InMeshletDataInstances,
-        std::vector<std::unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances);
-    
+    CullingVisualCamera(std::unique_ptr<Mesh> InMeshInstance,
+        std::unique_ptr<NaniteData> InNaniteDataInstance,
+        std::unique_ptr<NaniteClusterProxy> InNaniteClusterProxyInstance);
+
     void Update(float DeltaTime) override;
     ConstantBufferProxy* GetConstantBufferProxy() const override;
     virtual ~CullingVisualCamera() override = default;

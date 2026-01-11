@@ -9,6 +9,7 @@
 // ImGuizmo 需要的定义
 #define IMGUI_DEFINE_MATH_OPERATORS
 
+#include "misc/Base.h"
 #include "../imgui/imgui.h"
 #include "../imgui/backends/imgui_impl_win32.h"
 #include "../imgui/backends/imgui_impl_dx12.h"
@@ -207,8 +208,8 @@ int main(int, char**)
 					if (ImGui::MenuItem("Mesh"))
 					{
 						//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("sponza.obj"));
-						Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("Cerberus_LP.FBX"));
-						//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("NewSponza_Main.fbx"));
+						//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("Cerberus_LP.FBX"));
+						Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("duck.fbx"));
 					}
 					ImGui::EndMenu();
 				}
@@ -478,10 +479,13 @@ int main(int, char**)
 			CameraInstance->ResponseToUI(State, DeltaTime); 
 			ImVec2 ViewportSize = ImGui::GetContentRegionAvail();
 			PipelineInterface::GetInstance().UpdateViewport(FrameContextIndex, ViewportSize);
+			CameraInstance->ViewportWidth = ViewportSize.x;
+			CameraInstance->ViewportHeight = ViewportSize.y;
 			CameraInstance->AspectRatio = ViewportSize.x / ViewportSize.y;
 			static_cast<CullingVisualCamera*>(CullingCameraInstance)->AspectRatio = CameraInstance->AspectRatio;
+
 			Level::GetInstance().Update(DeltaTime);
-			PipelineInterface::GetInstance().RenderLevelMeshlet(FrameContextIndex, &Level::GetInstance());
+			PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
 			
 			// Post-processing pass: ACES tone mapping (RenderTarget → TransitionTexture → RenderTarget)
 			PipelineInterface::GetInstance().RenderPostProcessCompute(FrameContextIndex);

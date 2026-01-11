@@ -1,4 +1,6 @@
 ﻿#pragma once
+
+#include "../misc/Base.h"
 #include <d3d12.h>
 #include <d3dx12.h>
 #include <dxgi1_4.h>
@@ -183,11 +185,11 @@ public:
     void ResetUploadCommandAllocator() const;
     void ResetUploadCommandList() const;
     void ExecuteAndWaitUploadCommandList();
-    ErrorCode CreateMeshletDataProxyBuffer(const std::vector<Vertex>& Vertices, const MeshletData* MeshletDataInstance, MeshletDataProxy* MeshletDataProxyInstance, bool ImmediateExecute = true);
+    ErrorCode CreateNaniteClusterProxyBuffer(const std::vector<Vertex>& Vertices, const std::vector<ClusterData>& Clusters, const std::vector<CLODBound>& GroupBounds, NaniteClusterProxy* NaniteClusterProxyInstance, bool ImmediateExecute = true);
     ErrorCode CreateTexture(const Texture* TextureInstance, unsigned int DescriptorIndex, TextureProxy* TextureProxyInstance, bool ImmediateExecute = true);
     ErrorCode CreateCubemap(const CubemapTexture* CubemapInstance, unsigned int DescriptorIndex, CubemapTextureProxy* CubemapProxyInstance, bool ImmediateExecute = true);
     ErrorCode CreateConstantBuffer(const Actor* ActorInstance) const;
     ErrorCode UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);
-    void RenderLevelMeshlet(unsigned int FrameContextIndex, const Level* LevelInstance) const;
+    void RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance) const;
     void RenderPostProcessCompute(unsigned int FrameContextIndex) const;
 };

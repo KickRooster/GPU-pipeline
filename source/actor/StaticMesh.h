@@ -14,27 +14,28 @@ class StaticMesh : public Actor
 protected:
     DirectX::XMMATRIX TransformationMatrix;    // SRT order: Scale * Rotation * Translation (UE style)
     DirectX::XMFLOAT4 BoundingSphere;
+
+    std::unique_ptr<StaticMeshConstantBuffer> ConstantBufferInstance;
+    std::unique_ptr<ConstantBufferProxy> ConstantBufferProxyInstance;
+    
+    std::unique_ptr<NaniteData> NaniteDataInstance;
+    std::unique_ptr<NaniteClusterProxy> NaniteClusterProxyInstance;
     
     std::unique_ptr<Material> MaterialInstance;
     std::unique_ptr<MaterialProxy> MaterialProxyInstance;
-    
-    std::vector<std::unique_ptr<MeshletData>> MeshletDataInstances;
-    std::vector<std::unique_ptr<MeshletDataProxy>> MeshletDataProxyInstances;
-    
-    std::unique_ptr<StaticMeshConstantBuffer> ConstantBufferInstance;
-    std::unique_ptr<ConstantBufferProxy> ConstantBufferProxyInstance;
 
 public:
     StaticMesh(
         const DirectX::XMFLOAT4X4* Local2WorldMatrix,
         const DirectX::XMFLOAT4 BoundingSphere,
-        std::vector<std::unique_ptr<MeshletData>> InMeshletDataInstances,
-        std::vector<std::unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances);
+        std::unique_ptr<NaniteData> InNaniteDataInstance,
+        std::unique_ptr<NaniteClusterProxy> InNaniteClusterProxyInstance
+        );
 
     void Update(float DeltaTime) override;
     ConstantBufferProxy* GetConstantBufferProxy() const override;
-    const std::vector<std::unique_ptr<MeshletData>>& GetMeshletDataInstances() const;
-    const std::vector<std::unique_ptr<MeshletDataProxy>>& GetMeshletDataProxyInstances() const;
+    NaniteData* GetNaniteData() const;
+    NaniteClusterProxy* GetNaniteClusterProxy() const;
     void SetMaterial(std::unique_ptr<Material> InMaterialInstance, std::unique_ptr<MaterialProxy> InMaterialProxyInstance);
     const Material* GetMaterial() const;
     DirectX::XMMATRIX GetWorldMatrix() const;

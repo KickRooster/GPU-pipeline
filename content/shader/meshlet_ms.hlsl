@@ -3,8 +3,11 @@ cbuffer cbCamera : register(b0)
     float4x4 gViewProj;
     float4   gPlanes[6];
     float3   gViewPosition;
-    float    gRecipTanHalfFovy;  // 1.0f / tanf(fovy * 0.5f)
-    uint     gLODCount;
+    float    gScreenWidth;
+    float    gScreenHeight;
+    float    gRecipTanHalfFovy;     // 1.0f / tanf(fovy * 0.5f)
+    float    gLODErrorThreshold;    // pixels
+    float    gNearPlane;
 };
 
 cbuffer cbStaticMesh : register(b1)
@@ -12,92 +15,56 @@ cbuffer cbStaticMesh : register(b1)
     float4x4 gWorld;
     float4x4 gWorldInvTranspose;
     float4   gBoundingSphere;
-    uint     gMeshletCounts[4];
-    uint     gPBRTextureIndices[4];
+    uint4    gPBRTextureIndices[4];  // 16 bytes per element (matches C++ layout)
+    uint     gNaniteClusterCount;
+    uint     gPadding0;
+    uint     gPadding1;
+    uint     gPadding2;
 };
 
-struct Vertex
+#define AS_CLUSTERS_PER_GROUP 32    // Each AS group dispatches 32 mesh shaders
+#define MS_MAX_VERTICES 64          // Max vertices per mesh shader
+#define MS_MAX_PRIMITIVES 126       // Max triangles per mesh shader
+#define MS_NUM_THREADS 128          // Mesh shader thread group size
+
+// Nanite structures
+struct NaniteVertex
 {
     float3 Position;
     float3 Normal;
     float3 Tangent;
-    float4 Color;
     float2 UV0;
 };
 
-struct Meshlet
+struct GPUCluster
 {
-    uint VertexOffset;
-    uint TriangleOffset;
-    uint VertexCount;
-    uint TriangleCount;
+    uint IndexCount;
+    uint UniqueVerticesOffset;
+    uint UniqueVerticesCount;
+    uint LocalIndicesOffset;
+    float3 BoundCenter;
+    float BoundRadius;
+    int Refined;
+    int GroupId;
 };
 
-StructuredBuffer<Vertex>  LOD0_Vertices            : register(t0);
-StructuredBuffer<Meshlet> LOD0_Meshlets            : register(t1);
-StructuredBuffer<uint>    LOD0_UniqueVertexIndices : register(t2);
-StructuredBuffer<uint>    LOD0_MeshletTriangles    : register(t3);
-
-StructuredBuffer<Vertex>  LOD1_Vertices            : register(t5);
-StructuredBuffer<Meshlet> LOD1_Meshlets            : register(t6);
-StructuredBuffer<uint>    LOD1_UniqueVertexIndices : register(t7);
-StructuredBuffer<uint>    LOD1_MeshletTriangles    : register(t8);
-
-StructuredBuffer<Vertex>  LOD2_Vertices            : register(t10);
-StructuredBuffer<Meshlet> LOD2_Meshlets            : register(t11);
-StructuredBuffer<uint>    LOD2_UniqueVertexIndices : register(t12);
-StructuredBuffer<uint>    LOD2_MeshletTriangles    : register(t13);
-
-StructuredBuffer<Vertex>  LOD3_Vertices            : register(t15);
-StructuredBuffer<Meshlet> LOD3_Meshlets            : register(t16);
-StructuredBuffer<uint>    LOD3_UniqueVertexIndices : register(t17);
-StructuredBuffer<uint>    LOD3_MeshletTriangles    : register(t18);
-
-Meshlet GetMeshlet(uint lodIndex, uint meshletIndex)
+struct GPUGroupBound
 {
-    if (lodIndex == 0) return LOD0_Meshlets[meshletIndex];
-    if (lodIndex == 1) return LOD1_Meshlets[meshletIndex];
-    if (lodIndex == 2) return LOD2_Meshlets[meshletIndex];
-    return LOD3_Meshlets[meshletIndex];
-}
+    float3 Center;
+    float Radius;
+    float Error;
+};
 
-Vertex GetVertex(uint lodIndex, uint vertexIndex)
-{
-    if (lodIndex == 0) return LOD0_Vertices[vertexIndex];
-    if (lodIndex == 1) return LOD1_Vertices[vertexIndex];
-    if (lodIndex == 2) return LOD2_Vertices[vertexIndex];
-    return LOD3_Vertices[vertexIndex];
-}
-
-uint GetUniqueVertexIndex(uint lodIndex, uint index)
-{
-    if (lodIndex == 0) return LOD0_UniqueVertexIndices[index];
-    if (lodIndex == 1) return LOD1_UniqueVertexIndices[index];
-    if (lodIndex == 2) return LOD2_UniqueVertexIndices[index];
-    return LOD3_UniqueVertexIndices[index];
-}
-
-uint GetMeshletTriangle(uint lodIndex, uint index)
-{
-    if (lodIndex == 0) return LOD0_MeshletTriangles[index];
-    if (lodIndex == 1) return LOD1_MeshletTriangles[index];
-    if (lodIndex == 2) return LOD2_MeshletTriangles[index];
-    return LOD3_MeshletTriangles[index];
-}
-
-// Microsoft DynamicLOD style LOD color visualization
-float4 GetLODColor(uint lodIndex)
-{
-    if (lodIndex == 0) return float4(1.0, 1.0, 1.0, 1.0);      // Red - LOD 0 (highest detail)
-    if (lodIndex == 1) return float4(0.75, 0.75, 0.75, 1.0);      // Green - LOD 1
-    if (lodIndex == 2) return float4(0.5, 0.5, 0.5, 1.0);      // Blue - LOD 2
-    return float4(0.25, 0.25, 0.25, 1.0);                         // Yellow - LOD 3 (lowest detail)
-}
+// Nanite buffers: Vertex -> UniqueVertices -> LocalIndices -> Cluster -> GroupBounds
+StructuredBuffer<NaniteVertex>  NaniteVertices        : register(t20);
+StructuredBuffer<uint>          NaniteUniqueVertices  : register(t21);
+ByteAddressBuffer               NaniteLocalIndices    : register(t22);
+StructuredBuffer<GPUCluster>    NaniteClusters        : register(t23);
+StructuredBuffer<GPUGroupBound> NaniteGroupBounds     : register(t24);
 
 struct Payload
 {
-    uint MeshletIndices[32];
-    uint LODLevel;  // LOD level from amplification shader
+    uint ASGroupID;  // AS group ID for cluster index calculation
 };
 
 struct VertexOut
@@ -107,73 +74,124 @@ struct VertexOut
     float3 Normal     : NORMAL0;
     float3 Tangent    : TANGENT0;
     float3 Bitangent  : BINORMAL0;
-    float4 Color      : COLOR0;
     float2 UV0        : TEXCOORD0;
 };
 
 struct PrimitiveOut
 {
-    uint MeshletIndex : COLOR1;
+    uint ClusterIndex : COLOR1;
 };
 
-[numthreads(128, 1, 1)]
+// Compute screen-space projection error for group bounds
+// Based on MeshLoader.cpp:19-24 boundsError formula
+float ComputeScreenError(GPUGroupBound groupBound, float3 cameraPos, float recipTanHalfFovy, float nearPlane)
+{
+    float3 v = groupBound.Center - cameraPos;
+    float distance = length(v) - groupBound.Radius;
+    distance = max(distance, nearPlane);
+
+    // Returns screen height percentage (0-1), multiply by screen height for pixel error
+    return groupBound.Error / distance * (recipTanHalfFovy * 0.5f);
+}
+
+// Determine if cluster should be rendered (Nanite continuous LOD)
+// Based on meshoptimizer design (clusterlod.h:122-125)
+// Render cluster if:
+// 1. Current group's error > threshold (too coarse without this cluster)
+// 2. Refined == -1 OR refined group's error <= threshold (refined too fine, use current)
+bool ShouldRenderCluster(GPUCluster cluster, float3 cameraPos, float recipTanHalfFovy)
+{
+    // Screen-space error threshold (pixels / screen height)
+    const float threshold = gLODErrorThreshold / gScreenHeight;
+
+    // Condition 1: Current group error must exceed threshold
+    GPUGroupBound myGroup = NaniteGroupBounds[cluster.GroupId];
+    float myGroupError = ComputeScreenError(myGroup, cameraPos, recipTanHalfFovy, gNearPlane);
+
+    if (myGroupError <= threshold)
+        return false;  // Current group error below threshold, skip this cluster
+
+    // Condition 2a: Original geometry (highest detail level, refined == -1)
+    if (cluster.Refined == -1)
+        return true;
+
+    // Condition 2b: Refined group error <= threshold
+    GPUGroupBound refinedGroup = NaniteGroupBounds[cluster.Refined];
+    float refinedGroupError = ComputeScreenError(refinedGroup, cameraPos, recipTanHalfFovy, gNearPlane);
+
+    return refinedGroupError <= threshold;  // Higher detail not needed, render this cluster
+}
+
+[numthreads(MS_NUM_THREADS, 1, 1)]
 [outputtopology("triangle")]
 void main(
     uint gid : SV_GroupID,
     uint3 gtid : SV_GroupThreadID,
     uint3 dtid : SV_DispatchThreadID,
     in payload Payload payloadData,
-    out vertices VertexOut vertices[64],
-    out primitives PrimitiveOut primitives[124],
-    out indices uint3 triangles[124])
+    out vertices VertexOut vertices[MS_MAX_VERTICES],
+    out primitives PrimitiveOut primitives[MS_MAX_PRIMITIVES],
+    out indices uint3 triangles[MS_MAX_PRIMITIVES])
 {
-    uint meshletIndex = payloadData.MeshletIndices[gid];
-    
-    // Use LOD level computed by amplification shader
-    uint lodIndex = payloadData.LODLevel;
-    
-    Meshlet meshlet = GetMeshlet(lodIndex, meshletIndex);
-    
-    SetMeshOutputCounts(meshlet.VertexCount, meshlet.TriangleCount);
+    uint clusterIndex = payloadData.ASGroupID * AS_CLUSTERS_PER_GROUP + gid;
 
-    // Output vertices
-    for (uint i = gtid.x; i < meshlet.VertexCount; i += 128)
+    uint vertexCount = 0;
+    uint triangleCount = 0;
+
+    if (clusterIndex < gNaniteClusterCount)
     {
-        uint vertexIndex = GetUniqueVertexIndex(lodIndex, meshlet.VertexOffset + i);
-        Vertex v = GetVertex(lodIndex, vertexIndex);
+        GPUCluster cluster = NaniteClusters[clusterIndex];
 
-        VertexOut vout;
-        vout.PositionWS = mul(float4(v.Position, 1), gWorld).xyz;
-        vout.PositionHS = mul(float4(vout.PositionWS, 1), gViewProj);
-        vout.Normal = normalize(mul(float4(v.Normal, 0), gWorldInvTranspose).xyz);
-        vout.Tangent = normalize(mul(float4(v.Tangent, 0), gWorldInvTranspose).xyz);
-        vout.Bitangent = normalize(cross(vout.Tangent, vout.Normal));
-        
-        float4 lodColor = GetLODColor(lodIndex);
-        
-        uint meshletHash = (meshletIndex + 1) * 0x9e3779b9u;
-        float3 meshletColor = float3(
-            float((meshletHash >> 0) & 0xFF) / 255.0,
-            float((meshletHash >> 8) & 0xFF) / 255.0, 
-            float((meshletHash >> 16) & 0xFF) / 255.0
-        );
-        
-        vout.Color = float4(lodColor.rgb * meshletColor * (vout.Normal * 0.5 + 0.5), 1.0);
-        
-        vout.UV0 = v.UV0;
+        // Nanite continuous LOD: cluster selection
+        bool shouldRender = ShouldRenderCluster(cluster, gViewPosition, gRecipTanHalfFovy);
 
-        vertices[i] = vout;
+        if (shouldRender)
+        {
+            vertexCount = min(MS_MAX_VERTICES, cluster.UniqueVerticesCount);
+            triangleCount = min(MS_MAX_PRIMITIVES, cluster.IndexCount / 3);
+        }
     }
 
-    // Output primitives
-    for (uint i = gtid.x; i < meshlet.TriangleCount; i += 128)
+    SetMeshOutputCounts(vertexCount, triangleCount);
+
+    if (clusterIndex < gNaniteClusterCount && vertexCount > 0)
     {
-        uint indexOffset = meshlet.TriangleOffset + i * 3;
-        triangles[i] = uint3(
-            GetMeshletTriangle(lodIndex, indexOffset + 0),
-            GetMeshletTriangle(lodIndex, indexOffset + 1), 
-            GetMeshletTriangle(lodIndex, indexOffset + 2));
-        
-        primitives[i].MeshletIndex = meshletIndex;
+        GPUCluster cluster = NaniteClusters[clusterIndex];
+
+        // Output vertices
+        for (uint i = gtid.x; i < vertexCount; i += MS_NUM_THREADS)
+        {
+            uint globalVertexIndex = NaniteUniqueVertices[cluster.UniqueVerticesOffset + i];
+            NaniteVertex nv = NaniteVertices[globalVertexIndex];
+
+            VertexOut vout;
+            vout.PositionWS = mul(float4(nv.Position, 1), gWorld).xyz;
+            vout.PositionHS = mul(float4(vout.PositionWS, 1), gViewProj);
+            vout.Normal = normalize(mul(float4(nv.Normal, 0), gWorldInvTranspose).xyz);
+            vout.Tangent = normalize(mul(float4(nv.Tangent, 0), gWorldInvTranspose).xyz);
+            vout.Bitangent = normalize(cross(vout.Tangent, vout.Normal));
+            vout.UV0 = nv.UV0;
+
+            vertices[i] = vout;
+        }
+
+        // Output triangles
+        for (uint triIdx = gtid.x; triIdx < triangleCount; triIdx += MS_NUM_THREADS)
+        {
+            uint indexOffset = cluster.LocalIndicesOffset + triIdx * 3;
+
+            // Read 3 local indices (byte-packed)
+            uint byteAddr0 = indexOffset;
+            uint localIdx0 = (NaniteLocalIndices.Load(byteAddr0 & ~3) >> ((byteAddr0 & 3) * 8)) & 0xFF;
+
+            uint byteAddr1 = indexOffset + 1;
+            uint localIdx1 = (NaniteLocalIndices.Load(byteAddr1 & ~3) >> ((byteAddr1 & 3) * 8)) & 0xFF;
+
+            uint byteAddr2 = indexOffset + 2;
+            uint localIdx2 = (NaniteLocalIndices.Load(byteAddr2 & ~3) >> ((byteAddr2 & 3) * 8)) & 0xFF;
+
+            triangles[triIdx] = uint3(localIdx0, localIdx1, localIdx2);
+            primitives[triIdx].ClusterIndex = clusterIndex;
+        }
     }
 }
