@@ -17,6 +17,18 @@ int Level::InstantiateStaticMeshes(const string& Path)
     vector<Mesh> Meshes;
     vector<PBRTextureNamesPatch> TextureNamesPatches;
     MeshLoader::GetInstance().LoadMesh(Path, Meshes, TextureNamesPatches);
+    
+    map<int, vector<ClusterData>> ClustersMap;
+    map<int, vector<CLODBound>> GroupBoundsMap;
+
+    for (unsigned int I = 0; I < Meshes.size(); ++I)
+    {
+        vector<ClusterData> Clusters;
+        vector<CLODBound> GroupBounds;
+        MeshLoader::GetInstance().Nanite(Meshes[I], Clusters, GroupBounds);
+        ClustersMap.emplace(I, move(Clusters));
+        GroupBoundsMap.emplace(I, move(GroupBounds));
+    }
 
     vector<unique_ptr<Mesh>> MeshInstances;
     
@@ -31,27 +43,17 @@ int Level::InstantiateStaticMeshes(const string& Path)
         MeshInstances.push_back(move(MeshInstance));
     }
 
-    map<int, vector<unique_ptr<MeshletData>>> MeshletDatasMap;
-    map<int, vector<unique_ptr<MeshletDataProxy>>> MeshletDataProxiesMap;
-    map<int, vector<MeshLODData>> MeshLODDatasMap;
-    
+    map<int, unique_ptr<NaniteData>> NaniteDatasMap;
+    map<int, unique_ptr<NaniteClusterProxy>> NaniteClusterProxiesMap;
+
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
-        vector<MeshLODData> LODDatas;
-        MeshLoader::GetInstance().GenerateWholeMeshLODData(Meshes[I], MeshLODSettings::GetInstance(), LODDatas);
+        unique_ptr<NaniteData> NaniteDataInstance = make_unique<NaniteData>();
+        NaniteDataInstance->Clusters = move(ClustersMap[I]);
+        NaniteDataInstance->GroupBounds = move(GroupBoundsMap[I]);
+        NaniteDatasMap.emplace(I, move(NaniteDataInstance));
 
-        vector<unique_ptr<MeshletData>> MeshletDatas;
-        MeshLoader::GetInstance().GenerateWholeMeshletData(LODDatas, MeshletDatas);
-        
-        vector<unique_ptr<MeshletDataProxy>> MeshletDataProxies;
-        for (size_t Index = 0; Index < MeshletDatas.size(); ++Index)
-        {
-            MeshletDataProxies.emplace_back(make_unique<MeshletDataProxy>());
-        }
-        
-        MeshletDatasMap.emplace(I, move(MeshletDatas));
-        MeshletDataProxiesMap.emplace(I, move(MeshletDataProxies));
-        MeshLODDatasMap.emplace(I, move(LODDatas));
+        NaniteClusterProxiesMap.emplace(I, make_unique<NaniteClusterProxy>());
     }
 
     vector<unique_ptr<Material>> MaterialInstances;
@@ -110,14 +112,15 @@ int Level::InstantiateStaticMeshes(const string& Path)
 
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
-        for (size_t LODIndex = 0; LODIndex < MeshletDatasMap[I].size(); ++LODIndex)
+        if (!NaniteDatasMap[I]->Clusters.empty() && !NaniteDatasMap[I]->GroupBounds.empty())
         {
-            PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(
-                MeshLODDatasMap[I][LODIndex].Vertices,
-                MeshletDatasMap[I][LODIndex].get(), 
-                MeshletDataProxiesMap[I][LODIndex].get(),
+            PipelineInterface::GetInstance().CreateNaniteClusterProxyBuffer(
+                Meshes[I].Vertices,
+                NaniteDatasMap[I]->Clusters,
+                NaniteDatasMap[I]->GroupBounds,
+                NaniteClusterProxiesMap[I].get(),
                 false
-                );
+            );
         }
 
         //  XXX:    MaterialInstances.size() == Meshes.size()
@@ -185,11 +188,14 @@ int Level::InstantiateStaticMeshes(const string& Path)
         unique_ptr<StaticMesh> ActorInstance = make_unique<StaticMesh>(
             &MeshInstances[I]->Local2WorldMatrix,
             MeshInstances[I]->BoundingSphere,
-            move(MeshletDatasMap[I]),
-            move(MeshletDataProxiesMap[I]));
-        
-        ActorInstance->SetMaterial(move(MaterialInstances[I]), move(MaterialProxyInstances[I]));
+            move(NaniteDatasMap[I]),
+            move(NaniteClusterProxiesMap[I])
+            );
 
+        PipelineInterface::GetInstance().CreateConstantBuffer(ActorInstance.get());
+
+        ActorInstance->SetMaterial(move(MaterialInstances[I]), move(MaterialProxyInstances[I]));
+        
         ActorInstance->Transform.Position.x = 0;
         ActorInstance->Transform.Position.y = 0;
         ActorInstance->Transform.Position.z = 0;
@@ -200,8 +206,6 @@ int Level::InstantiateStaticMeshes(const string& Path)
         ActorInstance->Transform.Rotation.y = 0;
         ActorInstance->Transform.Rotation.z = 0;
         ActorInstance->Name = Meshes[I].Name;
-        
-        PipelineInterface::GetInstance().CreateConstantBuffer(ActorInstance.get());
 
         StaticMeshes.push_back(move(ActorInstance));
     }
@@ -217,95 +221,46 @@ StaticMesh* Level::InstantiateCullingVisualCamera()
     vector<Mesh> Meshes;
     vector<PBRTextureNamesPatch> TextureNamesPatches;
     MeshLoader::GetInstance().LoadMesh(CameraPath, Meshes, TextureNamesPatches);
-
+    
+    vector<ClusterData> Clusters;
+    vector<CLODBound> GroupBounds;
+    MeshLoader::GetInstance().Nanite(Meshes[0], Clusters, GroupBounds);
+    
     unique_ptr<Mesh> MeshInstance = make_unique<Mesh>();
     MeshInstance->Vertices = Meshes[0].Vertices;
     MeshInstance->Indices = Meshes[0].Indices;
     MeshInstance->Local2WorldMatrix = Meshes[0].Local2WorldMatrix;
     MeshInstance->Name = Meshes[0].Name;
+    MeshInstance->BoundingSphere = Meshes[0].BoundingSphere;
+
+    unique_ptr<NaniteData> NaniteDataInstance = make_unique<NaniteData>();
+    NaniteDataInstance->Clusters = move(Clusters);
+    NaniteDataInstance->GroupBounds = move(GroupBounds);
+
+    unique_ptr<NaniteClusterProxy> NaniteClusterProxyInstance = make_unique<NaniteClusterProxy>();
     
-    vector<MeshLODData> LODDatasForCamera;
-    MeshLoader::GetInstance().GenerateWholeMeshLODData(Meshes[0], MeshLODSettings::GetInstance(), LODDatasForCamera);
-
-    vector<unique_ptr<MeshletData>> MeshletDatas;
-    MeshLoader::GetInstance().GenerateWholeMeshletData(LODDatasForCamera, MeshletDatas);
-    
-    vector<unique_ptr<MeshletDataProxy>> MeshletDataProxyInstances;
-    MeshletDataProxyInstances.resize(MeshletDatas.size());
-    for (size_t Index = 0; Index < MeshletDatas.size(); ++Index)
-    {
-        MeshletDataProxyInstances[Index] = make_unique<MeshletDataProxy>();
-    }
-
-    for (size_t Index = 0; Index < MeshletDatas.size(); ++Index)
-    {
-        PipelineInterface::GetInstance().CreateMeshletDataProxyBuffer(
-        LODDatasForCamera[Index].Vertices,
-            MeshletDatas[Index].get(), 
-            MeshletDataProxyInstances[Index].get()
-            );
-    }
-
     unique_ptr<Material> MaterialInstance = make_unique<Material>();
     unique_ptr<MaterialProxy> MaterialProxyInstance = make_unique<MaterialProxy>();
-    
-    if (!TextureNamesPatches[0].AlbedoPath.empty())
-    {
-        Texture TextureInstance;
-        if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[0].AlbedoPath, true, TextureInstance) == ErrorCode::OK)
-        {
-            MaterialInstance->AlbedoTexture = make_unique<Texture>(std::move(TextureInstance));
-            MaterialProxyInstance->AlbedoTextureIndex = PipelineInterface::GetInstance().GetTextureBindlessAllocator().AllocateRange(1);
-        }
-    }
 
-    if (!TextureNamesPatches[0].NormalPath.empty())
-    {
-        Texture TextureInstance;
-        if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[0].NormalPath, false, TextureInstance) == ErrorCode::OK)
-        {
-            MaterialInstance->NormalTexture = make_unique<Texture>(std::move(TextureInstance));
-            MaterialProxyInstance->NormalTextureIndex = PipelineInterface::GetInstance().GetTextureBindlessAllocator().AllocateRange(1);
-        }
-    }
+    PipelineInterface::GetInstance().ResetUploadCommandList();
 
-    if (!TextureNamesPatches[0].MetallicPath.empty())
+    if (!NaniteDataInstance->Clusters.empty() && !NaniteDataInstance->GroupBounds.empty())
     {
-        Texture TextureInstance;
-        if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[0].MetallicPath, false, TextureInstance) == ErrorCode::OK)
-        {
-            MaterialInstance->MetallicTexture = make_unique<Texture>(std::move(TextureInstance));
-            MaterialProxyInstance->MetallicTextureIndex = PipelineInterface::GetInstance().GetTextureBindlessAllocator().AllocateRange(1);
-        }
-    }
-
-    if (!TextureNamesPatches[0].RoughnessPath.empty())
-    {
-        Texture TextureInstance;
-        if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[0].RoughnessPath, false, TextureInstance) == ErrorCode::OK)
-        {
-            MaterialInstance->RoughnessTexture = make_unique<Texture>(std::move(TextureInstance));
-            MaterialProxyInstance->RoughnessTextureIndex = PipelineInterface::GetInstance().GetTextureBindlessAllocator().AllocateRange(1);
-        }
-    }
-    
-    if (MaterialInstance->AlbedoTexture)
-    {
-        unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
-            
-        PipelineInterface::GetInstance().CreateTexture(
-            MaterialInstance->AlbedoTexture.get(),
-            MaterialProxyInstance->AlbedoTextureIndex,
-            TextureProxyInstance.get()
+        PipelineInterface::GetInstance().CreateNaniteClusterProxyBuffer(
+            Meshes[0].Vertices,
+            NaniteDataInstance->Clusters,
+            NaniteDataInstance->GroupBounds,
+            NaniteClusterProxyInstance.get(),
+            false
         );
-
-        MaterialInstance->AlbedoTextureProxy = move(TextureProxyInstance);
     }
+
+    PipelineInterface::GetInstance().ExecuteAndWaitUploadCommandList();
     
     unique_ptr<CullingVisualCamera> CullingVisualInstance = make_unique<CullingVisualCamera>(
         move(MeshInstance),
-        move(MeshletDatas),
-        move(MeshletDataProxyInstances));
+        move(NaniteDataInstance),
+        move(NaniteClusterProxyInstance));
 
     CullingVisualInstance->SetMaterial(move(MaterialInstance), move(MaterialProxyInstance));
     
@@ -367,11 +322,11 @@ SkyLight* Level::InstantiateSkyLight()
 
     unique_ptr<CubemapTexture> Cubemap = std::make_unique<CubemapTexture>(HDRTexture);
 
-    ActorInstance->IrradianceMap = Cubemap->Convolution(32, 1024);
+    ActorInstance->IrradianceMap = Cubemap->Convolution(32, 32);
     ActorInstance->IrradianceMapProxy = std::make_unique<CubemapTextureProxy>();
     ActorInstance->IrradianceMapProxy->DescriptorIndex = PipelineInterface::GetInstance().GetCubemapBindlessAllocator().AllocateRange(1);
 
-    ActorInstance->PrefilteredMap = Cubemap->PrefilterEnvironment(5, 128, 1024);
+    ActorInstance->PrefilteredMap = Cubemap->PrefilterEnvironment(5, 128, 32);
     ActorInstance->PrefilteredMapProxy = std::make_unique<CubemapTextureProxy>();
     ActorInstance->PrefilteredMapProxy->DescriptorIndex = PipelineInterface::GetInstance().GetCubemapBindlessAllocator().AllocateRange(1);
 

@@ -1,8 +1,7 @@
 #pragma once
 #include "../misc/Base.h"
 #include <vector>
-#include "meshoptimizer.h"
-#include <DirectXMath.h>
+#include <string>
 
 struct Mesh
 {
@@ -13,19 +12,25 @@ struct Mesh
     DirectX::XMFLOAT4 BoundingSphere;
 };
 
-struct MeshletDataForMeshOptimizer
+struct CLODBound
 {
-    std::vector<meshopt_Meshlet> Meshlets;
-    std::vector<unsigned int> MeshletVertices;
-    std::vector<unsigned char> MeshletIndices;
-    std::vector<meshopt_Bounds> MeshletBounds;
+    float Center[3];  // Sphere center in mesh space
+    float Radius;     // Sphere radius in mesh space
+    float Error;      // Combined simplification error
 };
 
-//  XXX:    We use unsigned int for MeshletIndices now, it's easy for developing early.
-struct MeshletData
+struct ClusterData
 {
-    std::vector<meshopt_Meshlet> Meshlets;
-    std::vector<unsigned int> MeshletVertices;
-    std::vector<unsigned int> MeshletIndices;
-    std::vector<meshopt_Bounds> MeshletBounds;
+    std::vector<unsigned int> UniqueVertices;   // Global vertex indices (deduplicated)
+    std::vector<unsigned char> LocalIndices;    // Cluster-local indices (0-based)
+
+    CLODBound Bound;
+    int Refined;   // Index to finer group (-1 = original geometry)
+    int GroupId;   // Index to group this cluster belongs to
+};
+
+struct NaniteData
+{
+    std::vector<ClusterData> Clusters;
+    std::vector<CLODBound> GroupBounds;
 };

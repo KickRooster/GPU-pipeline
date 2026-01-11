@@ -9,20 +9,16 @@ using namespace DirectX;
 StaticMesh::StaticMesh(
     const XMFLOAT4X4* Local2WorldMatrix,
     const XMFLOAT4 InBoundingSphere,
-    vector<unique_ptr<MeshletData>> InMeshletDataInstances,
-    vector<unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances)
+    std::unique_ptr<NaniteData> InNaniteDataInstance,
+    std::unique_ptr<NaniteClusterProxy> InNaniteClusterProxyInstance)
     :
     BoundingSphere(InBoundingSphere),
-    MeshletDataInstances(move(InMeshletDataInstances)),
-    MeshletDataProxyInstances(move(InMeshletDataProxyInstances))
+    NaniteDataInstance(move(InNaniteDataInstance)),
+    NaniteClusterProxyInstance(move(InNaniteClusterProxyInstance))
 {
     ConstantBufferInstance = make_unique<StaticMeshConstantBuffer>();
+    ConstantBufferInstance->NaniteClusterCount = static_cast<unsigned int>(NaniteDataInstance->Clusters.size());
     ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
-    
-    for (size_t I = 0; I < MeshletDataInstances.size(); ++I)
-    {
-        ConstantBufferInstance->MeshletCounts[I].Value = static_cast<unsigned int>(MeshletDataInstances[I]->Meshlets.size());
-    }
     
     const XMMATRIX MeshTransform = XMLoadFloat4x4(Local2WorldMatrix);
     
@@ -71,14 +67,15 @@ ConstantBufferProxy* StaticMesh::GetConstantBufferProxy() const
     return ConstantBufferProxyInstance.get();   
 }
 
-const vector<unique_ptr<MeshletData>>& StaticMesh::GetMeshletDataInstances() const
+
+NaniteData* StaticMesh::GetNaniteData() const
 {
-    return MeshletDataInstances;
+    return NaniteDataInstance.get();
 }
 
-const vector<unique_ptr<MeshletDataProxy>>& StaticMesh::GetMeshletDataProxyInstances() const
+NaniteClusterProxy* StaticMesh::GetNaniteClusterProxy() const
 {
-    return MeshletDataProxyInstances;
+    return NaniteClusterProxyInstance.get();
 }
 
 void StaticMesh::SetMaterial(std::unique_ptr<Material> InMaterialInstance, std::unique_ptr<MaterialProxy> InMaterialProxyInstance)

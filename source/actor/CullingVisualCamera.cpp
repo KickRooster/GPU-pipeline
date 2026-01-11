@@ -5,13 +5,13 @@ using namespace DirectX;
 
 CullingVisualCamera::CullingVisualCamera(
     unique_ptr<Mesh> InMeshInstance,
-    vector<unique_ptr<MeshletData>> InMeshletDataInstances,
-    vector<unique_ptr<MeshletDataProxy>> InMeshletDataProxyInstances)
+    std::unique_ptr<NaniteData> InNaniteDataInstance,
+    std::unique_ptr<NaniteClusterProxy> InNaniteClusterProxyInstance)
 :StaticMesh(
     &InMeshInstance->Local2WorldMatrix,
     InMeshInstance->BoundingSphere,
-    move(InMeshletDataInstances),
-    move(InMeshletDataProxyInstances))
+    move(InNaniteDataInstance),
+    move(InNaniteClusterProxyInstance))
 {
 }
 
