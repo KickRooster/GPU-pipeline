@@ -31,3 +31,5 @@ Build and run in Visual Studio.
 - [meshoptimizer](https://github.com/zeux/meshoptimizer)
 - [ImGuizmo](https://github.com/CedricGuillemet/ImGuizmo)
 - [stb](https://github.com/nothings/stb)
+
+https://github.com/user-attachments/assets/0f0a4a92-9ca2-4c1b-9dc9-7649f4c06e17
