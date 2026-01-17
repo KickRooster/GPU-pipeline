@@ -15,7 +15,7 @@ cbuffer cbStaticMesh : register(b1)
     float4x4 gWorld;
     float4x4 gWorldInvTranspose;
     float4   gBoundingSphere;
-    uint     gPBRTextureIndices[4];
+    uint4    gPBRTextureIndices[4];  // 16 bytes per element (matches C++ layout)
     uint     gNaniteClusterCount;
     uint     gPadding0;
     uint     gPadding1;
@@ -157,27 +157,27 @@ float4 main(VertexOut input, PrimitiveOut primitive) : SV_Target
     float ao = 1.0;
 
     // Sample PBR textures
-    if (gPBRTextureIndices[0] != 0xFFFFFFFF)
+    if (gPBRTextureIndices[0].x != 0xFFFFFFFF)
     {
-        albedo = gBindlessTextures[gPBRTextureIndices[0]].Sample(gLinearSampler, input.UV0).rgb;
+        albedo = gBindlessTextures[gPBRTextureIndices[0].x].Sample(gLinearSampler, input.UV0).rgb;
     }
 
-    if (gPBRTextureIndices[1] != 0xFFFFFFFF)
+    if (gPBRTextureIndices[1].x != 0xFFFFFFFF)
     {
-        float3 normalTS = gBindlessTextures[gPBRTextureIndices[1]].Sample(gLinearSampler, input.UV0).rgb;
+        float3 normalTS = gBindlessTextures[gPBRTextureIndices[1].x].Sample(gLinearSampler, input.UV0).rgb;
         normalTS = normalTS * 2.0 - 1.0;
         float3x3 TBN = float3x3(input.Tangent, input.Bitangent, input.Normal);
         input.Normal = mul(normalTS, TBN);
     }
 
-    if (gPBRTextureIndices[2] != 0xFFFFFFFF)
+    if (gPBRTextureIndices[2].x != 0xFFFFFFFF)
     {
-        metallic = gBindlessTextures[gPBRTextureIndices[2]].Sample(gLinearSampler, input.UV0).r;
+        metallic = gBindlessTextures[gPBRTextureIndices[2].x].Sample(gLinearSampler, input.UV0).r;
     }
 
-    if (gPBRTextureIndices[3] != 0xFFFFFFFF)
+    if (gPBRTextureIndices[3].x != 0xFFFFFFFF)
     {
-        roughness = gBindlessTextures[gPBRTextureIndices[3]].Sample(gLinearSampler, input.UV0).r;
+        roughness = gBindlessTextures[gPBRTextureIndices[3].x].Sample(gLinearSampler, input.UV0).r;
     }
 
     float3 N = normalize(input.Normal);
