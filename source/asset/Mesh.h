@@ -21,11 +21,11 @@ struct CLODBound
 
 struct ClusterData
 {
-    std::vector<unsigned int> UniqueVertices;   // Global vertex indices (deduplicated)
-    std::vector<unsigned char> LocalIndices;    // Cluster-local indices (0-based)
+    std::vector<unsigned int> UniqueVertices;   // Global vertex indices after per-cluster deduplication (≤64 for Mesh Shader limit)
+    std::vector<unsigned char> LocalIndices;    // Cluster-local indices (0-255, references UniqueVertices)
 
     CLODBound Bound;
-    int Refined;   // Index to finer group (-1 = original geometry)
+    int Refined;   // Index to the more detailed parent group that was simplified to create this cluster (-1 = original geometry, higher value = more simplified)
     int GroupId;   // Index to group this cluster belongs to
 };
 
