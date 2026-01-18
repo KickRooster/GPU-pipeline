@@ -102,7 +102,7 @@ CullingVisualCamera* Camera::GetCullingCamera() const
     return CullingCamera;
 }
 
-void Camera::Update(float DeltaTime)
+void Camera::Update(float DeltaTime, unsigned int FrameIndex)
 {
     ViewMatrix = XMMatrixLookToLH(
         XMLoadFloat3(&Transform.Position),
@@ -160,10 +160,10 @@ void Camera::Update(float DeltaTime)
     ConstantBufferInstance->RecipTanHalfFovy = 1.0f / tanf((FovY * XM_PI / 180.f) * 0.5f);
     ConstantBufferInstance->NearPlane = NearPlane;
     
-    if (ConstantBufferProxyInstance->MappedData != nullptr)
+    if (ConstantBufferProxyInstance->MappedData[FrameIndex] != nullptr)
     {
         memcpy(
-            ConstantBufferProxyInstance->MappedData,
+            ConstantBufferProxyInstance->MappedData[FrameIndex],
             ConstantBufferInstance.get(),
             MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(CameraConstantBuffer)));
     }

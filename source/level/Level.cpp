@@ -194,8 +194,6 @@ int Level::InstantiateStaticMeshes(const string& Path)
 
         PipelineInterface::GetInstance().CreateConstantBuffer(ActorInstance.get());
 
-        ActorInstance->SetMaterial(move(MaterialInstances[I]), move(MaterialProxyInstances[I]));
-        
         ActorInstance->Transform.Position.x = 0;
         ActorInstance->Transform.Position.y = 0;
         ActorInstance->Transform.Position.z = 0;
@@ -263,7 +261,6 @@ StaticMesh* Level::InstantiateCullingVisualCamera()
         move(NaniteClusterProxyInstance));
 
     CullingVisualInstance->SetMaterial(move(MaterialInstance), move(MaterialProxyInstance));
-    
     PipelineInterface::GetInstance().CreateConstantBuffer(CullingVisualInstance.get());
     
     CullingVisualInstance->Transform.Position.x = 25;
@@ -322,10 +319,12 @@ SkyLight* Level::InstantiateSkyLight()
 
     unique_ptr<CubemapTexture> Cubemap = std::make_unique<CubemapTexture>(HDRTexture);
 
+    //ActorInstance->IrradianceMap = Cubemap->Convolution(32, 1024);
     ActorInstance->IrradianceMap = Cubemap->Convolution(32, 32);
     ActorInstance->IrradianceMapProxy = std::make_unique<CubemapTextureProxy>();
     ActorInstance->IrradianceMapProxy->DescriptorIndex = PipelineInterface::GetInstance().GetCubemapBindlessAllocator().AllocateRange(1);
 
+    //ActorInstance->PrefilteredMap = Cubemap->PrefilterEnvironment(5, 128, 1024);
     ActorInstance->PrefilteredMap = Cubemap->PrefilterEnvironment(5, 128, 32);
     ActorInstance->PrefilteredMapProxy = std::make_unique<CubemapTextureProxy>();
     ActorInstance->PrefilteredMapProxy->DescriptorIndex = PipelineInterface::GetInstance().GetCubemapBindlessAllocator().AllocateRange(1);
@@ -356,7 +355,6 @@ SkyLight* Level::InstantiateSkyLight()
         );
     }
     PipelineInterface::GetInstance().ExecuteAndWaitUploadCommandList();
-    
     PipelineInterface::GetInstance().CreateConstantBuffer(ActorInstance.get());
     
     ActorInstance->Transform.Position.x = 0;
@@ -367,21 +365,21 @@ SkyLight* Level::InstantiateSkyLight()
     return SkyLights.back().get();
 }
 
-void Level::Update(float DeletaTime) const
+void Level::Update(float DeletaTime, unsigned int FrameIndex) const
 {
     for (const unique_ptr<Camera>& Actor : Cameras)
     {
-        Actor->Update(DeletaTime);
+        Actor->Update(DeletaTime, FrameIndex);
     }
     
     for (const unique_ptr<StaticMesh>& Actor : StaticMeshes)
     {
-        Actor->Update(DeletaTime);
+        Actor->Update(DeletaTime, FrameIndex);
     }
     
     for (const unique_ptr<SkyLight>& Actor : SkyLights)
     {
-        Actor->Update(DeletaTime);
+        Actor->Update(DeletaTime, FrameIndex);
     }
 }
 

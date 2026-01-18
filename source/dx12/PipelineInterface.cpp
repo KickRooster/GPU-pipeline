@@ -1804,20 +1804,24 @@ ErrorCode PipelineInterface::CreateConstantBuffer(const Actor* ActorInstance) co
 
     CD3DX12_HEAP_PROPERTIES HeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(ByteSize);
-    HRESULT hResult = D3DDevice->CreateCommittedResource(
-            &HeapProperties,
-            D3D12_HEAP_FLAG_NONE,
-            &BufferDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(&BufferProxy->UploadBuffer));
 
-    if (FAILED(hResult))
+    for (int FrameIndex = 0; FrameIndex < FrameNumInFlight; ++FrameIndex)
     {
-        return ErrorCode::CommittedResourceCreateFailed;
-    }
+        HRESULT hResult = D3DDevice->CreateCommittedResource(
+                &HeapProperties,
+                D3D12_HEAP_FLAG_NONE,
+                &BufferDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&BufferProxy->UploadBuffer[FrameIndex]));
 
-    BufferProxy->UploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&BufferProxy->MappedData));
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+
+        BufferProxy->UploadBuffer[FrameIndex]->Map(0, nullptr, reinterpret_cast<void**>(&BufferProxy->MappedData[FrameIndex]));
+    }
 
     return ErrorCode::OK;
 }
@@ -2009,14 +2013,14 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
     if (LevelInstance->GetCameras().size() > 0)
     {
         const Camera* CameraInstance = LevelInstance->GetCameras()[0];
-        const D3D12_GPU_VIRTUAL_ADDRESS CameraConstantBufferAddress = CameraInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
+        const D3D12_GPU_VIRTUAL_ADDRESS CameraConstantBufferAddress = CameraInstance->GetConstantBufferProxy()->UploadBuffer[FrameContextIndex]->GetGPUVirtualAddress();
         CommandList->SetGraphicsRootConstantBufferView(0, CameraConstantBufferAddress);
     }
     
     if (LevelInstance->GetSkyLights().size() > 0)
     {
         const SkyLight* SkyLightInstance = LevelInstance->GetSkyLights()[0];
-        const D3D12_GPU_VIRTUAL_ADDRESS SkyLightConstantBufferAddress = SkyLightInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
+        const D3D12_GPU_VIRTUAL_ADDRESS SkyLightConstantBufferAddress = SkyLightInstance->GetConstantBufferProxy()->UploadBuffer[FrameContextIndex]->GetGPUVirtualAddress();
         CommandList->SetGraphicsRootConstantBufferView(2, SkyLightConstantBufferAddress);
     }
 
@@ -2024,7 +2028,7 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
     {
         const StaticMesh* StaticMeshInstance = LevelInstance->GetStaticMeshes()[I];
 
-        const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = StaticMeshInstance->GetConstantBufferProxy()->UploadBuffer->GetGPUVirtualAddress();
+        const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = StaticMeshInstance->GetConstantBufferProxy()->UploadBuffer[FrameContextIndex]->GetGPUVirtualAddress();
         CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
 
         const NaniteClusterProxy* Proxy = StaticMeshInstance->GetNaniteClusterProxy();

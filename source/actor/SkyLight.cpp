@@ -14,7 +14,7 @@ string SkyLight::GetHDRFilePath() const
     return HDRFilePath;
 }
 
-void SkyLight::Update(float DeltaTime)
+void SkyLight::Update(float DeltaTime, unsigned int FrameIndex)
 {
     if (ConstantBufferInstance)
     {
@@ -22,10 +22,10 @@ void SkyLight::Update(float DeltaTime)
         ConstantBufferInstance->PrefilteredMapIndex = PrefilteredMapProxy->DescriptorIndex;
         ConstantBufferInstance->BRDFLUTIndex = BRDFLUTProxy->DescriptorIndex;
 
-        if (ConstantBufferProxyInstance->MappedData != nullptr)
+        if (ConstantBufferProxyInstance->MappedData[FrameIndex] != nullptr)
         {
             memcpy(
-                ConstantBufferProxyInstance->MappedData,
+                ConstantBufferProxyInstance->MappedData[FrameIndex],
                 ConstantBufferInstance.get(),
                 MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(SkyLightConstantBuffer)));
         }

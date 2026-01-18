@@ -484,7 +484,7 @@ int main(int, char**)
 			CameraInstance->AspectRatio = ViewportSize.x / ViewportSize.y;
 			static_cast<CullingVisualCamera*>(CullingCameraInstance)->AspectRatio = CameraInstance->AspectRatio;
 
-			Level::GetInstance().Update(DeltaTime);
+			Level::GetInstance().Update(DeltaTime, FrameContextIndex);
 			PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
 			
 			// Post-processing pass: ACES tone mapping (RenderTarget → TransitionTexture → RenderTarget)

@@ -32,7 +32,7 @@ public:
         std::unique_ptr<NaniteClusterProxy> InNaniteClusterProxyInstance
         );
 
-    void Update(float DeltaTime) override;
+    void Update(float DeltaTime, unsigned int FrameIndex) override;
     ConstantBufferProxy* GetConstantBufferProxy() const override;
     NaniteData* GetNaniteData() const;
     NaniteClusterProxy* GetNaniteClusterProxy() const;
