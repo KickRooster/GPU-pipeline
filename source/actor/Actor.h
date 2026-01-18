@@ -9,7 +9,7 @@ public:
     std::string Name; 
     Transform Transform;
     Actor() = default;
-    virtual void Update(float DeltaTime) = 0;
+    virtual void Update(float DeltaTime, unsigned int FrameIndex) = 0;
     virtual ConstantBufferProxy* GetConstantBufferProxy() const { return nullptr; }
     virtual ~Actor() = default;
 };

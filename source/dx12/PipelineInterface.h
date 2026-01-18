@@ -112,7 +112,6 @@ class PipelineInterface : public Singleton<PipelineInterface>
     ~PipelineInterface() override = default;
     
     const int BackBufferCount = 2;
-    const int FrameNumInFlight = 2;
     const unsigned int BindlessTextureStartIndex = 32;
     const int SRVHeapSize = 32768;
     //  Less than SRVHeapSize - BindlessTextureStartIndex - FrameNumInFlight*2(SRV+TransitionUAV)

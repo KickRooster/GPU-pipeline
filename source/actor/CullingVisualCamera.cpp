@@ -15,9 +15,9 @@ CullingVisualCamera::CullingVisualCamera(
 {
 }
 
-void CullingVisualCamera::Update(float DeltaTime)
+void CullingVisualCamera::Update(float DeltaTime, unsigned int FrameIndex)
 {
-    StaticMesh::Update(DeltaTime);
+    StaticMesh::Update(DeltaTime, FrameIndex);
 
     //  Cause CullingVisualCamera is a proxy for debugging, and are transformed manually by editor at 3rd player view,
     //  we update its' ViewMatrix using the inverse of TransformationMatrix.

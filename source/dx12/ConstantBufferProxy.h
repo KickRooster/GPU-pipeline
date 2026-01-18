@@ -6,7 +6,7 @@
 
 struct ConstantBufferProxy
 {
-    Microsoft::WRL::ComPtr<ID3D12Resource> UploadBuffer;
-    unsigned char* MappedData = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Resource> UploadBuffer[FrameNumInFlight];
+    unsigned char* MappedData[FrameNumInFlight] = {nullptr, nullptr};
     unsigned int ElementByteSize = 0;
 };

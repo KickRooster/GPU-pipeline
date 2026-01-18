@@ -27,7 +27,7 @@ public:
     
     SkyLight();
     std::string GetHDRFilePath() const;
-    void Update(float DeltaTime) override;
+    void Update(float DeltaTime, unsigned int FrameIndex) override;
     ConstantBufferProxy* GetConstantBufferProxy() const override;
     virtual ~SkyLight() override = default;
 };

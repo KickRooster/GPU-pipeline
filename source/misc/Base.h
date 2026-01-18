@@ -6,6 +6,8 @@
 
 #include <DirectXMath.h>
 
+inline constexpr int FrameNumInFlight = 2;
+
 enum class ErrorCode : int
 {
     Illegal = -1,

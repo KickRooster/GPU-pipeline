@@ -31,7 +31,7 @@ StaticMesh::StaticMesh(
     }
 }
 
-void StaticMesh::Update(float DeltaTime)
+void StaticMesh::Update(float DeltaTime, unsigned int FrameIndex)
 {
     const XMMATRIX Scale = XMMatrixScaling(Transform.Scale.x, Transform.Scale.y, Transform.Scale.z);
     
@@ -52,10 +52,10 @@ void StaticMesh::Update(float DeltaTime)
 
         ConstantBufferInstance->BoundingSphere = BoundingSphere;
         
-        if (ConstantBufferProxyInstance->MappedData != nullptr)
+        if (ConstantBufferProxyInstance->MappedData[FrameIndex] != nullptr)
         {
             memcpy(
-                ConstantBufferProxyInstance->MappedData,
+                ConstantBufferProxyInstance->MappedData[FrameIndex],
                 ConstantBufferInstance.get(),
                 MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(StaticMeshConstantBuffer)));
         }

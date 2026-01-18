@@ -28,7 +28,7 @@ public:
     void ResponseToUI(const UIState& State, float DeltaTime);
     void SetCullingCamera(CullingVisualCamera* CullingCamera);
     CullingVisualCamera* GetCullingCamera() const;
-    void Update(float DeltaTime) override;
+    void Update(float DeltaTime, unsigned int FrameIndex) override;
     ConstantBufferProxy* GetConstantBufferProxy() const override;
     DirectX::XMMATRIX GetViewMatrix() const;
     DirectX::XMMATRIX GetProjectionMatrix() const;
