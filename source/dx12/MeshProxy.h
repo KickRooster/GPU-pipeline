@@ -23,6 +23,7 @@ struct NaniteClusterProxy
 
 struct GPUCluster
 {
+    unsigned int PrimitiveId;           // Index to ScenePrimitiveBuffer (GPU Scene)
     unsigned int IndexCount;            // Triangle count × 3
     unsigned int UniqueVerticesOffset;  // Offset in UniqueVerticesBuffer
     unsigned int UniqueVerticesCount;   // Unique vertex count (≤64 for Mesh Shader limit, limited by outside logic)
@@ -31,6 +32,7 @@ struct GPUCluster
     float BoundRadius;                  // Bounding sphere radius (frustum culling)
     int Refined;                        // Index to finer group (-1 = original geometry)
     int GroupId;                        // Index to group this cluster belongs to
+    unsigned int Padding;               // Padding for 16-byte alignment (48 bytes total)
 };
 
 struct GPUGroupBound
@@ -38,4 +40,30 @@ struct GPUGroupBound
     float Center[3];    // Group bounds center
     float Radius;       // Group bounds radius
     float Error;        // Simplification error (monotonic: parent > child)
+};
+
+struct GPUMeshInstance
+{
+    unsigned int UniqueVerticesOffset;   // Offset in GlobalUniqueVerticesBuffer
+    unsigned int UniqueVerticesCount;    // Number of unique vertices
+    unsigned int LocalIndicesOffset;     // Offset in GlobalLocalIndicesBuffer
+    unsigned int LocalIndicesCount;      // Number of local indices
+    unsigned int ClusterOffset;          // Offset in GlobalClusterBuffer
+    unsigned int ClusterCount;           // Number of clusters
+    unsigned int GroupBoundsOffset;      // Offset in GlobalGroupBoundsBuffer
+    unsigned int GroupBoundsCount;       // Number of group bounds
+    unsigned int Padding[4];             // Padding for 16-byte alignment
+};
+
+// GPU Scene: Primitive transform data (UE5-style naming)
+struct FPrimitiveSceneData
+{
+    DirectX::XMFLOAT4X4 LocalToWorld;       // Object-to-world transform
+    DirectX::XMFLOAT4X4 WorldInvTranspose;  // For normal transformation
+
+    struct
+    {
+        unsigned int Value;
+        unsigned int Padding[3];  // 16-byte alignment per element
+    } PBRTextureIndices[4];  // Albedo, Normal, Metallic, Roughness
 };

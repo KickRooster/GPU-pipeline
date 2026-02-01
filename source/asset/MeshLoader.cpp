@@ -112,19 +112,34 @@ void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, const XMM
 
     XMStoreFloat4x4(&OutMesh.Local2WorldMatrix, NodeTransform);
     
+    XMMATRIX NormalTransform = XMMatrixTranspose(XMMatrixInverse(nullptr, NodeTransform));
+
     for (unsigned int I = 0; I < AssimpMesh->mNumVertices; ++I)
     {
         Vertex Vertex;
-        
-        Vertex.Position.x = AssimpMesh->mVertices[I].x;
-        Vertex.Position.y = AssimpMesh->mVertices[I].y;
-        Vertex.Position.z = AssimpMesh->mVertices[I].z;
+
+        // Transform position (w=1, includes translation)
+        XMVECTOR Pos = XMVectorSet(
+            AssimpMesh->mVertices[I].x,
+            AssimpMesh->mVertices[I].y,
+            AssimpMesh->mVertices[I].z,
+            1.0f
+        );
+        Pos = XMVector3Transform(Pos, NodeTransform);
+        XMStoreFloat3(&Vertex.Position, Pos);
 
         if (AssimpMesh->HasNormals())
         {
-            Vertex.Normal.x = AssimpMesh->mNormals[I].x;
-            Vertex.Normal.y = AssimpMesh->mNormals[I].y;
-            Vertex.Normal.z = AssimpMesh->mNormals[I].z;
+            // Transform normal with inverse-transpose (w=0, rotation only)
+            XMVECTOR Normal = XMVectorSet(
+                AssimpMesh->mNormals[I].x,
+                AssimpMesh->mNormals[I].y,
+                AssimpMesh->mNormals[I].z,
+                0.0f
+            );
+            Normal = XMVector3TransformNormal(Normal, NormalTransform);
+            Normal = XMVector3Normalize(Normal);
+            XMStoreFloat3(&Vertex.Normal, Normal);
         }
         else
         {
@@ -133,9 +148,16 @@ void MeshLoader::ProcessMesh(aiMesh* AssimpMesh, const aiScene* Scene, const XMM
 
         if (AssimpMesh->HasTangentsAndBitangents())
         {
-            Vertex.Tangent.x = AssimpMesh->mTangents[I].x;
-            Vertex.Tangent.y = AssimpMesh->mTangents[I].y;
-            Vertex.Tangent.z = AssimpMesh->mTangents[I].z;
+            // Transform tangent with inverse-transpose (w=0, rotation only)
+            XMVECTOR Tangent = XMVectorSet(
+                AssimpMesh->mTangents[I].x,
+                AssimpMesh->mTangents[I].y,
+                AssimpMesh->mTangents[I].z,
+                0.0f
+            );
+            Tangent = XMVector3TransformNormal(Tangent, NormalTransform);
+            Tangent = XMVector3Normalize(Tangent);
+            XMStoreFloat3(&Vertex.Tangent, Tangent);
         }
         else
         {
@@ -274,7 +296,7 @@ ErrorCode MeshLoader::Nanite(const Mesh& Mesh, std::vector<ClusterData>& OutClus
     OutClusters.clear();
     OutGroupBounds.clear();
 
-    // Build Nanite LOD hierarchy
+    // Build Nanite cluster hierarchy
     clodBuild(Config, CMesh, [&](clodGroup Group, const clodCluster* Clusters,
                                  size_t ClusterCount) -> int {
 

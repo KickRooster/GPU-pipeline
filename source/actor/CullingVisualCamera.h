@@ -12,7 +12,9 @@ public:
     float NearPlane;
     float FarPlane;
 
-    CullingVisualCamera(std::unique_ptr<Mesh> InMeshInstance,
+    CullingVisualCamera(
+        const DirectX::XMFLOAT4X4* Local2WorldMatrix,
+        std::vector<Vertex>&& InVertices,
         std::unique_ptr<NaniteData> InNaniteDataInstance,
         std::unique_ptr<NaniteClusterProxy> InNaniteClusterProxyInstance);
 

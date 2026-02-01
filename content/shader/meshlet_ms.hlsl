@@ -10,16 +10,10 @@ cbuffer cbCamera : register(b0)
     float    gNearPlane;
 };
 
-cbuffer cbStaticMesh : register(b1)
+// Root constant for total cluster count (GPU-Driven rendering)
+cbuffer cbClusterCount : register(b1)
 {
-    float4x4 gWorld;
-    float4x4 gWorldInvTranspose;
-    float4   gBoundingSphere;
-    uint4    gPBRTextureIndices[4];  // 16 bytes per element (matches C++ layout)
-    uint     gNaniteClusterCount;
-    uint     gPadding0;
-    uint     gPadding1;
-    uint     gPadding2;
+    uint gNaniteClusterCount;
 };
 
 #define AS_CLUSTERS_PER_GROUP 32    // Each AS group dispatches 32 mesh shaders
@@ -38,6 +32,7 @@ struct NaniteVertex
 
 struct GPUCluster
 {
+    uint PrimitiveId;            // Index to ScenePrimitiveBuffer (GPU Scene)
     uint IndexCount;
     uint UniqueVerticesOffset;
     uint UniqueVerticesCount;
@@ -46,6 +41,7 @@ struct GPUCluster
     float BoundRadius;
     int Refined;
     int GroupId;
+    uint Padding;                // 16-byte alignment
 };
 
 struct GPUGroupBound
@@ -62,9 +58,19 @@ ByteAddressBuffer               NaniteLocalIndices    : register(t22);
 StructuredBuffer<GPUCluster>    NaniteClusters        : register(t23);
 StructuredBuffer<GPUGroupBound> NaniteGroupBounds     : register(t24);
 
+// GPU Scene: Primitive transform data (Root Descriptor, t26, UE5-style)
+struct FPrimitiveSceneData
+{
+    float4x4 LocalToWorld;
+    float4x4 WorldInvTranspose;
+    uint4    PBRTextureIndices[4];  // Albedo, Normal, Metallic, Roughness (16 bytes per element)
+};
+StructuredBuffer<FPrimitiveSceneData> ScenePrimitives : register(t26);
+
 struct Payload
 {
-    uint ASGroupID;  // AS group ID for cluster index calculation
+    uint ASGroupID;   // AS group ID for cluster index calculation
+    uint PrimitiveId; // Primitive ID for transform lookup in GPU Scene
 };
 
 struct VertexOut
@@ -80,14 +86,24 @@ struct VertexOut
 struct PrimitiveOut
 {
     uint ClusterIndex : COLOR1;
+    uint PrimitiveId  : COLOR2;  // Pass PrimitiveId to pixel shader
 };
 
 // Compute screen-space projection error for group bounds
 // Based on MeshLoader.cpp:19-24 boundsError formula
-float ComputeScreenError(GPUGroupBound groupBound, float3 cameraPos, float recipTanHalfFovy, float nearPlane)
+float ComputeScreenError(GPUGroupBound groupBound, float3 cameraPos, float recipTanHalfFovy, float nearPlane, float4x4 localToWorld)
 {
-    float3 v = groupBound.Center - cameraPos;
-    float distance = length(v) - groupBound.Radius;
+    // Transform bound center to world space
+    float3 worldCenter = mul(float4(groupBound.Center, 1.0), localToWorld).xyz;
+
+    // Extract maximum scale from transform matrix (conservative bounds for non-uniform scaling)
+    float maxScale = max(max(length(localToWorld[0].xyz), length(localToWorld[1].xyz)), length(localToWorld[2].xyz));
+
+    // Scale radius to world space
+    float worldRadius = groupBound.Radius * maxScale;
+
+    float3 v = worldCenter - cameraPos;
+    float distance = length(v) - worldRadius;
     distance = max(distance, nearPlane);
 
     // Returns screen height percentage (0-1), multiply by screen height for pixel error
@@ -99,14 +115,14 @@ float ComputeScreenError(GPUGroupBound groupBound, float3 cameraPos, float recip
 // Render cluster if:
 // 1. Current group's error > threshold (too coarse without this cluster)
 // 2. Refined == -1 OR refined group's error <= threshold (refined too fine, use current)
-bool ShouldRenderCluster(GPUCluster cluster, float3 cameraPos, float recipTanHalfFovy)
+bool ShouldRenderCluster(GPUCluster cluster, float3 cameraPos, float recipTanHalfFovy, float4x4 localToWorld)
 {
     // Screen-space error threshold (pixels / screen height)
     const float threshold = gLODErrorThreshold / gScreenHeight;
 
     // Condition 1: Current group error must exceed threshold
     GPUGroupBound myGroup = NaniteGroupBounds[cluster.GroupId];
-    float myGroupError = ComputeScreenError(myGroup, cameraPos, recipTanHalfFovy, gNearPlane);
+    float myGroupError = ComputeScreenError(myGroup, cameraPos, recipTanHalfFovy, gNearPlane, localToWorld);
 
     if (myGroupError <= threshold)
         return false;  // Current group error below threshold, skip this cluster
@@ -117,7 +133,7 @@ bool ShouldRenderCluster(GPUCluster cluster, float3 cameraPos, float recipTanHal
 
     // Condition 2b: Refined group error <= threshold
     GPUGroupBound refinedGroup = NaniteGroupBounds[cluster.Refined];
-    float refinedGroupError = ComputeScreenError(refinedGroup, cameraPos, recipTanHalfFovy, gNearPlane);
+    float refinedGroupError = ComputeScreenError(refinedGroup, cameraPos, recipTanHalfFovy, gNearPlane, localToWorld);
 
     return refinedGroupError <= threshold;  // Higher detail not needed, render this cluster
 }
@@ -142,8 +158,11 @@ void main(
     {
         GPUCluster cluster = NaniteClusters[clusterIndex];
 
-        // Nanite continuous LOD: cluster selection
-        bool shouldRender = ShouldRenderCluster(cluster, gViewPosition, gRecipTanHalfFovy);
+        // GPU Scene: Load primitive transform data for LOD calculation
+        FPrimitiveSceneData primitive = ScenePrimitives[payloadData.PrimitiveId];
+
+        // Nanite continuous LOD: cluster selection (with world-space bounds)
+        bool shouldRender = ShouldRenderCluster(cluster, gViewPosition, gRecipTanHalfFovy, primitive.LocalToWorld);
 
         if (shouldRender)
         {
@@ -158,6 +177,9 @@ void main(
     {
         GPUCluster cluster = NaniteClusters[clusterIndex];
 
+        // GPU Scene: Load primitive transform data
+        FPrimitiveSceneData primitive = ScenePrimitives[payloadData.PrimitiveId];
+
         // Output vertices
         for (uint i = gtid.x; i < vertexCount; i += MS_NUM_THREADS)
         {
@@ -165,10 +187,12 @@ void main(
             NaniteVertex nv = NaniteVertices[globalVertexIndex];
 
             VertexOut vout;
-            vout.PositionWS = mul(float4(nv.Position, 1), gWorld).xyz;
+            // GPU Scene: Use LocalToWorld from ScenePrimitives instead of gWorld
+            vout.PositionWS = mul(float4(nv.Position, 1), primitive.LocalToWorld).xyz;
             vout.PositionHS = mul(float4(vout.PositionWS, 1), gViewProj);
-            vout.Normal = normalize(mul(float4(nv.Normal, 0), gWorldInvTranspose).xyz);
-            vout.Tangent = normalize(mul(float4(nv.Tangent, 0), gWorldInvTranspose).xyz);
+            // GPU Scene: Use WorldInvTranspose from ScenePrimitives instead of gWorldInvTranspose
+            vout.Normal = normalize(mul(float4(nv.Normal, 0), primitive.WorldInvTranspose).xyz);
+            vout.Tangent = normalize(mul(float4(nv.Tangent, 0), primitive.WorldInvTranspose).xyz);
             vout.Bitangent = normalize(cross(vout.Tangent, vout.Normal));
             vout.UV0 = nv.UV0;
 
@@ -192,6 +216,7 @@ void main(
 
             triangles[triIdx] = uint3(localIdx0, localIdx1, localIdx2);
             primitives[triIdx].ClusterIndex = clusterIndex;
+            primitives[triIdx].PrimitiveId = payloadData.PrimitiveId;  // Pass to pixel shader
         }
     }
 }

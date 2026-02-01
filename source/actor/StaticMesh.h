@@ -5,19 +5,14 @@
 #include "../asset/Mesh.h"
 #include "../asset/Material.h"
 #include "../dx12/MeshProxy.h"
-#include "../dx12/ConstantBuffer.h"
-#include "../dx12/ConstantBufferProxy.h"
 #include "../dx12/MaterialProxy.h"
 
 class StaticMesh : public Actor
 {
 protected:
-    DirectX::XMMATRIX TransformationMatrix;    // SRT order: Scale * Rotation * Translation (UE style)
-    DirectX::XMFLOAT4 BoundingSphere;
+    FPrimitiveSceneData SceneData;  // GPU Scene data (replaces ConstantBufferInstance)
+    std::vector<Vertex> Vertices;
 
-    std::unique_ptr<StaticMeshConstantBuffer> ConstantBufferInstance;
-    std::unique_ptr<ConstantBufferProxy> ConstantBufferProxyInstance;
-    
     std::unique_ptr<NaniteData> NaniteDataInstance;
     std::unique_ptr<NaniteClusterProxy> NaniteClusterProxyInstance;
     
@@ -27,17 +22,19 @@ protected:
 public:
     StaticMesh(
         const DirectX::XMFLOAT4X4* Local2WorldMatrix,
-        const DirectX::XMFLOAT4 BoundingSphere,
+        std::vector<Vertex>&& InVertices,
         std::unique_ptr<NaniteData> InNaniteDataInstance,
         std::unique_ptr<NaniteClusterProxy> InNaniteClusterProxyInstance
         );
 
     void Update(float DeltaTime, unsigned int FrameIndex) override;
     ConstantBufferProxy* GetConstantBufferProxy() const override;
+    const std::vector<Vertex>& GetVertices() const;
     NaniteData* GetNaniteData() const;
     NaniteClusterProxy* GetNaniteClusterProxy() const;
     void SetMaterial(std::unique_ptr<Material> InMaterialInstance, std::unique_ptr<MaterialProxy> InMaterialProxyInstance);
     const Material* GetMaterial() const;
-    DirectX::XMMATRIX GetWorldMatrix() const;
+    FPrimitiveSceneData* GetSceneData();
+    void ClearData();
     ~StaticMesh() override = default;
 };

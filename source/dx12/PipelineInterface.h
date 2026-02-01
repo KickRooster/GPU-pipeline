@@ -149,6 +149,32 @@ class PipelineInterface : public Singleton<PipelineInterface>
 
     BindlessAllocator TextureAllocator;
     BindlessAllocator CubemapAllocator;
+    
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalVertexBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalVertexBufferUpload;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalUniqueVerticesBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalUniqueVerticesBufferUpload;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalLocalIndicesBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalLocalIndicesBufferUpload;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalClusterBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalClusterBufferUpload;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalGroupBoundsBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalGroupBoundsBufferUpload;
+    
+    Microsoft::WRL::ComPtr<ID3D12Resource> MeshInstanceBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> MeshInstanceBufferUpload;
+
+    // GPU Scene: Primitive transform buffer (UE5-style)
+    Microsoft::WRL::ComPtr<ID3D12Resource> ScenePrimitiveBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> ScenePrimitiveBufferUpload;
+
+    // Cluster count buffer for GPU-Driven rendering
+    Microsoft::WRL::ComPtr<ID3D12Resource> ClusterCountBuffer;
+    void* ClusterCountBufferMapped = nullptr;
 
     DirectX::XMFLOAT2 ViewportSize = DirectX::XMFLOAT2(0, 0);
     bool bResizedLastFrame = false;
@@ -184,7 +210,8 @@ public:
     void ResetUploadCommandAllocator() const;
     void ResetUploadCommandList() const;
     void ExecuteAndWaitUploadCommandList();
-    ErrorCode CreateNaniteClusterProxyBuffer(const std::vector<Vertex>& Vertices, const std::vector<ClusterData>& Clusters, const std::vector<CLODBound>& GroupBounds, NaniteClusterProxy* NaniteClusterProxyInstance, bool ImmediateExecute = true);
+    ErrorCode CreateGlobalMergedMeshBuffers(const Level* LevelInstance);
+    ErrorCode UpdateScenePrimitiveBuffer(const Level* LevelInstance);
     ErrorCode CreateTexture(const Texture* TextureInstance, unsigned int DescriptorIndex, TextureProxy* TextureProxyInstance, bool ImmediateExecute = true);
     ErrorCode CreateCubemap(const CubemapTexture* CubemapInstance, unsigned int DescriptorIndex, CubemapTextureProxy* CubemapProxyInstance, bool ImmediateExecute = true);
     ErrorCode CreateConstantBuffer(const Actor* ActorInstance) const;

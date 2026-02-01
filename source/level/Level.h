@@ -18,9 +18,11 @@ public:
     StaticMesh* InstantiateCullingVisualCamera();
     Camera* InstantiateCamera();
     SkyLight* InstantiateSkyLight();
+    void CreateGlobalMeshBuffers();
     void Update(float DeletaTime, unsigned int FrameIndex) const;
     std::vector<StaticMesh*> GetStaticMeshes() const;
     std::vector<Camera*> GetCameras() const;
     std::vector<SkyLight*> GetSkyLights() const;
+    std::vector<Actor*> GetSelectableActors() const;
     ~Level();
 };

@@ -4,12 +4,13 @@ using namespace std;
 using namespace DirectX;
 
 CullingVisualCamera::CullingVisualCamera(
-    unique_ptr<Mesh> InMeshInstance,
-    std::unique_ptr<NaniteData> InNaniteDataInstance,
-    std::unique_ptr<NaniteClusterProxy> InNaniteClusterProxyInstance)
+    const XMFLOAT4X4* Local2WorldMatrix,
+    vector<Vertex>&& InVertices,
+    unique_ptr<NaniteData> InNaniteDataInstance,
+    unique_ptr<NaniteClusterProxy> InNaniteClusterProxyInstance)
 :StaticMesh(
-    &InMeshInstance->Local2WorldMatrix,
-    InMeshInstance->BoundingSphere,
+    Local2WorldMatrix,
+    move(InVertices),
     move(InNaniteDataInstance),
     move(InNaniteClusterProxyInstance))
 {
@@ -29,5 +30,5 @@ void CullingVisualCamera::Update(float DeltaTime, unsigned int FrameIndex)
 
 ConstantBufferProxy* CullingVisualCamera::GetConstantBufferProxy() const
 {
-    return ConstantBufferProxyInstance.get();   
+    return nullptr; 
 }
