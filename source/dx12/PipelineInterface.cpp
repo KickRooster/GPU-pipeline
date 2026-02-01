@@ -84,13 +84,13 @@ ErrorCode PipelineInterface::CreateRootSignature()
         FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
     }
 
-    // 新参数布局：3个CBV + 1个bindless纹理描述符表 + 1个bindless cubemap描述符表 + 5个Nanite buffers = 10个参数
-    CD3DX12_ROOT_PARAMETER1 RootParameters[10] = {};
+    // 新参数布局：3个CBV + 2个bindless描述符表 + 7个Root Descriptors = 12个参数
+    CD3DX12_ROOT_PARAMETER1 RootParameters[12] = {};
 
     // Parameter 0: Camera Constants (b0)
     RootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
 
-    // Parameter 1: Actor Constants (b1)
+    // Parameter 1: Cluster Count Buffer (b1) - single uint for GPU-Driven rendering
     RootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
 
     // Parameter 2: SkyLight Constants (b2)
@@ -126,6 +126,12 @@ ErrorCode PipelineInterface::CreateRootSignature()
     RootParameters[8].InitAsShaderResourceView(23, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // Nanite ClusterBuffer (cluster元数据)
     RootParameters[9].InitAsShaderResourceView(24, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // Nanite GroupBoundsBuffer (group bounds for cluster selection)
     
+    // Parameter 10: MeshInstanceBuffer (t25) - GPU-Driven mesh instance data
+    RootParameters[10].InitAsShaderResourceView(25, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // MeshInstanceBuffer (per-mesh offsets)
+
+    // Parameter 11: ScenePrimitiveBuffer (t26) - GPU Scene primitive transforms (UE5-style)
+    RootParameters[11].InitAsShaderResourceView(26, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // ScenePrimitiveBuffer (LocalToWorld, WorldInvTranspose)
+
     // 静态采样器设置 - 用于bindless纹理采样
     CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1] = {};
     StaticSamplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -779,6 +785,18 @@ void PipelineInterface::CleanUp()
     TextureAllocator.Reset();
     CubemapAllocator.Reset();
 
+    // Cleanup ClusterCountBuffer
+    if (ClusterCountBuffer && ClusterCountBufferMapped)
+    {
+        ClusterCountBuffer->Unmap(0, nullptr);
+        ClusterCountBufferMapped = nullptr;
+    }
+    ClusterCountBuffer.Reset();
+
+    // Cleanup GPU Scene buffers
+    ScenePrimitiveBuffer.Reset();
+    ScenePrimitiveBufferUpload.Reset();
+
     //  Do clean
     if (SwapChain)
     {
@@ -1118,323 +1136,543 @@ void PipelineInterface::ExecuteAndWaitUploadCommandList()
     UploadCommandAllocator->Reset();
 }
 
-
-ErrorCode PipelineInterface::CreateNaniteClusterProxyBuffer(const vector<Vertex>& Vertices, const vector<ClusterData>& Clusters, const vector<CLODBound>& GroupBounds, NaniteClusterProxy* NaniteClusterProxyInstance, bool ImmediateExecute)
+ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelInstance)
 {
-    if (ImmediateExecute)
+    const std::vector<StaticMesh*> StaticMeshes = LevelInstance->GetStaticMeshes();
+    if (StaticMeshes.empty())
     {
-        UploadCommandAllocator->Reset();
-        UploadCommandList->Reset(UploadCommandAllocator.Get(), nullptr);
+        return ErrorCode::OK;
     }
-    
+
+    // Step 1: Calculate total sizes across all meshes
+    unsigned int TotalVertexCount = 0;
     unsigned int TotalUniqueVerticesCount = 0;
-    unsigned int TotalLocalIndicesCount = 0;
-    for (const auto& Cluster : Clusters)
-    {
-        TotalUniqueVerticesCount += static_cast<unsigned int>(Cluster.UniqueVertices.size());
-        TotalLocalIndicesCount += static_cast<unsigned int>(Cluster.LocalIndices.size());
-    }
-
-    const unsigned int VertexBufferSize = sizeof(Vertex) * static_cast<unsigned int>(Vertices.size());
-    const unsigned int UniqueVerticesBufferSize = sizeof(unsigned int) * TotalUniqueVerticesCount;
-    const unsigned int LocalIndicesBufferSize = sizeof(unsigned char) * TotalLocalIndicesCount;
-    const unsigned int ClusterBufferSize = sizeof(GPUCluster) * static_cast<unsigned int>(Clusters.size());
-    const unsigned int GroupBoundsBufferSize = sizeof(GPUGroupBound) * static_cast<unsigned int>(GroupBounds.size());
-
-    CD3DX12_HEAP_PROPERTIES DefaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
+    unsigned int TotalLocalIndicesBytes = 0;
+    unsigned int TotalClusterCount = 0;
+    unsigned int TotalGroupBoundsCount = 0;
     
-    CD3DX12_RESOURCE_DESC VertexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(VertexBufferSize);
-    HRESULT hResult = D3DDevice->CreateCommittedResource(
-        &DefaultHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &VertexBufferDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(&NaniteClusterProxyInstance->VertexBuffer));
-
-    if (FAILED(hResult))
+    for (size_t MeshIdx = 0; MeshIdx < StaticMeshes.size(); ++MeshIdx)
     {
-        return ErrorCode::CommittedResourceCreateFailed;
-    }
-    
-    CD3DX12_RESOURCE_DESC UniqueVerticesBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(UniqueVerticesBufferSize);
-    hResult = D3DDevice->CreateCommittedResource(
-        &DefaultHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &UniqueVerticesBufferDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(&NaniteClusterProxyInstance->UniqueVerticesBuffer));
-
-    if (FAILED(hResult))
-    {
-        return ErrorCode::CommittedResourceCreateFailed;
-    }
-
-    CD3DX12_RESOURCE_DESC LocalIndicesBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(LocalIndicesBufferSize);
-    hResult = D3DDevice->CreateCommittedResource(
-        &DefaultHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &LocalIndicesBufferDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(&NaniteClusterProxyInstance->LocalIndicesBuffer));
-
-    if (FAILED(hResult))
-    {
-        return ErrorCode::CommittedResourceCreateFailed;
-    }
-    
-    CD3DX12_RESOURCE_DESC ClusterBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(ClusterBufferSize);
-    hResult = D3DDevice->CreateCommittedResource(
-        &DefaultHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &ClusterBufferDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(&NaniteClusterProxyInstance->ClusterBuffer));
-
-    if (FAILED(hResult))
-    {
-        return ErrorCode::CommittedResourceCreateFailed;
-    }
-    
-    CD3DX12_RESOURCE_DESC GroupBoundsBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(GroupBoundsBufferSize);
-    hResult = D3DDevice->CreateCommittedResource(
-        &DefaultHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &GroupBoundsBufferDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(&NaniteClusterProxyInstance->GroupBoundsBuffer));
-
-    if (FAILED(hResult))
-    {
-        return ErrorCode::CommittedResourceCreateFailed;
-    }
-    
-    CD3DX12_HEAP_PROPERTIES UploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
-    
-    hResult = D3DDevice->CreateCommittedResource(
-        &UploadHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &VertexBufferDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&NaniteClusterProxyInstance->VertexBufferUpload));
-
-    if (FAILED(hResult))
-    {
-        return ErrorCode::CommittedResourceCreateFailed;
-    }
-
-    hResult = D3DDevice->CreateCommittedResource(
-        &UploadHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &UniqueVerticesBufferDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&NaniteClusterProxyInstance->UniqueVerticesBufferUpload));
-
-    if (FAILED(hResult))
-    {
-        return ErrorCode::CommittedResourceCreateFailed;
-    }
-
-    hResult = D3DDevice->CreateCommittedResource(
-        &UploadHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &LocalIndicesBufferDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&NaniteClusterProxyInstance->LocalIndicesBufferUpload));
-
-    if (FAILED(hResult))
-    {
-        return ErrorCode::CommittedResourceCreateFailed;
-    }
-    
-    hResult = D3DDevice->CreateCommittedResource(
-        &UploadHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &ClusterBufferDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&NaniteClusterProxyInstance->ClusterBufferUpload));
-
-    if (FAILED(hResult))
-    {
-        return ErrorCode::CommittedResourceCreateFailed;
-    }
-
-    hResult = D3DDevice->CreateCommittedResource(
-        &UploadHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &GroupBoundsBufferDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&NaniteClusterProxyInstance->GroupBoundsBufferUpload));
-
-    if (FAILED(hResult))
-    {
-        return ErrorCode::CommittedResourceCreateFailed;
-    }
-
-    // 4. Map并填充Upload buffers
-    // 4.1 VertexBuffer
-    Vertex* VertexDataBegin;
-    CD3DX12_RANGE VertexReadRange(0, 0);
-    NaniteClusterProxyInstance->VertexBufferUpload->Map(0, &VertexReadRange, reinterpret_cast<void**>(&VertexDataBegin));
-    memcpy(VertexDataBegin, Vertices.data(), VertexBufferSize);
-    NaniteClusterProxyInstance->VertexBufferUpload->Unmap(0, nullptr);
-
-    // 4.2 UniqueVerticesBuffer - 连接所有cluster的UniqueVertices
-    unsigned int* UniqueVerticesDataBegin;
-    CD3DX12_RANGE UniqueVerticesReadRange(0, 0);
-    NaniteClusterProxyInstance->UniqueVerticesBufferUpload->Map(0, &UniqueVerticesReadRange, reinterpret_cast<void**>(&UniqueVerticesDataBegin));
-
-    unsigned int CurrentUniqueVerticesOffset = 0;
-    for (const auto& Cluster : Clusters)
-    {
-        memcpy(UniqueVerticesDataBegin + CurrentUniqueVerticesOffset,
-               Cluster.UniqueVertices.data(),
-               Cluster.UniqueVertices.size() * sizeof(unsigned int));
-        CurrentUniqueVerticesOffset += static_cast<unsigned int>(Cluster.UniqueVertices.size());
-    }
-
-    NaniteClusterProxyInstance->UniqueVerticesBufferUpload->Unmap(0, nullptr);
-    
-    unsigned char* LocalIndicesDataBegin;
-    CD3DX12_RANGE LocalIndicesReadRange(0, 0);
-    NaniteClusterProxyInstance->LocalIndicesBufferUpload->Map(0, &LocalIndicesReadRange, reinterpret_cast<void**>(&LocalIndicesDataBegin));
-
-    unsigned int CurrentLocalIndicesOffset = 0;
-    for (const auto& Cluster : Clusters)
-    {
-        memcpy(LocalIndicesDataBegin + CurrentLocalIndicesOffset,
-               Cluster.LocalIndices.data(),
-               Cluster.LocalIndices.size() * sizeof(unsigned char));
-        CurrentLocalIndicesOffset += static_cast<unsigned int>(Cluster.LocalIndices.size());
-    }
-
-    NaniteClusterProxyInstance->LocalIndicesBufferUpload->Unmap(0, nullptr);
-    
-    GPUCluster* ClusterDataBegin;
-    CD3DX12_RANGE ClusterReadRange(0, 0);
-    NaniteClusterProxyInstance->ClusterBufferUpload->Map(0, &ClusterReadRange, reinterpret_cast<void**>(&ClusterDataBegin));
-
-    unsigned int UniqueVerticesOffset = 0;
-    unsigned int LocalIndicesOffset = 0;
-    for (size_t i = 0; i < Clusters.size(); ++i)
-    {
-        ClusterDataBegin[i].IndexCount = static_cast<unsigned int>(Clusters[i].LocalIndices.size());
-
-        // Deduplicated fields
-        ClusterDataBegin[i].UniqueVerticesOffset = UniqueVerticesOffset;
-        ClusterDataBegin[i].UniqueVerticesCount = static_cast<unsigned int>(Clusters[i].UniqueVertices.size());
-        ClusterDataBegin[i].LocalIndicesOffset = LocalIndicesOffset;
-
-        // Bounds and hierarchy fields
-        ClusterDataBegin[i].BoundCenter[0] = Clusters[i].Bound.Center[0];
-        ClusterDataBegin[i].BoundCenter[1] = Clusters[i].Bound.Center[1];
-        ClusterDataBegin[i].BoundCenter[2] = Clusters[i].Bound.Center[2];
-        ClusterDataBegin[i].BoundRadius = Clusters[i].Bound.Radius;
-        ClusterDataBegin[i].Refined = Clusters[i].Refined;
-        ClusterDataBegin[i].GroupId = Clusters[i].GroupId;
-
-        // Accumulate offsets
-        UniqueVerticesOffset += static_cast<unsigned int>(Clusters[i].UniqueVertices.size());
-        LocalIndicesOffset += static_cast<unsigned int>(Clusters[i].LocalIndices.size());
-    }
-
-    NaniteClusterProxyInstance->ClusterBufferUpload->Unmap(0, nullptr);
-    
-    GPUGroupBound* GroupBoundsDataBegin;
-    CD3DX12_RANGE GroupBoundsReadRange(0, 0);
-    NaniteClusterProxyInstance->GroupBoundsBufferUpload->Map(0, &GroupBoundsReadRange, reinterpret_cast<void**>(&GroupBoundsDataBegin));
-
-    for (size_t i = 0; i < GroupBounds.size(); ++i)
-    {
-        GroupBoundsDataBegin[i].Center[0] = GroupBounds[i].Center[0];
-        GroupBoundsDataBegin[i].Center[1] = GroupBounds[i].Center[1];
-        GroupBoundsDataBegin[i].Center[2] = GroupBounds[i].Center[2];
-        GroupBoundsDataBegin[i].Radius = GroupBounds[i].Radius;
-        GroupBoundsDataBegin[i].Error = GroupBounds[i].Error;
-    }
-
-    NaniteClusterProxyInstance->GroupBoundsBufferUpload->Unmap(0, nullptr);
-
-    UploadCommandList->CopyBufferRegion(
-        NaniteClusterProxyInstance->VertexBuffer.Get(), 0,
-        NaniteClusterProxyInstance->VertexBufferUpload.Get(), 0,
-        VertexBufferSize);
-
-    CD3DX12_RESOURCE_BARRIER VertexBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        NaniteClusterProxyInstance->VertexBuffer.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    UploadCommandList->ResourceBarrier(1, &VertexBarrier);
-    
-    UploadCommandList->CopyBufferRegion(
-        NaniteClusterProxyInstance->UniqueVerticesBuffer.Get(), 0,
-        NaniteClusterProxyInstance->UniqueVerticesBufferUpload.Get(), 0,
-        UniqueVerticesBufferSize);
-
-    CD3DX12_RESOURCE_BARRIER UniqueVerticesBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        NaniteClusterProxyInstance->UniqueVerticesBuffer.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    UploadCommandList->ResourceBarrier(1, &UniqueVerticesBarrier);
-    
-    UploadCommandList->CopyBufferRegion(
-        NaniteClusterProxyInstance->LocalIndicesBuffer.Get(), 0,
-        NaniteClusterProxyInstance->LocalIndicesBufferUpload.Get(), 0,
-        LocalIndicesBufferSize);
-
-    CD3DX12_RESOURCE_BARRIER LocalIndicesBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        NaniteClusterProxyInstance->LocalIndicesBuffer.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    UploadCommandList->ResourceBarrier(1, &LocalIndicesBarrier);
-    
-    UploadCommandList->CopyBufferRegion(
-        NaniteClusterProxyInstance->ClusterBuffer.Get(), 0,
-        NaniteClusterProxyInstance->ClusterBufferUpload.Get(), 0,
-        ClusterBufferSize);
-
-    CD3DX12_RESOURCE_BARRIER ClusterBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        NaniteClusterProxyInstance->ClusterBuffer.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    UploadCommandList->ResourceBarrier(1, &ClusterBarrier);
-
-    UploadCommandList->CopyBufferRegion(
-        NaniteClusterProxyInstance->GroupBoundsBuffer.Get(), 0,
-        NaniteClusterProxyInstance->GroupBoundsBufferUpload.Get(), 0,
-        GroupBoundsBufferSize);
-
-    CD3DX12_RESOURCE_BARRIER GroupBoundsBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        NaniteClusterProxyInstance->GroupBoundsBuffer.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    UploadCommandList->ResourceBarrier(1, &GroupBoundsBarrier);
-
-    if (ImmediateExecute)
-    {
-        UploadCommandList->Close();
-
-        ID3D12CommandList* UploadCommandLists[] = { UploadCommandList.Get() };
-        UploadQueue->ExecuteCommandLists(_countof(UploadCommandLists), UploadCommandLists);
-
-        UploadFenceValue++;
-        UploadQueue->Signal(UploadFence.Get(), UploadFenceValue);
-
-        if (UploadFence->GetCompletedValue() < UploadFenceValue)
+        const StaticMesh* MeshInstance = StaticMeshes[MeshIdx];
+        const NaniteData* Data = MeshInstance->GetNaniteData();
+        if (!Data)
         {
-            UploadFence->SetEventOnCompletion(UploadFenceValue, UploadFenceEvent);
-            WaitForSingleObject(UploadFenceEvent, INFINITE);
+            continue;
+        }
+        
+        TotalVertexCount += static_cast<unsigned int>(StaticMeshes[MeshIdx]->GetVertices().size());
+
+        // Count from cluster data
+        for (const ClusterData& Cluster : Data->Clusters)
+        {
+            TotalUniqueVerticesCount += static_cast<unsigned int>(Cluster.UniqueVertices.size());
+            TotalLocalIndicesBytes += static_cast<unsigned int>(Cluster.LocalIndices.size());
+        }
+
+        TotalClusterCount += static_cast<unsigned int>(Data->Clusters.size());
+        TotalGroupBoundsCount += static_cast<unsigned int>(Data->GroupBounds.size());
+    }
+
+    // Step 2: Create global buffers (5 Nanite buffers, indices 0-4)
+    CD3DX12_HEAP_PROPERTIES DefaultHeapProps(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_HEAP_PROPERTIES UploadHeapProps(D3D12_HEAP_TYPE_UPLOAD);
+
+    // Global Vertex Buffer (index 0)
+    {
+        const unsigned int BufferSize = sizeof(Vertex) * TotalVertexCount;
+        CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(BufferSize);
+
+        HRESULT hResult = D3DDevice->CreateCommittedResource(
+            &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            IID_PPV_ARGS(&GlobalVertexBuffer));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+        
+        hResult = D3DDevice->CreateCommittedResource(
+            &UploadHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(&GlobalVertexBufferUpload));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
         }
     }
+
+    // Global UniqueVertices Buffer (index 1)
+    {
+        const unsigned int BufferSize = sizeof(unsigned int) * TotalUniqueVerticesCount;
+        CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(BufferSize);
+
+        HRESULT hResult = D3DDevice->CreateCommittedResource(
+            &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            IID_PPV_ARGS(&GlobalUniqueVerticesBuffer));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+        
+        hResult = D3DDevice->CreateCommittedResource(
+            &UploadHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(&GlobalUniqueVerticesBufferUpload));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+    }
+
+    // Global LocalIndices Buffer (ByteAddressBuffer)
+    {
+        const unsigned int BufferSize = TotalLocalIndicesBytes;
+        CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(BufferSize);
+
+        HRESULT hResult = D3DDevice->CreateCommittedResource(
+            &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            IID_PPV_ARGS(&GlobalLocalIndicesBuffer));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+        
+        hResult = D3DDevice->CreateCommittedResource(
+            &UploadHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(&GlobalLocalIndicesBufferUpload));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+    }
+
+    // Global Cluster Buffer
+    {
+        const unsigned int BufferSize = sizeof(GPUCluster) * TotalClusterCount;
+        CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(BufferSize);
+
+        HRESULT hResult = D3DDevice->CreateCommittedResource(
+            &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            IID_PPV_ARGS(&GlobalClusterBuffer));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+        
+        hResult = D3DDevice->CreateCommittedResource(
+            &UploadHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(&GlobalClusterBufferUpload));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+    }
+
+    // Global GroupBounds Buffer
+    {
+        const unsigned int BufferSize = sizeof(GPUGroupBound) * TotalGroupBoundsCount;
+        CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(BufferSize);
+
+        HRESULT hResult = D3DDevice->CreateCommittedResource(
+            &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            IID_PPV_ARGS(&GlobalGroupBoundsBuffer));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+        
+        hResult = D3DDevice->CreateCommittedResource(
+            &UploadHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(&GlobalGroupBoundsBufferUpload));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+    }
+
+    // Step 3: Fill upload buffers with merged data and copy to default heap
+    // Note: UploadCommandList is already reset by caller (ResetUploadCommandList)
+
+    // Track offsets for each mesh
+    unsigned int CurrentVertexOffset = 0;
+    unsigned int CurrentUniqueVerticesOffset = 0;
+    unsigned int CurrentLocalIndicesOffset = 0;
+    unsigned int CurrentClusterOffset = 0;
+    unsigned int CurrentGroupBoundsOffset = 0;
+
+    // Store mesh instance data for MeshInstanceBuffer
+    std::vector<GPUMeshInstance> MeshInstanceDataArray;
+    MeshInstanceDataArray.reserve(StaticMeshes.size());
+
+    // Map all upload buffers
+    Vertex* VertexData = nullptr;
+    unsigned int* UniqueVerticesData = nullptr;
+    unsigned char* LocalIndicesData = nullptr;
+    GPUCluster* GPUClusterData = nullptr;
+    GPUGroupBound* GroupBoundsData = nullptr;
+
+    CD3DX12_RANGE ReadRange(0, 0);
+    GlobalVertexBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&VertexData));
+    GlobalUniqueVerticesBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&UniqueVerticesData));
+    GlobalLocalIndicesBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&LocalIndicesData));
+    GlobalClusterBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&GPUClusterData));
+    GlobalGroupBoundsBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&GroupBoundsData));
+
+    // Fill data for each mesh
+    for (size_t MeshIdx = 0; MeshIdx < StaticMeshes.size(); ++MeshIdx)
+    {
+        const StaticMesh* MeshInstance = StaticMeshes[MeshIdx];
+        const NaniteData* Data = MeshInstance->GetNaniteData();
+
+        // Record mesh instance data (offsets into global buffers)
+        GPUMeshInstance InstanceData = {};
+        InstanceData.UniqueVerticesOffset = CurrentUniqueVerticesOffset;
+        InstanceData.LocalIndicesOffset = CurrentLocalIndicesOffset;
+        InstanceData.ClusterOffset = CurrentClusterOffset;
+        InstanceData.GroupBoundsOffset = CurrentGroupBoundsOffset;
+
+        // Record mesh vertex offset for UniqueVertices index adjustment
+        unsigned int MeshVertexOffset = CurrentVertexOffset;
+
+        // Copy vertices
+        const std::vector<Vertex>& Vertices = StaticMeshes[MeshIdx]->GetVertices();
+        const unsigned int VertexCount = static_cast<unsigned int>(Vertices.size());
+        memcpy(VertexData + CurrentVertexOffset, Vertices.data(), VertexCount * sizeof(Vertex));
+        CurrentVertexOffset += VertexCount;
+
+        // Copy unique vertices and local indices from clusters
+        unsigned int MeshUniqueVerticesOffset = CurrentUniqueVerticesOffset;
+        unsigned int MeshLocalIndicesOffset = CurrentLocalIndicesOffset;
+
+        for (const ClusterData& Cluster : Data->Clusters)
+        {
+            // Copy unique vertices (adjust indices to global vertex buffer)
+            const unsigned int UniqueVertCount = static_cast<unsigned int>(Cluster.UniqueVertices.size());
+            // Each UniqueVertex index needs to be offset by this mesh's vertex base
+            for (unsigned int j = 0; j < UniqueVertCount; ++j)
+            {
+                UniqueVerticesData[CurrentUniqueVerticesOffset + j] = Cluster.UniqueVertices[j] + MeshVertexOffset;
+            }
+            CurrentUniqueVerticesOffset += UniqueVertCount;
+
+            // Copy local indices
+            const unsigned int LocalIdxCount = static_cast<unsigned int>(Cluster.LocalIndices.size());
+            memcpy(LocalIndicesData + CurrentLocalIndicesOffset,
+                   Cluster.LocalIndices.data(),
+                   LocalIdxCount * sizeof(unsigned char));
+            CurrentLocalIndicesOffset += LocalIdxCount;
+        }
+
+        // Copy clusters (adjust offsets to be relative to mesh start in global buffers)
+        unsigned int LocalUniqueVerticesOffset = MeshUniqueVerticesOffset;
+        unsigned int LocalLocalIndicesOffset = MeshLocalIndicesOffset;
+
+        for (size_t i = 0; i < Data->Clusters.size(); ++i)
+        {
+            const ClusterData& Cluster = Data->Clusters[i];
+
+            // GPU Scene: Set PrimitiveId for this cluster (all clusters of a mesh share the same primitive)
+            GPUClusterData[CurrentClusterOffset + i].PrimitiveId = static_cast<unsigned int>(MeshIdx);
+            GPUClusterData[CurrentClusterOffset + i].IndexCount = static_cast<unsigned int>(Cluster.LocalIndices.size());
+            GPUClusterData[CurrentClusterOffset + i].UniqueVerticesOffset = LocalUniqueVerticesOffset;
+            GPUClusterData[CurrentClusterOffset + i].UniqueVerticesCount = static_cast<unsigned int>(Cluster.UniqueVertices.size());
+            GPUClusterData[CurrentClusterOffset + i].LocalIndicesOffset = LocalLocalIndicesOffset;
+            GPUClusterData[CurrentClusterOffset + i].BoundCenter[0] = Cluster.Bound.Center[0];
+            GPUClusterData[CurrentClusterOffset + i].BoundCenter[1] = Cluster.Bound.Center[1];
+            GPUClusterData[CurrentClusterOffset + i].BoundCenter[2] = Cluster.Bound.Center[2];
+            GPUClusterData[CurrentClusterOffset + i].BoundRadius = Cluster.Bound.Radius;
+
+            // Adjust Refined index to global GroupBounds offset (if not -1)
+            GPUClusterData[CurrentClusterOffset + i].Refined = (Cluster.Refined == -1) ? -1 : (Cluster.Refined + static_cast<int>(InstanceData.GroupBoundsOffset));
+
+            // Adjust GroupId to global GroupBounds offset
+            GPUClusterData[CurrentClusterOffset + i].GroupId = Cluster.GroupId + static_cast<int>(InstanceData.GroupBoundsOffset);
+            GPUClusterData[CurrentClusterOffset + i].Padding = 0;
+
+            LocalUniqueVerticesOffset += static_cast<unsigned int>(Cluster.UniqueVertices.size());
+            LocalLocalIndicesOffset += static_cast<unsigned int>(Cluster.LocalIndices.size());
+        }
+
+        // Copy group bounds
+        for (size_t i = 0; i < Data->GroupBounds.size(); ++i)
+        {
+            GroupBoundsData[CurrentGroupBoundsOffset + i].Center[0] = Data->GroupBounds[i].Center[0];
+            GroupBoundsData[CurrentGroupBoundsOffset + i].Center[1] = Data->GroupBounds[i].Center[1];
+            GroupBoundsData[CurrentGroupBoundsOffset + i].Center[2] = Data->GroupBounds[i].Center[2];
+            GroupBoundsData[CurrentGroupBoundsOffset + i].Radius = Data->GroupBounds[i].Radius;
+            GroupBoundsData[CurrentGroupBoundsOffset + i].Error = Data->GroupBounds[i].Error;
+        }
+
+        // Complete mesh instance data and store it
+        unsigned int MeshUniqueVerticesCount = CurrentUniqueVerticesOffset - InstanceData.UniqueVerticesOffset;
+        unsigned int MeshLocalIndicesCount = CurrentLocalIndicesOffset - InstanceData.LocalIndicesOffset;
+
+        InstanceData.UniqueVerticesCount = MeshUniqueVerticesCount;
+        InstanceData.LocalIndicesCount = MeshLocalIndicesCount;
+        InstanceData.ClusterCount = static_cast<unsigned int>(Data->Clusters.size());
+        InstanceData.GroupBoundsCount = static_cast<unsigned int>(Data->GroupBounds.size());
+        InstanceData.Padding[0] = 0;
+        InstanceData.Padding[1] = 0;
+        InstanceData.Padding[2] = 0;
+        InstanceData.Padding[3] = 0;
+
+        MeshInstanceDataArray.push_back(InstanceData);
+
+        // Update offsets
+        CurrentClusterOffset += static_cast<unsigned int>(Data->Clusters.size());
+        CurrentGroupBoundsOffset += static_cast<unsigned int>(Data->GroupBounds.size());
+
+        StaticMeshes[MeshIdx]->ClearData();
+    }
+
+    // Unmap all buffers
+    GlobalVertexBufferUpload->Unmap(0, nullptr);
+    GlobalUniqueVerticesBufferUpload->Unmap(0, nullptr);
+    GlobalLocalIndicesBufferUpload->Unmap(0, nullptr);
+    GlobalClusterBufferUpload->Unmap(0, nullptr);
+    GlobalGroupBoundsBufferUpload->Unmap(0, nullptr);
+
+    // Step 4: Copy from upload to default heap and transition states
+    UploadCommandList->CopyBufferRegion(GlobalVertexBuffer.Get(), 0, GlobalVertexBufferUpload.Get(), 0, sizeof(Vertex) * TotalVertexCount);
+    UploadCommandList->CopyBufferRegion(GlobalUniqueVerticesBuffer.Get(), 0, GlobalUniqueVerticesBufferUpload.Get(), 0, sizeof(unsigned int) * TotalUniqueVerticesCount);
+    UploadCommandList->CopyBufferRegion(GlobalLocalIndicesBuffer.Get(), 0, GlobalLocalIndicesBufferUpload.Get(), 0, TotalLocalIndicesBytes);
+    UploadCommandList->CopyBufferRegion(GlobalClusterBuffer.Get(), 0, GlobalClusterBufferUpload.Get(), 0, sizeof(GPUCluster) * TotalClusterCount);
+    UploadCommandList->CopyBufferRegion(GlobalGroupBoundsBuffer.Get(), 0, GlobalGroupBoundsBufferUpload.Get(), 0, sizeof(GPUGroupBound) * TotalGroupBoundsCount);
+
+    // Transition all buffers to shader resource state
+    D3D12_RESOURCE_BARRIER Barriers[5];
+    Barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(GlobalVertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    Barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(GlobalUniqueVerticesBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    Barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(GlobalLocalIndicesBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    Barriers[3] = CD3DX12_RESOURCE_BARRIER::Transition(GlobalClusterBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    Barriers[4] = CD3DX12_RESOURCE_BARRIER::Transition(GlobalGroupBoundsBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    UploadCommandList->ResourceBarrier(5, Barriers);
+
+    // Step 5: Create and fill MeshInstanceBuffer (6th global buffer)
+    unsigned int CurrentMeshInstanceCount = static_cast<unsigned int>(MeshInstanceDataArray.size());
+    
+    const unsigned int BufferSize = sizeof(GPUMeshInstance) * MaxMeshInstances;
+    CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(BufferSize);
+
+    HRESULT hResult = D3DDevice->CreateCommittedResource(
+        &DefaultHeapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &BufferDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&MeshInstanceBuffer));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+    
+    hResult = D3DDevice->CreateCommittedResource(
+            &UploadHeapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &BufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&MeshInstanceBufferUpload));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+    
+    // Fill MeshInstanceBuffer with collected data
+    GPUMeshInstance* MeshInstanceDataMapped = nullptr;
+    MeshInstanceBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&MeshInstanceDataMapped));
+    memcpy(MeshInstanceDataMapped, MeshInstanceDataArray.data(), sizeof(GPUMeshInstance) * CurrentMeshInstanceCount);
+    MeshInstanceBufferUpload->Unmap(0, nullptr);
+
+    // Copy to default heap
+    const unsigned int CopySize = sizeof(GPUMeshInstance) * CurrentMeshInstanceCount;
+    UploadCommandList->CopyBufferRegion(MeshInstanceBuffer.Get(), 0, MeshInstanceBufferUpload.Get(), 0, CopySize);
+
+    // Transition to shader resource
+    CD3DX12_RESOURCE_BARRIER InstanceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        MeshInstanceBuffer.Get(),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+    UploadCommandList->ResourceBarrier(1, &InstanceBarrier);
+
+    // Note: MeshInstanceBuffer uses Root Descriptor (t25), no SRV descriptor needed
+
+    // Step 6: Create and fill ScenePrimitiveBuffer (GPU Scene - UE5 style)
+    // Collect primitive scene data from each StaticMesh (transforms + bounds + material indices)
+    std::vector<FPrimitiveSceneData> PrimitiveSceneDataArray;
+    PrimitiveSceneDataArray.reserve(StaticMeshes.size());
+
+    for (size_t MeshIdx = 0; MeshIdx < StaticMeshes.size(); ++MeshIdx)
+    {
+        StaticMesh* MeshInstance = StaticMeshes[MeshIdx];
+
+        // Get complete scene data from mesh (includes transforms, bounds, and PBR texture indices)
+        FPrimitiveSceneData* SceneData = MeshInstance->GetSceneData();
+        PrimitiveSceneDataArray.push_back(*SceneData);
+    }
+
+    // Create ScenePrimitiveBuffer
+    if (!PrimitiveSceneDataArray.empty())
+    {
+        const unsigned int PrimitiveCount = static_cast<unsigned int>(PrimitiveSceneDataArray.size());
+        const unsigned int BufferSize = sizeof(FPrimitiveSceneData) * PrimitiveCount;
+        CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(BufferSize);
+
+        HRESULT hResult = D3DDevice->CreateCommittedResource(
+            &DefaultHeapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &BufferDesc,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            nullptr,
+            IID_PPV_ARGS(&ScenePrimitiveBuffer));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+        
+        hResult = D3DDevice->CreateCommittedResource(
+            &UploadHeapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &BufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&ScenePrimitiveBufferUpload));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+        
+        // Fill ScenePrimitiveBuffer
+        FPrimitiveSceneData* PrimitiveDataMapped = nullptr;
+        ScenePrimitiveBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&PrimitiveDataMapped));
+        memcpy(PrimitiveDataMapped, PrimitiveSceneDataArray.data(), BufferSize);
+        ScenePrimitiveBufferUpload->Unmap(0, nullptr);
+
+        // Copy to default heap
+        UploadCommandList->CopyBufferRegion(ScenePrimitiveBuffer.Get(), 0, ScenePrimitiveBufferUpload.Get(), 0, BufferSize);
+
+        // Transition to shader resource (both pixel and non-pixel for root descriptor compatibility)
+        CD3DX12_RESOURCE_BARRIER PrimitiveBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            ScenePrimitiveBuffer.Get(),
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+        UploadCommandList->ResourceBarrier(1, &PrimitiveBarrier);
+
+        // Note: ScenePrimitiveBuffer uses Root Descriptor (t26), no SRV descriptor needed
+    }
+
+    // Create ClusterCountBuffer (persistently mapped upload buffer for GPU-Driven rendering)
+    {
+        const unsigned int BufferSize = 256;  // CBV requires 256-byte alignment
+        CD3DX12_HEAP_PROPERTIES UploadHeapProps(D3D12_HEAP_TYPE_UPLOAD);
+        CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(BufferSize);
+
+        HRESULT hResult = D3DDevice->CreateCommittedResource(
+            &UploadHeapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &BufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&ClusterCountBuffer));
+
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+        
+        // Persistently map the buffer
+        CD3DX12_RANGE ReadRange(0, 0);
+        hResult = ClusterCountBuffer->Map(0, &ReadRange, &ClusterCountBufferMapped);
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+        
+        // Initialize to 0
+        *static_cast<unsigned int*>(ClusterCountBufferMapped) = 0;
+    }
+
+    return ErrorCode::OK;
+}
+
+ErrorCode PipelineInterface::UpdateScenePrimitiveBuffer(const Level* LevelInstance)
+{
+    const std::vector<StaticMesh*> StaticMeshes = LevelInstance->GetStaticMeshes();
+    if (StaticMeshes.empty() || !ScenePrimitiveBuffer)
+    {
+        return ErrorCode::OK;
+    }
+
+    // Collect updated primitive transform data
+    std::vector<FPrimitiveSceneData> PrimitiveSceneDataArray;
+    PrimitiveSceneDataArray.reserve(StaticMeshes.size());
+
+    for (size_t MeshIdx = 0; MeshIdx < StaticMeshes.size(); ++MeshIdx)
+    {
+        StaticMesh* MeshInstance = StaticMeshes[MeshIdx];
+
+        // Get complete scene data from mesh (includes transforms, bounds, and PBR texture indices)
+        FPrimitiveSceneData* SceneData = MeshInstance->GetSceneData();
+        PrimitiveSceneDataArray.push_back(*SceneData);
+    }
+
+    // Update ScenePrimitiveBuffer
+    const unsigned int PrimitiveCount = static_cast<unsigned int>(PrimitiveSceneDataArray.size());
+    const unsigned int BufferSize = sizeof(FPrimitiveSceneData) * PrimitiveCount;
+
+    // Map upload buffer and copy data
+    FPrimitiveSceneData* PrimitiveDataMapped = nullptr;
+    CD3DX12_RANGE ReadRange(0, 0);
+    HRESULT hResult = ScenePrimitiveBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&PrimitiveDataMapped));
+
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+
+    memcpy(PrimitiveDataMapped, PrimitiveSceneDataArray.data(), BufferSize);
+    ScenePrimitiveBufferUpload->Unmap(0, nullptr);
+
+    // Transition from shader resource to copy dest
+    CD3DX12_RESOURCE_BARRIER BarrierToCopyDest = CD3DX12_RESOURCE_BARRIER::Transition(
+        ScenePrimitiveBuffer.Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_COPY_DEST);
+    CommandList->ResourceBarrier(1, &BarrierToCopyDest);
+
+    // Copy to default heap
+    CommandList->CopyBufferRegion(ScenePrimitiveBuffer.Get(), 0, ScenePrimitiveBufferUpload.Get(), 0, BufferSize);
+
+    // Transition back to shader resource (both pixel and non-pixel)
+    CD3DX12_RESOURCE_BARRIER BarrierToShaderResource = CD3DX12_RESOURCE_BARRIER::Transition(
+        ScenePrimitiveBuffer.Get(),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+    CommandList->ResourceBarrier(1, &BarrierToShaderResource);
 
     return ErrorCode::OK;
 }
@@ -1791,7 +2029,8 @@ ErrorCode PipelineInterface::CreateConstantBuffer(const Actor* ActorInstance) co
     }
     else if (dynamic_cast<const StaticMesh*>(ActorInstance))
     {
-        StructSize = sizeof(StaticMeshConstantBuffer);
+        // StaticMesh no longer uses constant buffers - data is in GPU Scene
+        return ErrorCode::OK;
     }
     else if (dynamic_cast<const SkyLight*>(ActorInstance))
     {
@@ -2002,6 +2241,7 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
 
     const unsigned int MainHeapDescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     
+    // Bind bindless descriptor tables
     D3D12_GPU_DESCRIPTOR_HANDLE BindlessTextureHandle = D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart();
     BindlessTextureHandle.ptr += BindlessTextureStartIndex * MainHeapDescriptorSize;
     CommandList->SetGraphicsRootDescriptorTable(3, BindlessTextureHandle);
@@ -2024,31 +2264,42 @@ void PipelineInterface::RenderLevel(unsigned int FrameContextIndex, const Level*
         CommandList->SetGraphicsRootConstantBufferView(2, SkyLightConstantBufferAddress);
     }
 
-    for (int I = 0; I < static_cast<int>(LevelInstance->GetStaticMeshes().size()); ++I)
+    // GPU-Driven: Single dispatch for ALL meshes
+    // Calculate total cluster count across all mesh instances
+    unsigned int TotalClusterCount = 0;
+    for (const StaticMesh* MeshInstance : LevelInstance->GetStaticMeshes())
     {
-        const StaticMesh* StaticMeshInstance = LevelInstance->GetStaticMeshes()[I];
-
-        const D3D12_GPU_VIRTUAL_ADDRESS ActorConstantBufferAddress = StaticMeshInstance->GetConstantBufferProxy()->UploadBuffer[FrameContextIndex]->GetGPUVirtualAddress();
-        CommandList->SetGraphicsRootConstantBufferView(1, ActorConstantBufferAddress);
-
-        const NaniteClusterProxy* Proxy = StaticMeshInstance->GetNaniteClusterProxy();
-        if (Proxy)
-        {
-            CommandList->SetGraphicsRootShaderResourceView(5, Proxy->VertexBuffer->GetGPUVirtualAddress());
-            CommandList->SetGraphicsRootShaderResourceView(6, Proxy->UniqueVerticesBuffer->GetGPUVirtualAddress());
-            CommandList->SetGraphicsRootShaderResourceView(7, Proxy->LocalIndicesBuffer->GetGPUVirtualAddress());
-            CommandList->SetGraphicsRootShaderResourceView(8, Proxy->ClusterBuffer->GetGPUVirtualAddress());
-            CommandList->SetGraphicsRootShaderResourceView(9, Proxy->GroupBoundsBuffer->GetGPUVirtualAddress());
-        }
-
-        const NaniteData* NaniteDataInstance = StaticMeshInstance->GetNaniteData();
-        if (NaniteDataInstance && !NaniteDataInstance->Clusters.empty())
-        {
-            const unsigned int TotalClusterCount = static_cast<unsigned int>(NaniteDataInstance->Clusters.size());
-            const unsigned int ASGroupCount = (TotalClusterCount + 32 - 1) / 32;
-            CommandList->DispatchMesh(ASGroupCount, 1, 1);
-        }
+        const NaniteData* Data = MeshInstance->GetNaniteData();
+        TotalClusterCount += static_cast<unsigned int>(Data->Clusters.size());
     }
+    
+    // Update cluster count buffer
+    if (ClusterCountBufferMapped)
+    {
+        *static_cast<unsigned int*>(ClusterCountBufferMapped) = TotalClusterCount;
+    }
+
+    // Bind cluster count buffer (b1)
+    CommandList->SetGraphicsRootConstantBufferView(1, ClusterCountBuffer->GetGPUVirtualAddress());
+
+    // Bind global mesh buffers via Root Descriptors (parameters 5-11)
+    // These point to the merged global buffers (5 Nanite buffers + MeshInstanceBuffer + ScenePrimitiveBuffer)
+    CommandList->SetGraphicsRootShaderResourceView(5, GlobalVertexBuffer->GetGPUVirtualAddress());
+    CommandList->SetGraphicsRootShaderResourceView(6, GlobalUniqueVerticesBuffer->GetGPUVirtualAddress());
+    CommandList->SetGraphicsRootShaderResourceView(7, GlobalLocalIndicesBuffer->GetGPUVirtualAddress());
+    CommandList->SetGraphicsRootShaderResourceView(8, GlobalClusterBuffer->GetGPUVirtualAddress());
+    CommandList->SetGraphicsRootShaderResourceView(9, GlobalGroupBoundsBuffer->GetGPUVirtualAddress());
+    CommandList->SetGraphicsRootShaderResourceView(10, MeshInstanceBuffer->GetGPUVirtualAddress());
+
+    // Bind ScenePrimitiveBuffer if it exists
+    if (ScenePrimitiveBuffer)
+    {
+        CommandList->SetGraphicsRootShaderResourceView(11, ScenePrimitiveBuffer->GetGPUVirtualAddress());
+    }
+
+    // Single GPU-Driven dispatch: AS shader will iterate through all clusters
+    const unsigned int ASGroupCount = (TotalClusterCount + 32 - 1) / 32;
+    CommandList->DispatchMesh(ASGroupCount, 1, 1);
 
     Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;

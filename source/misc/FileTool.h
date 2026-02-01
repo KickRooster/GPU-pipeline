@@ -9,6 +9,7 @@ class FileTool : public Singleton<FileTool>
     std::string TexturePath;
     std::string ShaderPath;
     std::string MeshPath;
+    std::string ConfigPath;
 
     std::string AmplificationShaderPath;
     std::string MeshShaderPath;
@@ -28,6 +29,7 @@ public:
     std::wstring StringToWString(const std::string& String) const;
     std::string WStringToString(const std::wstring& WString) const;
     std::string GetTextureFullPath(const std::string& FilePath) const;
+    std::string GetConfigFullPath(const std::string& FilePath) const;
     std::string GetAmplificationShaderPath() const;
     std::string GetMeshShaderPath() const;
     std::string GetPixelShaderPath() const;

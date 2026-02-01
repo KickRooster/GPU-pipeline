@@ -56,6 +56,7 @@ void FileTool::InitializePaths()
     TexturePath = ProjectRootPath + "\\content\\texture";
     ShaderPath = ProjectRootPath + "\\content\\shader";
     MeshPath = ProjectRootPath + "\\content\\mesh";
+    ConfigPath = ProjectRootPath + "\\content\\config";
 
     AmplificationShaderPath = ShaderPath + "\\meshlet_as.hlsl";
     MeshShaderPath = ShaderPath + "\\meshlet_ms.hlsl";
@@ -112,6 +113,23 @@ string FileTool::GetTextureFullPath(const string& FilePath) const
     }
     
     return TexturePath + "\\" + FileName;
+}
+
+string FileTool::GetConfigFullPath(const string& FilePath) const 
+{
+    const size_t LastSlashPos = FilePath.find_last_of('\\');
+    
+    string FileName;
+    if (LastSlashPos != string::npos) 
+    {
+        FileName = FilePath.substr(LastSlashPos + 1);
+    }
+    else 
+    {
+        FileName = FilePath;
+    }
+    
+    return ConfigPath + "\\" + FileName;
 }
 
 string FileTool::GetAmplificationShaderPath() const

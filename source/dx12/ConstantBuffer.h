@@ -13,22 +13,6 @@ struct CameraConstantBuffer
     float               NearPlane;
 };
 
-struct StaticMeshConstantBuffer
-{
-    DirectX::XMFLOAT4X4 World = MathTool::GetInstance().Identity4x4();
-    DirectX::XMFLOAT4X4 WorldInvTranspose = MathTool::GetInstance().Identity4x4();
-    DirectX::XMFLOAT4   BoundingSphere;
-
-    struct
-    {
-        unsigned int Value;
-        unsigned int Padding[3];  // 16-byte alignment per element
-    } PBRTextureIndices[4];
-
-    unsigned int NaniteClusterCount = 0;
-    unsigned int Padding[3] = {0, 0, 0};  // 16-byte alignment
-};
-
 struct SkyLightConstantBuffer
 {
     unsigned int IrradianceMapIndex;

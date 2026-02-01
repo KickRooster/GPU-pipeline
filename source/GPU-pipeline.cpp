@@ -31,7 +31,7 @@ using namespace DirectX;
 unsigned long FenceLastSignaledValue = 0;
 bool SwapChainOccluded = false;
 UIState State;
-StaticMesh* SelectedActor = nullptr;
+Actor* SelectedActor = nullptr;
 ImGuizmo::OPERATION GizmoOperation = ImGuizmo::TRANSLATE;
 
 void RefreshInput(UIState& OutState)
@@ -90,7 +90,12 @@ int main(int, char**)
 
 	//	Culling Visual Camera Actor.
 	StaticMesh* CullingCameraInstance = Level::GetInstance().InstantiateCullingVisualCamera();
+	Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("sponza.obj"));
+	//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("Cerberus_LP.FBX"));
 	
+	// GPU-Driven: Create global merged mesh buffers after all meshes are loaded
+	Level::GetInstance().CreateGlobalMeshBuffers();
+
 	// Camera Actor.
 	Camera* CameraInstance = Level::GetInstance().InstantiateCamera();
 	PipelineInterface::GetInstance().CreateConstantBuffer(CameraInstance);
@@ -106,6 +111,11 @@ int main(int, char**)
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+	// Set absolute path for imgui.ini to ensure it's found regardless of working directory
+	static std::string ImGuiIniPath = FileTool::GetInstance().GetConfigFullPath("imgui.ini");
+	io.IniFilename = ImGuiIniPath.c_str();
+
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
@@ -207,9 +217,7 @@ int main(int, char**)
 				{
 					if (ImGui::MenuItem("Mesh"))
 					{
-						//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("sponza.obj"));
-						//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("Cerberus_LP.FBX"));
-						Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("duck.fbx"));
+						//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("duck.fbx"));
 					}
 					ImGui::EndMenu();
 				}
@@ -232,7 +240,7 @@ int main(int, char**)
 
 		ImGui::Begin("Outliner");
 		{
-			vector<StaticMesh*> AllActors = Level::GetInstance().GetStaticMeshes();
+			vector<Actor*> AllActors = Level::GetInstance().GetSelectableActors();
 
 			for (unsigned int I = 0; I < AllActors.size(); ++I)
 			{
@@ -485,6 +493,9 @@ int main(int, char**)
 			static_cast<CullingVisualCamera*>(CullingCameraInstance)->AspectRatio = CameraInstance->AspectRatio;
 
 			Level::GetInstance().Update(DeltaTime, FrameContextIndex);
+
+			// Update GPU Scene primitive transforms (for Gizmo and runtime changes)
+			PipelineInterface::GetInstance().UpdateScenePrimitiveBuffer(&Level::GetInstance());
 			PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
 			
 			// Post-processing pass: ACES tone mapping (RenderTarget → TransitionTexture → RenderTarget)

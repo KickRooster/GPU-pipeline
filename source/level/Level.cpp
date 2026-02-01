@@ -7,7 +7,6 @@
 #include "../dx12/PipelineInterface.h"
 #include "../dx12/TextureProxy.h"
 #include "../misc/FileTool.h"
-#include <map>
 
 using namespace std;
 using namespace DirectX;
@@ -17,44 +16,48 @@ int Level::InstantiateStaticMeshes(const string& Path)
     vector<Mesh> Meshes;
     vector<PBRTextureNamesPatch> TextureNamesPatches;
     MeshLoader::GetInstance().LoadMesh(Path, Meshes, TextureNamesPatches);
-    
-    map<int, vector<ClusterData>> ClustersMap;
-    map<int, vector<CLODBound>> GroupBoundsMap;
+
+    // Merge all submesh vertices and indices (transforms already baked by MeshLoader)
+    vector<Vertex> MergedVertices;
+    vector<unsigned int> MergedIndices;
 
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
-        vector<ClusterData> Clusters;
-        vector<CLODBound> GroupBounds;
-        MeshLoader::GetInstance().Nanite(Meshes[I], Clusters, GroupBounds);
-        ClustersMap.emplace(I, move(Clusters));
-        GroupBoundsMap.emplace(I, move(GroupBounds));
+        unsigned int BaseVertex = static_cast<unsigned int>(MergedVertices.size());
+
+        // Append vertices (already in unified coordinate system)
+        MergedVertices.insert(MergedVertices.end(),
+                             Meshes[I].Vertices.begin(),
+                             Meshes[I].Vertices.end());
+
+        // Append indices with base vertex offset
+        for (size_t IdxOffset = 0; IdxOffset < Meshes[I].Indices.size(); ++IdxOffset)
+        {
+            MergedIndices.push_back(Meshes[I].Indices[IdxOffset] + BaseVertex);
+        }
     }
 
-    vector<unique_ptr<Mesh>> MeshInstances;
-    
-    for (unsigned int I = 0; I < Meshes.size(); ++I)
+    // Run Nanite ONCE on merged data
+    vector<ClusterData> MergedClusters;
+    vector<CLODBound> MergedGroupBounds;
+
+    if (!MergedVertices.empty() && !MergedIndices.empty())
     {
-        unique_ptr<Mesh> MeshInstance = make_unique<Mesh>();
-        MeshInstance->Vertices = Meshes[I].Vertices;
-        MeshInstance->Indices = Meshes[I].Indices;
-        MeshInstance->Local2WorldMatrix = Meshes[I].Local2WorldMatrix;
-        MeshInstance->Name = Meshes[I].Name;
-        MeshInstance->BoundingSphere = Meshes[I].BoundingSphere;
-        MeshInstances.push_back(move(MeshInstance));
+        Mesh MergedMesh;
+        MergedMesh.Vertices = MergedVertices;
+        MergedMesh.Indices = MergedIndices;
+        MergedMesh.Local2WorldMatrix = Meshes[0].Local2WorldMatrix;
+        MergedMesh.BoundingSphere = Meshes[0].BoundingSphere;
+
+        MeshLoader::GetInstance().Nanite(MergedMesh, MergedClusters, MergedGroupBounds);
     }
 
-    map<int, unique_ptr<NaniteData>> NaniteDatasMap;
-    map<int, unique_ptr<NaniteClusterProxy>> NaniteClusterProxiesMap;
+    // Create single NaniteData and NaniteClusterProxy for the merged mesh
+    unique_ptr<NaniteData> MergedNaniteData = make_unique<NaniteData>();
+    MergedNaniteData->Clusters = move(MergedClusters);
+    MergedNaniteData->GroupBounds = move(MergedGroupBounds);
 
-    for (unsigned int I = 0; I < Meshes.size(); ++I)
-    {
-        unique_ptr<NaniteData> NaniteDataInstance = make_unique<NaniteData>();
-        NaniteDataInstance->Clusters = move(ClustersMap[I]);
-        NaniteDataInstance->GroupBounds = move(GroupBoundsMap[I]);
-        NaniteDatasMap.emplace(I, move(NaniteDataInstance));
-
-        NaniteClusterProxiesMap.emplace(I, make_unique<NaniteClusterProxy>());
-    }
+    unique_ptr<NaniteClusterProxy> MergedNaniteClusterProxy = make_unique<NaniteClusterProxy>();
 
     vector<unique_ptr<Material>> MaterialInstances;
     vector<unique_ptr<MaterialProxy>> MaterialProxyInstances;
@@ -110,155 +113,153 @@ int Level::InstantiateStaticMeshes(const string& Path)
 
     PipelineInterface::GetInstance().ResetUploadCommandList();
 
-    for (unsigned int I = 0; I < Meshes.size(); ++I)
+    // GPU-Driven: Don't create per-mesh buffers, just upload textures
+    // Mesh buffers will be created globally later via CreateGlobalMergedMeshBuffers
+
+    // Create textures for materials (阶段1: use first material only)
+    if (!MaterialInstances.empty())
     {
-        if (!NaniteDatasMap[I]->Clusters.empty() && !NaniteDatasMap[I]->GroupBounds.empty())
-        {
-            PipelineInterface::GetInstance().CreateNaniteClusterProxyBuffer(
-                Meshes[I].Vertices,
-                NaniteDatasMap[I]->Clusters,
-                NaniteDatasMap[I]->GroupBounds,
-                NaniteClusterProxiesMap[I].get(),
-                false
-            );
-        }
-
-        //  XXX:    MaterialInstances.size() == Meshes.size()
-        if (MaterialInstances[I]->AlbedoTexture)
+        if (MaterialInstances[0]->AlbedoTexture)
         {
             unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
             
             PipelineInterface::GetInstance().CreateTexture(
-                MaterialInstances[I]->AlbedoTexture.get(),
-                MaterialProxyInstances[I]->AlbedoTextureIndex,
+                MaterialInstances[0]->AlbedoTexture.get(),
+                MaterialProxyInstances[0]->AlbedoTextureIndex,
                 TextureProxyInstance.get(),
                 false
             );
 
-            MaterialInstances[I]->AlbedoTextureProxy = move(TextureProxyInstance);
+            MaterialInstances[0]->AlbedoTextureProxy = move(TextureProxyInstance);
         }
 
-        if (MaterialInstances[I]->NormalTexture)
+        if (MaterialInstances[0]->NormalTexture)
         {
             unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
             
             PipelineInterface::GetInstance().CreateTexture(
-                MaterialInstances[I]->NormalTexture.get(),
-                MaterialProxyInstances[I]->NormalTextureIndex,
+                MaterialInstances[0]->NormalTexture.get(),
+                MaterialProxyInstances[0]->NormalTextureIndex,
                 TextureProxyInstance.get(),
                 false
             );
 
-            MaterialInstances[I]->NormalTextureProxy = move(TextureProxyInstance);
+            MaterialInstances[0]->NormalTextureProxy = move(TextureProxyInstance);
         }
 
-        if (MaterialInstances[I]->MetallicTexture)
+        if (MaterialInstances[0]->MetallicTexture)
         {
             unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
             
             PipelineInterface::GetInstance().CreateTexture(
-                MaterialInstances[I]->MetallicTexture.get(),
-                MaterialProxyInstances[I]->MetallicTextureIndex,
+                MaterialInstances[0]->MetallicTexture.get(),
+                MaterialProxyInstances[0]->MetallicTextureIndex,
                 TextureProxyInstance.get(),
                 false
             );
 
-            MaterialInstances[I]->MetallicTextureProxy = move(TextureProxyInstance);
+            MaterialInstances[0]->MetallicTextureProxy = move(TextureProxyInstance);
         }
 
-        if (MaterialInstances[I]->RoughnessTexture)
+        if (MaterialInstances[0]->RoughnessTexture)
         {
             unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
             
             PipelineInterface::GetInstance().CreateTexture(
-                MaterialInstances[I]->RoughnessTexture.get(),
-                MaterialProxyInstances[I]->RoughnessTextureIndex,
+                MaterialInstances[0]->RoughnessTexture.get(),
+                MaterialProxyInstances[0]->RoughnessTextureIndex,
                 TextureProxyInstance.get(),
                 false
             );
 
-            MaterialInstances[I]->RoughnessTextureProxy = move(TextureProxyInstance);
+            MaterialInstances[0]->RoughnessTextureProxy = move(TextureProxyInstance);
         }
     }
 
     PipelineInterface::GetInstance().ExecuteAndWaitUploadCommandList();
     
-    for (unsigned int I = 0; I < Meshes.size(); ++I)
+    // Create single StaticMesh actor with merged Nanite data
+    unique_ptr<StaticMesh> ActorInstance = make_unique<StaticMesh>(
+        &Meshes[0].Local2WorldMatrix,
+        move(MergedVertices),
+        move(MergedNaniteData),
+        move(MergedNaniteClusterProxy)
+    );
+
+    PipelineInterface::GetInstance().CreateConstantBuffer(ActorInstance.get());
+
+    // Set material (阶段1: use first material)
+    if (!MaterialInstances.empty())
     {
-        unique_ptr<StaticMesh> ActorInstance = make_unique<StaticMesh>(
-            &MeshInstances[I]->Local2WorldMatrix,
-            MeshInstances[I]->BoundingSphere,
-            move(NaniteDatasMap[I]),
-            move(NaniteClusterProxiesMap[I])
-            );
-
-        PipelineInterface::GetInstance().CreateConstantBuffer(ActorInstance.get());
-
-        ActorInstance->Transform.Position.x = 0;
-        ActorInstance->Transform.Position.y = 0;
-        ActorInstance->Transform.Position.z = 0;
-        ActorInstance->Transform.Scale.x = 1.0f;
-        ActorInstance->Transform.Scale.y = 1.0f;
-        ActorInstance->Transform.Scale.z = 1.0f;
-        ActorInstance->Transform.Rotation.x = 0;
-        ActorInstance->Transform.Rotation.y = 0;
-        ActorInstance->Transform.Rotation.z = 0;
-        ActorInstance->Name = Meshes[I].Name;
-
-        StaticMeshes.push_back(move(ActorInstance));
+        ActorInstance->SetMaterial(move(MaterialInstances[0]), move(MaterialProxyInstances[0]));
     }
+
+    ActorInstance->Transform.Position = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
+    ActorInstance->Transform.Rotation = DirectX::XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);  // Identity quaternion
+    ActorInstance->Transform.Scale = DirectX::XMFLOAT3(1.0f, 1.0f, 1.0f);
+    ActorInstance->Name = Meshes[0].Name;
+
+    StaticMeshes.push_back(move(ActorInstance));
     
     return static_cast<int>(Meshes.size());
 }
 
 StaticMesh* Level::InstantiateCullingVisualCamera()
 {
-    //  XXX:    Hard recorded file path, and it must has 1 sub mesh only.
     const string CameraPath = FileTool::GetInstance().GetMeshFullPath("mp5_sil.fbx");
 
     vector<Mesh> Meshes;
     vector<PBRTextureNamesPatch> TextureNamesPatches;
     MeshLoader::GetInstance().LoadMesh(CameraPath, Meshes, TextureNamesPatches);
-    
-    vector<ClusterData> Clusters;
-    vector<CLODBound> GroupBounds;
-    MeshLoader::GetInstance().Nanite(Meshes[0], Clusters, GroupBounds);
-    
-    unique_ptr<Mesh> MeshInstance = make_unique<Mesh>();
-    MeshInstance->Vertices = Meshes[0].Vertices;
-    MeshInstance->Indices = Meshes[0].Indices;
-    MeshInstance->Local2WorldMatrix = Meshes[0].Local2WorldMatrix;
-    MeshInstance->Name = Meshes[0].Name;
-    MeshInstance->BoundingSphere = Meshes[0].BoundingSphere;
 
-    unique_ptr<NaniteData> NaniteDataInstance = make_unique<NaniteData>();
-    NaniteDataInstance->Clusters = move(Clusters);
-    NaniteDataInstance->GroupBounds = move(GroupBounds);
+    // Merge all submesh vertices and indices (transforms already baked by MeshLoader)
+    vector<Vertex> MergedVertices;
+    vector<unsigned int> MergedIndices;
 
-    unique_ptr<NaniteClusterProxy> NaniteClusterProxyInstance = make_unique<NaniteClusterProxy>();
-    
+    for (unsigned int I = 0; I < Meshes.size(); ++I)
+    {
+        unsigned int BaseVertex = static_cast<unsigned int>(MergedVertices.size());
+
+        MergedVertices.insert(MergedVertices.end(),
+                             Meshes[I].Vertices.begin(),
+                             Meshes[I].Vertices.end());
+
+        // Append indices with base vertex offset
+        for (size_t IdxOffset = 0; IdxOffset < Meshes[I].Indices.size(); ++IdxOffset)
+        {
+            MergedIndices.push_back(Meshes[I].Indices[IdxOffset] + BaseVertex);
+        }
+    }
+
+    // Run Nanite ONCE on merged data
+    vector<ClusterData> MergedClusters;
+    vector<CLODBound> MergedGroupBounds;
+
+    if (!MergedVertices.empty() && !MergedIndices.empty())
+    {
+        Mesh MergedMesh;
+        MergedMesh.Vertices = MergedVertices;
+        MergedMesh.Indices = MergedIndices;
+        MergedMesh.Local2WorldMatrix = Meshes[0].Local2WorldMatrix;
+        MergedMesh.BoundingSphere = Meshes[0].BoundingSphere;
+
+        MeshLoader::GetInstance().Nanite(MergedMesh, MergedClusters, MergedGroupBounds);
+    }
+
+    unique_ptr<NaniteData> MergedNaniteData = make_unique<NaniteData>();
+    MergedNaniteData->Clusters = move(MergedClusters);
+    MergedNaniteData->GroupBounds = move(MergedGroupBounds);
+
+    unique_ptr<NaniteClusterProxy> MergedNaniteClusterProxy = make_unique<NaniteClusterProxy>();
+
     unique_ptr<Material> MaterialInstance = make_unique<Material>();
     unique_ptr<MaterialProxy> MaterialProxyInstance = make_unique<MaterialProxy>();
 
-    PipelineInterface::GetInstance().ResetUploadCommandList();
-
-    if (!NaniteDataInstance->Clusters.empty() && !NaniteDataInstance->GroupBounds.empty())
-    {
-        PipelineInterface::GetInstance().CreateNaniteClusterProxyBuffer(
-            Meshes[0].Vertices,
-            NaniteDataInstance->Clusters,
-            NaniteDataInstance->GroupBounds,
-            NaniteClusterProxyInstance.get(),
-            false
-        );
-    }
-
-    PipelineInterface::GetInstance().ExecuteAndWaitUploadCommandList();
-    
     unique_ptr<CullingVisualCamera> CullingVisualInstance = make_unique<CullingVisualCamera>(
-        move(MeshInstance),
-        move(NaniteDataInstance),
-        move(NaniteClusterProxyInstance));
+        &Meshes[0].Local2WorldMatrix,
+        move(MergedVertices),
+        move(MergedNaniteData),
+        move(MergedNaniteClusterProxy));
 
     CullingVisualInstance->SetMaterial(move(MaterialInstance), move(MaterialProxyInstance));
     PipelineInterface::GetInstance().CreateConstantBuffer(CullingVisualInstance.get());
@@ -295,10 +296,10 @@ Camera* Level::InstantiateCamera()
     ActorInstance->NearPlane = 0.1f;
     ActorInstance->FarPlane = 10000.0f;
     ActorInstance->Transform.Position.x = 0;
-    ActorInstance->Transform.Position.y = 0;
-    ActorInstance->Transform.Position.z = -5.f;
-    ActorInstance->LookDirection = XMFLOAT3(0, 0, 1);
-    ActorInstance->UpDirection = XMFLOAT3(0, 1, 0);
+    ActorInstance->Transform.Position.y = 500.0f;
+    ActorInstance->Transform.Position.z = 0;
+    ActorInstance->LookDirection = XMFLOAT3(1.0f, 0, 0);
+    ActorInstance->UpDirection = XMFLOAT3(0, 1.0f, 0);
     Cameras.push_back(move(ActorInstance));
 
     return Cameras.back().get();
@@ -360,9 +361,18 @@ SkyLight* Level::InstantiateSkyLight()
     ActorInstance->Transform.Position.x = 0;
     ActorInstance->Transform.Position.y = 0;
     ActorInstance->Transform.Position.z = 0;
+    ActorInstance->Name = ActorInstance->GetHDRFilePath();
     SkyLights.push_back(move(ActorInstance));
 
     return SkyLights.back().get();
+}
+
+void Level::CreateGlobalMeshBuffers()
+{
+    // GPU-Driven: Create global merged mesh buffers after all meshes are loaded
+    PipelineInterface::GetInstance().ResetUploadCommandList();
+    PipelineInterface::GetInstance().CreateGlobalMergedMeshBuffers(this);
+    PipelineInterface::GetInstance().ExecuteAndWaitUploadCommandList();
 }
 
 void Level::Update(float DeletaTime, unsigned int FrameIndex) const
@@ -416,10 +426,29 @@ vector<SkyLight*> Level::GetSkyLights() const
         Result.push_back(SkyLights[I].get());
     }
     
-    return Result;    
+    return Result;
+}
+
+std::vector<Actor*> Level::GetSelectableActors() const
+{
+    vector<Actor*> Result;
+
+    for (int I = 0; I < StaticMeshes.size(); ++I)
+    {
+        Result.push_back(StaticMeshes[I].get());
+    }
+
+    for (int I = 0; I < SkyLights.size(); ++I)
+    {
+        Result.push_back(SkyLights[I].get());
+    }
+    
+    return Result;
 }
 
 Level::~Level()
 {
     StaticMeshes.clear();
+    Cameras.clear();
+    SkyLights.clear();
 }

@@ -10,18 +10,6 @@ cbuffer cbCamera : register(b0)
     float    gNearPlane;
 };
 
-cbuffer cbStaticMesh : register(b1)
-{
-    float4x4 gWorld;
-    float4x4 gWorldInvTranspose;
-    float4   gBoundingSphere;
-    uint4    gPBRTextureIndices[4];  // 16 bytes per element (matches C++ layout)
-    uint     gNaniteClusterCount;
-    uint     gPadding0;
-    uint     gPadding1;
-    uint     gPadding2;
-};
-
 cbuffer cbSkyLight : register(b2)
 {
     uint gIrradianceMapIndex;
@@ -63,6 +51,15 @@ StructuredBuffer<uint> NaniteUniqueVertices : register(t21);
 ByteAddressBuffer NaniteLocalIndices : register(t22);
 StructuredBuffer<GPUCluster> NaniteClusters : register(t23);
 StructuredBuffer<GPUGroupBound> NaniteGroupBounds : register(t24);
+
+// GPU Scene: Primitive transform data
+struct FPrimitiveSceneData
+{
+    float4x4 LocalToWorld;
+    float4x4 WorldInvTranspose;
+    uint4    PBRTextureIndices[4];  // Albedo, Normal, Metallic, Roughness
+};
+StructuredBuffer<FPrimitiveSceneData> ScenePrimitives : register(t26);
 
 Texture2D gBindlessTextures[] : register(t30, space0);
 TextureCube gBindlessCubemaps[] : register(t0, space1);
@@ -131,6 +128,7 @@ struct VertexOut
 struct PrimitiveOut
 {
     uint ClusterIndex : COLOR1;
+    uint PrimitiveId  : COLOR2;  // From GPU Scene
 };
 
 #if 1
@@ -150,34 +148,37 @@ float4 main(VertexOut input, PrimitiveOut primitive) : SV_Target
 // PBR with IBL lighting
 float4 main(VertexOut input, PrimitiveOut primitive) : SV_Target
 {
+    // Load primitive data from GPU Scene
+    FPrimitiveSceneData primitiveData = ScenePrimitives[primitive.PrimitiveId];
+
     // PBR material parameters from textures
     float3 albedo = float3(0.5, 0.5, 0.5);
     float metallic = 0.0;
     float roughness = 0.5;
     float ao = 1.0;
 
-    // Sample PBR textures
-    if (gPBRTextureIndices[0].x != 0xFFFFFFFF)
+    // Sample PBR textures using indices from GPU Scene
+    if (primitiveData.PBRTextureIndices[0].x != 0xFFFFFFFF)
     {
-        albedo = gBindlessTextures[gPBRTextureIndices[0].x].Sample(gLinearSampler, input.UV0).rgb;
+        albedo = gBindlessTextures[primitiveData.PBRTextureIndices[0].x].Sample(gLinearSampler, input.UV0).rgb;
     }
 
-    if (gPBRTextureIndices[1].x != 0xFFFFFFFF)
+    if (primitiveData.PBRTextureIndices[1].x != 0xFFFFFFFF)
     {
-        float3 normalTS = gBindlessTextures[gPBRTextureIndices[1].x].Sample(gLinearSampler, input.UV0).rgb;
+        float3 normalTS = gBindlessTextures[primitiveData.PBRTextureIndices[1].x].Sample(gLinearSampler, input.UV0).rgb;
         normalTS = normalTS * 2.0 - 1.0;
         float3x3 TBN = float3x3(input.Tangent, input.Bitangent, input.Normal);
         input.Normal = mul(normalTS, TBN);
     }
 
-    if (gPBRTextureIndices[2].x != 0xFFFFFFFF)
+    if (primitiveData.PBRTextureIndices[2].x != 0xFFFFFFFF)
     {
-        metallic = gBindlessTextures[gPBRTextureIndices[2].x].Sample(gLinearSampler, input.UV0).r;
+        metallic = gBindlessTextures[primitiveData.PBRTextureIndices[2].x].Sample(gLinearSampler, input.UV0).r;
     }
 
-    if (gPBRTextureIndices[3].x != 0xFFFFFFFF)
+    if (primitiveData.PBRTextureIndices[3].x != 0xFFFFFFFF)
     {
-        roughness = gBindlessTextures[gPBRTextureIndices[3].x].Sample(gLinearSampler, input.UV0).r;
+        roughness = gBindlessTextures[primitiveData.PBRTextureIndices[3].x].Sample(gLinearSampler, input.UV0).r;
     }
 
     float3 N = normalize(input.Normal);
