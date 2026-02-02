@@ -148,6 +148,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="source\actor\Actor.cpp" />
     <ClCompile Include="source\actor\Camera.cpp" />
     <ClCompile Include="source\actor\CullingVisualCamera.cpp" />
     <ClCompile Include="source\actor\SkyLight.cpp">

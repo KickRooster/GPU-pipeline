@@ -69,8 +69,7 @@ StructuredBuffer<FPrimitiveSceneData> ScenePrimitives : register(t26);
 
 struct Payload
 {
-    uint ASGroupID;   // AS group ID for cluster index calculation
-    uint PrimitiveId; // Primitive ID for transform lookup in GPU Scene
+    uint VisibleClusterIndices[AS_CLUSTERS_PER_GROUP];
 };
 
 struct VertexOut
@@ -149,7 +148,7 @@ void main(
     out primitives PrimitiveOut primitives[MS_MAX_PRIMITIVES],
     out indices uint3 triangles[MS_MAX_PRIMITIVES])
 {
-    uint clusterIndex = payloadData.ASGroupID * AS_CLUSTERS_PER_GROUP + gid;
+    uint clusterIndex = payloadData.VisibleClusterIndices[gid];
 
     uint vertexCount = 0;
     uint triangleCount = 0;
@@ -157,11 +156,9 @@ void main(
     if (clusterIndex < gNaniteClusterCount)
     {
         GPUCluster cluster = NaniteClusters[clusterIndex];
+        FPrimitiveSceneData primitive = ScenePrimitives[cluster.PrimitiveId];
 
-        // GPU Scene: Load primitive transform data for LOD calculation
-        FPrimitiveSceneData primitive = ScenePrimitives[payloadData.PrimitiveId];
-
-        // Nanite continuous LOD: cluster selection (with world-space bounds)
+        // Nanite continuous LOD: cluster selection
         bool shouldRender = ShouldRenderCluster(cluster, gViewPosition, gRecipTanHalfFovy, primitive.LocalToWorld);
 
         if (shouldRender)
@@ -176,9 +173,7 @@ void main(
     if (clusterIndex < gNaniteClusterCount && vertexCount > 0)
     {
         GPUCluster cluster = NaniteClusters[clusterIndex];
-
-        // GPU Scene: Load primitive transform data
-        FPrimitiveSceneData primitive = ScenePrimitives[payloadData.PrimitiveId];
+        FPrimitiveSceneData primitive = ScenePrimitives[cluster.PrimitiveId];
 
         // Output vertices
         for (uint i = gtid.x; i < vertexCount; i += MS_NUM_THREADS)
@@ -216,7 +211,7 @@ void main(
 
             triangles[triIdx] = uint3(localIdx0, localIdx1, localIdx2);
             primitives[triIdx].ClusterIndex = clusterIndex;
-            primitives[triIdx].PrimitiveId = payloadData.PrimitiveId;  // Pass to pixel shader
+            primitives[triIdx].PrimitiveId = cluster.PrimitiveId;
         }
     }
 }
