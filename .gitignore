@@ -16,6 +16,13 @@
 *.dylib
 *.dll
 
+# Exception: Allow required runtime DLLs
+!x64/Debug/assimp-vc143-mtd.dll
+!x64/Debug/dxcompiler.dll
+!x64/Debug/dxil.dll
+!x64/Release/dxcompiler.dll
+!x64/Release/dxil.dll
+
 # Fortran module files
 *.mod
 *.smod
@@ -43,6 +50,19 @@ x64/
 x86/
 [Bb]in/
 [Oo]bj/
+
+# Exception: Allow x64 Debug/Release directories for required DLLs
+!x64/
+!x64/Debug/
+!x64/Release/
+x64/Debug/*
+x64/Release/*
+!x64/Debug/assimp-vc143-mtd.dll
+!x64/Debug/dxcompiler.dll
+!x64/Debug/dxil.dll
+!x64/Release/assimp-vc143-mt.dll
+!x64/Release/dxcompiler.dll
+!x64/Release/dxil.dll
 
 # Visual Studio user-specific files
 *.user
