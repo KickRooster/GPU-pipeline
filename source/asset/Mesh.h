@@ -23,10 +23,11 @@ struct ClusterData
 {
     std::vector<unsigned int> UniqueVertices;   // Global vertex indices after per-cluster deduplication (≤64 for Mesh Shader limit)
     std::vector<unsigned char> LocalIndices;    // Cluster-local indices (0-255, references UniqueVertices)
+    std::vector<unsigned int> TriangleMaterialIDs;  // Material ID for each triangle in the cluster (size = LocalIndices.size() / 3)
 
     CLODBound Bound;
-    int Refined;   // Index to the more detailed parent group that was simplified to create this cluster (-1 = original geometry, higher value = more simplified)
-    int GroupId;   // Index to group this cluster belongs to
+    int Refined;  // Index to more detailed group (-1 = leaf, for LOD selection)
+    int GroupId;  // Index to group this cluster belongs to
 };
 
 struct NaniteData

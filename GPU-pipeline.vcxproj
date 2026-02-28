@@ -79,13 +79,13 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build_v143\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(ProjectDir)thirdpatry\imGuIZMO.quat\imguizmo_quat;$(ProjectDir)thirdpatry\ImGuizmo;$(ProjectDir)thirdpatry\stb;$(IncludePath)</IncludePath>
-    <LibraryPath>$(ProjectDir)thirdpatry\assimp\build_v143\lib\Debug;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp_lib\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(ProjectDir)thirdpatry\imGuIZMO.quat\imguizmo_quat;$(ProjectDir)thirdpatry\ImGuizmo;$(ProjectDir)thirdpatry\stb;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)thirdpatry\assimp_lib\lib\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp\include;$(ProjectDir)thirdpatry\assimp\build_v143\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(ProjectDir)thirdpatry\imGuIZMO.quat\imguizmo_quat;$(ProjectDir)thirdpatry\ImGuizmo;$(ProjectDir)thirdpatry\stb;$(IncludePath)</IncludePath>
-    <LibraryPath>$(ProjectDir)thirdpatry\assimp\build_v143\lib\Release;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)thirdpatry\imgui;$(ProjectDir)thirdpatry\imgui\backends;$(ProjectDir)thirdpatry\assimp_lib\include;$(ProjectDir)thirdpatry\meshoptimizer\src;$(ProjectDir)thirdpatry\imGuIZMO.quat\imguizmo_quat;$(ProjectDir)thirdpatry\ImGuizmo;$(ProjectDir)thirdpatry\stb;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)thirdpatry\assimp_lib\lib\Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -126,7 +126,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;d3dcompiler.lib;dxgi.lib;assimp-vc143-mtd.lib;$(ProjectDir)thirdpatry\assimp\build_v143\contrib\zlib\Debug\zlibstaticd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;d3dcompiler.lib;dxgi.lib;assimp-vc143-mtd.lib;zlibstaticd.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -144,89 +144,14 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;d3dcompiler.lib;dxgi.lib;assimp-vc143-mt.lib;$(ProjectDir)thirdpatry\assimp\build_v143\contrib\zlib\Release\zlibstatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;d3dcompiler.lib;dxgi.lib;assimp-vc143-mt.lib;zlibstatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="source\actor\Actor.cpp" />
     <ClCompile Include="source\actor\Camera.cpp" />
     <ClCompile Include="source\actor\CullingVisualCamera.cpp" />
-    <ClCompile Include="source\actor\SkyLight.cpp">
-      <RuntimeLibrary>MultiThreadedDebugDll</RuntimeLibrary>
-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
-      <Optimization>Disabled</Optimization>
-      <SupportJustMyCode>true</SupportJustMyCode>
-      <AssemblerOutput>NoListing</AssemblerOutput>
-      <AssemblerListingLocation>GPU-pipeline\x64\Debug\</AssemblerListingLocation>
-      <UndefineAllPreprocessorDefinitions>false</UndefineAllPreprocessorDefinitions>
-      <BrowseInformation>false</BrowseInformation>
-      <BrowseInformationFile>GPU-pipeline\x64\Debug\</BrowseInformationFile>
-      <CompileAs>Default</CompileAs>
-      <ConformanceMode>true</ConformanceMode>
-      <DiagnosticsFormat>Column</DiagnosticsFormat>
-      <DisableLanguageExtensions>false</DisableLanguageExtensions>
-      <ErrorReporting>Prompt</ErrorReporting>
-      <ExpandAttributedSource>false</ExpandAttributedSource>
-      <ExceptionHandling>Sync</ExceptionHandling>
-      <EnableASAN>false</EnableASAN>
-      <EnableFuzzer>false</EnableFuzzer>
-      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
-      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
-      <EnableVectorLength>NotSet</EnableVectorLength>
-      <FloatingPointModel>Precise</FloatingPointModel>
-      <ForceConformanceInForLoopScope>true</ForceConformanceInForLoopScope>
-      <GenerateModuleDependencies>false</GenerateModuleDependencies>
-      <GenerateSourceDependencies>false</GenerateSourceDependencies>
-      <GenerateXMLDocumentationFiles>false</GenerateXMLDocumentationFiles>
-      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
-      <IntrinsicFunctions>false</IntrinsicFunctions>
-      <IgnoreStandardIncludePath>false</IgnoreStandardIncludePath>
-      <LanguageStandard>stdcpp20</LanguageStandard>
-      <LanguageStandard_C>Default</LanguageStandard_C>
-      <MinimalRebuild>false</MinimalRebuild>
-      <ModuleDependenciesFile>GPU-pipeline\x64\Debug\</ModuleDependenciesFile>
-      <ModuleOutputFile>GPU-pipeline\x64\Debug\</ModuleOutputFile>
-      <OmitDefaultLibName>false</OmitDefaultLibName>
-      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <ObjectFileName>GPU-pipeline\x64\Debug\</ObjectFileName>
-      <CallingConvention>Cdecl</CallingConvention>
-      <ProgramDataBaseFileName>GPU-pipeline\x64\Debug\vc143.pdb</ProgramDataBaseFileName>
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-      <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
-      <PrecompiledHeaderOutputFile>GPU-pipeline\x64\Debug\GPU-pipeline.pch</PrecompiledHeaderOutputFile>
-      <PreprocessToFile>false</PreprocessToFile>
-      <PreprocessKeepComments>false</PreprocessKeepComments>
-      <PreprocessSuppressLineNumbers>false</PreprocessSuppressLineNumbers>
-      <RemoveUnreferencedCodeData>true</RemoveUnreferencedCodeData>
-      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
-      <ShowIncludes>false</ShowIncludes>
-      <SourceDependenciesFile>GPU-pipeline\x64\Debug\</SourceDependenciesFile>
-      <SuppressStartupBanner>true</SuppressStartupBanner>
-      <BufferSecurityCheck>true</BufferSecurityCheck>
-      <SmallerTypeCheck>false</SmallerTypeCheck>
-      <SpectreMitigation>false</SpectreMitigation>
-      <StructMemberAlignment>Default</StructMemberAlignment>
-      <TrackerLogDirectory>GPU-pipeline\x64\Debug\GPU-pipeline.tlog\</TrackerLogDirectory>
-      <TranslateIncludes>false</TranslateIncludes>
-      <MinimalRebuildFromTracking>true</MinimalRebuildFromTracking>
-      <TreatWarningAsError>false</TreatWarningAsError>
-      <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
-      <UseFullPaths>true</UseFullPaths>
-      <WarningLevel>Level3</WarningLevel>
-      <XMLDocumentationFileName>GPU-pipeline\x64\Debug\</XMLDocumentationFileName>
-      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
-      <IntelJCCErratum>false</IntelJCCErratum>
-      <BuildStlModules>false</BuildStlModules>
-      <TreatAngleIncludeAsExternal>false</TreatAngleIncludeAsExternal>
-      <ExternalWarningLevel>InheritWarningLevel</ExternalWarningLevel>
-      <TreatExternalTemplatesAsInternal>true</TreatExternalTemplatesAsInternal>
-      <DisableAnalyzeExternal>false</DisableAnalyzeExternal>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;IMGUIZMO_IMGUI_FOLDER=../imgui/;_UNICODE;UNICODE;</PreprocessorDefinitions>
-      <SDLCheck>true</SDLCheck>
-      <LinkCompiled>true</LinkCompiled>
-      <AdditionalIncludeDirectories>$(ProjectDir)packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\include;$(ProjectDir)packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\include\d3dx12;$(ProjectDir)packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\;</AdditionalIncludeDirectories>
-    </ClCompile>
+    <ClCompile Include="source\actor\SkyLight.cpp" />
     <ClCompile Include="source\actor\StaticMesh.cpp" />
     <ClCompile Include="source\asset\CubemapTexture.cpp" />
     <ClCompile Include="source\asset\Material.cpp" />
@@ -239,82 +164,7 @@
     <ClCompile Include="source\misc\FileTool.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="source\GPU-pipeline.cpp">
-      <RuntimeLibrary>MultiThreadedDebugDll</RuntimeLibrary>
-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
-      <Optimization>Disabled</Optimization>
-      <SupportJustMyCode>true</SupportJustMyCode>
-      <AssemblerOutput>NoListing</AssemblerOutput>
-      <AssemblerListingLocation>GPU-pipeline\x64\Debug\</AssemblerListingLocation>
-      <UndefineAllPreprocessorDefinitions>false</UndefineAllPreprocessorDefinitions>
-      <BrowseInformation>false</BrowseInformation>
-      <BrowseInformationFile>GPU-pipeline\x64\Debug\</BrowseInformationFile>
-      <CompileAs>Default</CompileAs>
-      <ConformanceMode>true</ConformanceMode>
-      <DiagnosticsFormat>Column</DiagnosticsFormat>
-      <DisableLanguageExtensions>false</DisableLanguageExtensions>
-      <ErrorReporting>Prompt</ErrorReporting>
-      <ExpandAttributedSource>false</ExpandAttributedSource>
-      <ExceptionHandling>Sync</ExceptionHandling>
-      <EnableASAN>false</EnableASAN>
-      <EnableFuzzer>false</EnableFuzzer>
-      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
-      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
-      <EnableVectorLength>NotSet</EnableVectorLength>
-      <FloatingPointModel>Precise</FloatingPointModel>
-      <ForceConformanceInForLoopScope>true</ForceConformanceInForLoopScope>
-      <GenerateModuleDependencies>false</GenerateModuleDependencies>
-      <GenerateSourceDependencies>false</GenerateSourceDependencies>
-      <GenerateXMLDocumentationFiles>false</GenerateXMLDocumentationFiles>
-      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
-      <IntrinsicFunctions>false</IntrinsicFunctions>
-      <IgnoreStandardIncludePath>false</IgnoreStandardIncludePath>
-      <LanguageStandard>stdcpp20</LanguageStandard>
-      <LanguageStandard_C>Default</LanguageStandard_C>
-      <MinimalRebuild>false</MinimalRebuild>
-      <ModuleDependenciesFile>GPU-pipeline\x64\Debug\</ModuleDependenciesFile>
-      <ModuleOutputFile>GPU-pipeline\x64\Debug\</ModuleOutputFile>
-      <OmitDefaultLibName>false</OmitDefaultLibName>
-      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <ObjectFileName>GPU-pipeline\x64\Debug\</ObjectFileName>
-      <CallingConvention>Cdecl</CallingConvention>
-      <ProgramDataBaseFileName>GPU-pipeline\x64\Debug\vc143.pdb</ProgramDataBaseFileName>
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-      <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
-      <PrecompiledHeaderOutputFile>GPU-pipeline\x64\Debug\GPU-pipeline.pch</PrecompiledHeaderOutputFile>
-      <PreprocessToFile>false</PreprocessToFile>
-      <PreprocessKeepComments>false</PreprocessKeepComments>
-      <PreprocessSuppressLineNumbers>false</PreprocessSuppressLineNumbers>
-      <RemoveUnreferencedCodeData>true</RemoveUnreferencedCodeData>
-      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
-      <ShowIncludes>false</ShowIncludes>
-      <SourceDependenciesFile>GPU-pipeline\x64\Debug\</SourceDependenciesFile>
-      <SuppressStartupBanner>true</SuppressStartupBanner>
-      <BufferSecurityCheck>true</BufferSecurityCheck>
-      <SmallerTypeCheck>false</SmallerTypeCheck>
-      <SpectreMitigation>false</SpectreMitigation>
-      <StructMemberAlignment>Default</StructMemberAlignment>
-      <TrackerLogDirectory>GPU-pipeline\x64\Debug\GPU-pipeline.tlog\</TrackerLogDirectory>
-      <TranslateIncludes>false</TranslateIncludes>
-      <MinimalRebuildFromTracking>true</MinimalRebuildFromTracking>
-      <TreatWarningAsError>false</TreatWarningAsError>
-      <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
-      <UseFullPaths>true</UseFullPaths>
-      <WarningLevel>Level3</WarningLevel>
-      <XMLDocumentationFileName>GPU-pipeline\x64\Debug\</XMLDocumentationFileName>
-      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
-      <IntelJCCErratum>false</IntelJCCErratum>
-      <BuildStlModules>false</BuildStlModules>
-      <TreatAngleIncludeAsExternal>false</TreatAngleIncludeAsExternal>
-      <ExternalWarningLevel>InheritWarningLevel</ExternalWarningLevel>
-      <TreatExternalTemplatesAsInternal>true</TreatExternalTemplatesAsInternal>
-      <DisableAnalyzeExternal>false</DisableAnalyzeExternal>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;IMGUIZMO_IMGUI_FOLDER=../imgui/;_UNICODE;UNICODE;</PreprocessorDefinitions>
-      <SDLCheck>true</SDLCheck>
-      <LinkCompiled>true</LinkCompiled>
-      <AdditionalIncludeDirectories>$(ProjectDir)packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\include;$(ProjectDir)packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\include\d3dx12;$(ProjectDir)packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\;</AdditionalIncludeDirectories>
-    </ClCompile>
+    <ClCompile Include="source\GPU-pipeline.cpp" />
     <ClCompile Include="thirdpatry\imgui\imgui.cpp" />
     <ClCompile Include="thirdpatry\imgui\imgui_demo.cpp" />
     <ClCompile Include="thirdpatry\imgui\imgui_draw.cpp" />
@@ -338,6 +188,8 @@
     <ClCompile Include="thirdpatry\meshoptimizer\src\vertexcodec.cpp" />
     <ClCompile Include="thirdpatry\meshoptimizer\src\vertexfilter.cpp" />
     <ClCompile Include="thirdpatry\meshoptimizer\src\vfetchoptimizer.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\meshletutils.cpp" />
+    <ClCompile Include="thirdpatry\meshoptimizer\src\meshletcodec.cpp" />
     <ClCompile Include="thirdpatry\imGuIZMO.quat\imguizmo_quat\imGuIZMOquat.cpp" />
     <ClCompile Include="thirdpatry\ImGuizmo\ImGuizmo.cpp" />
   </ItemGroup>
@@ -378,6 +230,8 @@
     <None Include="content\shader\meshlet_as.hlsl" />
     <None Include="content\shader\meshlet_ms.hlsl" />
     <None Include="content\shader\meshlet_ps.hlsl" />
+    <None Include="content\shader\material_resolve_cs.hlsl" />
+    <None Include="content\shader\tonemapping_cs.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\actor\Camera.h" />

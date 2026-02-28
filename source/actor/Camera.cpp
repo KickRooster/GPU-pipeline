@@ -8,7 +8,7 @@ Camera::Camera()
     :CullingCamera(nullptr)
 {
     ConstantBufferInstance = make_unique<CameraConstantBuffer>();
-    ConstantBufferInstance->LODErrorThreshold = 4.0f;
+    ConstantBufferInstance->LODErrorThreshold = 1.0f;
     ConstantBufferProxyInstance = make_unique<ConstantBufferProxy>();
 }
 

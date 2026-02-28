@@ -1,18 +1,13 @@
 ﻿#pragma once
-
 #include "../misc/Base.h"
 #include <d3d12.h>
-#include <d3dx12.h>
 #include <dxgi1_4.h>
-#include "../misc/Base.h"
 #include "../misc/DesignPatterns.h"
 #include "imgui.h"
 #include "backends/imgui_impl_dx12.h"
 #include <vector>
 #include "MeshProxy.h"
 #include "../level/Level.h"
-#include "../asset/Mesh.h"
-#include "../asset/Material.h"
 
 // Simple free list based allocator
 struct ImGUIDescriptorHeapAllocator
@@ -101,6 +96,16 @@ struct FrameContext
     Microsoft::WRL::ComPtr<ID3D12Resource> RenderTarget = nullptr;
     Microsoft::WRL::ComPtr<ID3D12Resource> TransitionTexture = nullptr;
     Microsoft::WRL::ComPtr<ID3D12Resource> DepthStencilBuffer = nullptr;
+
+    // Visibility Buffer 资源
+    Microsoft::WRL::ComPtr<ID3D12Resource> VisibilityBuffer = nullptr;
+    D3D12_CPU_DESCRIPTOR_HANDLE VisibilityBufferRTVHandle;
+    D3D12_CPU_DESCRIPTOR_HANDLE VisibilityBufferSRVCPUHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE VisibilityBufferSRVGPUHandle;
+
+    // RenderTarget UAV (供 Material Resolve compute shader 写入)
+    D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetUAVCPUHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE RenderTargetUAVGPUHandle;
 };
 
 struct IDxcBlob;
@@ -114,7 +119,7 @@ class PipelineInterface : public Singleton<PipelineInterface>
     const int BackBufferCount = 2;
     const unsigned int BindlessTextureStartIndex = 32;
     const int SRVHeapSize = 32768;
-    //  Less than SRVHeapSize - BindlessTextureStartIndex - FrameNumInFlight*2(SRV+TransitionUAV)
+    //  Less than SRVHeapSize - BindlessTextureStartIndex - FrameNumInFlight*4(SRV+TransitionUAV+VB_SRV+RT_UAV)
     const unsigned int MaxTextureDescriptors = 16384;
     const unsigned int MaxCubemapDescriptors = 1024;
     
@@ -146,6 +151,8 @@ class PipelineInterface : public Singleton<PipelineInterface>
     Microsoft::WRL::ComPtr<ID3D12PipelineState> MeshShaderPipelineState;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> ComputeShaderRootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> ComputeShaderPipelineState;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> MaterialResolveRootSignature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> MaterialResolvePipelineState;
 
     BindlessAllocator TextureAllocator;
     BindlessAllocator CubemapAllocator;
@@ -164,10 +171,13 @@ class PipelineInterface : public Singleton<PipelineInterface>
 
     Microsoft::WRL::ComPtr<ID3D12Resource> GlobalGroupBoundsBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> GlobalGroupBoundsBufferUpload;
-    
-    Microsoft::WRL::ComPtr<ID3D12Resource> MeshInstanceBuffer;
-    Microsoft::WRL::ComPtr<ID3D12Resource> MeshInstanceBufferUpload;
 
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalTriangleMaterialIDsBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalTriangleMaterialIDsBufferUpload;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalMaterialTableBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> GlobalMaterialTableBufferUpload;
+    
     // GPU Scene: Primitive transform buffer (UE5-style)
     Microsoft::WRL::ComPtr<ID3D12Resource> ScenePrimitiveBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> ScenePrimitiveBufferUpload;
@@ -179,12 +189,15 @@ class PipelineInterface : public Singleton<PipelineInterface>
     DirectX::XMFLOAT2 ViewportSize = DirectX::XMFLOAT2(0, 0);
     bool bResizedLastFrame = false;
 
+    D3D12_FILL_MODE CurrentFillMode = D3D12_FILL_MODE_SOLID;
+
 public:
     ErrorCode CreateRootSignature();
     ErrorCode CompileShaderFXC(const std::string& ShaderPath, const std::string& EntryPoint, const std::string& TargetProfile, Microsoft::WRL::ComPtr<ID3DBlob>& OutShaderBlob) const;
     ErrorCode CompileShaderDXC(const std::string& ShaderPath, const std::wstring& EntryPoint, const std::wstring& TargetProfile, Microsoft::WRL::ComPtr<IDxcBlob>& OutShaderBlob) const;
     ErrorCode RecompileShaders();
     ErrorCode CreateMeshShaderPipelineState();
+    ErrorCode CreateMaterialResolveComputePipelineState();
     ErrorCode CreatePostProcessComputePipelineState();
     ErrorCode Initialize(HWND hWnd);
     void CleanUp();
@@ -210,12 +223,16 @@ public:
     void ResetUploadCommandAllocator() const;
     void ResetUploadCommandList() const;
     void ExecuteAndWaitUploadCommandList();
+    void ReleaseGlobalUploadBuffers();
     ErrorCode CreateGlobalMergedMeshBuffers(const Level* LevelInstance);
     ErrorCode UpdateScenePrimitiveBuffer(const Level* LevelInstance);
     ErrorCode CreateTexture(const Texture* TextureInstance, unsigned int DescriptorIndex, TextureProxy* TextureProxyInstance, bool ImmediateExecute = true);
     ErrorCode CreateCubemap(const CubemapTexture* CubemapInstance, unsigned int DescriptorIndex, CubemapTextureProxy* CubemapProxyInstance, bool ImmediateExecute = true);
     ErrorCode CreateConstantBuffer(const Actor* ActorInstance) const;
     ErrorCode UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);
-    void RenderLevel(unsigned int FrameContextIndex, const Level* LevelInstance) const;
+    void RenderVisibilityPass(unsigned int FrameContextIndex, const Level* LevelInstance) const;
+    void RenderMaterialResolve(unsigned int FrameContextIndex, const Level* LevelInstance) const;
     void RenderPostProcessCompute(unsigned int FrameContextIndex) const;
+    D3D12_FILL_MODE GetFillMode() const { return CurrentFillMode; }
+    ErrorCode SetFillMode(D3D12_FILL_MODE FillMode);
 };

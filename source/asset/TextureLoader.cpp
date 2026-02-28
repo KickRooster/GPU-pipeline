@@ -66,19 +66,29 @@ ErrorCode TextureLoader::LoadTexture(const std::string& FilePath, bool IsSRGB, T
     
     OutTextureInstance.IsHDR = stbi_is_hdr(TextureFullPath.c_str());
     
+    int LoadWidth = 0, LoadHeight = 0;
+
     if (OutTextureInstance.IsHDR)
     {
-        float* Data = stbi_loadf(TextureFullPath.c_str(), &OutTextureInstance.Width, &OutTextureInstance.Height, &OutTextureInstance.Channels, 0);
+        float* Data = stbi_loadf(TextureFullPath.c_str(), &LoadWidth, &LoadHeight, &OutTextureInstance.Channels, 0);
         if (Data == nullptr)
         {
             return ErrorCode::TextureLoadFailed;
         }
-        OutTextureInstance.Data = Data;
-        OutTextureInstance.ByteSize = OutTextureInstance.Width * OutTextureInstance.Height * OutTextureInstance.Channels * sizeof(float);
+
+        MipLevel BaseMip;
+        BaseMip.Width = LoadWidth;
+        BaseMip.Height = LoadHeight;
+        size_t ByteSize = LoadWidth * LoadHeight * OutTextureInstance.Channels * sizeof(float);
+        BaseMip.Data.resize(ByteSize);
+        memcpy(BaseMip.Data.data(), Data, ByteSize);
+        stbi_image_free(Data);
+
+        OutTextureInstance.Mips.push_back(std::move(BaseMip));
     }
     else
     {
-        stbi_uc* Data = stbi_load(TextureFullPath.c_str(), &OutTextureInstance.Width, &OutTextureInstance.Height, &OutTextureInstance.Channels, 0);
+        stbi_uc* Data = stbi_load(TextureFullPath.c_str(), &LoadWidth, &LoadHeight, &OutTextureInstance.Channels, 0);
         if (Data == nullptr)
         {
             return ErrorCode::TextureLoadFailed;
@@ -86,39 +96,40 @@ ErrorCode TextureLoader::LoadTexture(const std::string& FilePath, bool IsSRGB, T
 
         OutTextureInstance.OriginalChannels = OutTextureInstance.Channels;
         
+        MipLevel BaseMip;
+        BaseMip.Width = LoadWidth;
+        BaseMip.Height = LoadHeight;
+
         if (OutTextureInstance.Channels == 3)
         {
-            const int PixelCount = OutTextureInstance.Width * OutTextureInstance.Height;
-            stbi_uc* RGBAData = (stbi_uc*)malloc(PixelCount * 4);
-            if (RGBAData)
+            const int PixelCount = LoadWidth * LoadHeight;
+            BaseMip.Data.resize(PixelCount * 4);
+            for (int i = 0; i < PixelCount; ++i)
             {
-                for (int i = 0; i < PixelCount; ++i)
-                {
-                    RGBAData[i * 4 + 0] = Data[i * 3 + 0]; // R
-                    RGBAData[i * 4 + 1] = Data[i * 3 + 1]; // G
-                    RGBAData[i * 4 + 2] = Data[i * 3 + 2]; // B
-                    RGBAData[i * 4 + 3] = 255;             // A
-                }
-                stbi_image_free(Data);
-                OutTextureInstance.Data = RGBAData;
-                OutTextureInstance.Channels = 4;
-                OutTextureInstance.ByteSize = PixelCount * 4;
+                BaseMip.Data[i * 4 + 0] = Data[i * 3 + 0];
+                BaseMip.Data[i * 4 + 1] = Data[i * 3 + 1];
+                BaseMip.Data[i * 4 + 2] = Data[i * 3 + 2];
+                BaseMip.Data[i * 4 + 3] = 255;
             }
-            else
-            {
-                stbi_image_free(Data);
-                
-                return ErrorCode::AllocateTextureMemoryFailed;
-            }
+            stbi_image_free(Data);
+            OutTextureInstance.Channels = 4;
         }
         else
         {
-            OutTextureInstance.Data = Data;
-            OutTextureInstance.ByteSize = OutTextureInstance.Width * OutTextureInstance.Height * OutTextureInstance.Channels;
+            size_t ByteSize = LoadWidth * LoadHeight * OutTextureInstance.Channels;
+            BaseMip.Data.resize(ByteSize);
+            memcpy(BaseMip.Data.data(), Data, ByteSize);
+            stbi_image_free(Data);
         }
+
+        OutTextureInstance.Mips.push_back(std::move(BaseMip));
     }
     
+    OutTextureInstance.IsSRGB = IsSRGB;
     OutTextureInstance.Format = GetDXGIFormat(OutTextureInstance.Channels, OutTextureInstance.IsHDR, IsSRGB);
-    
+
+    // Generate mipmap chain (box filter downsampling)
+    OutTextureInstance.GenerateMipmaps();
+
     return ErrorCode::OK;
 }

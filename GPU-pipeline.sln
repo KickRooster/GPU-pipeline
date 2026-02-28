@@ -1,19 +1,9 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.31729.503
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36717.8 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GPU-pipeline", "GPU-pipeline.vcxproj", "{F4FD2981-A510-406D-AA7A-2F73C7E2BADF}"
-	ProjectSection(ProjectDependencies) = postProject
-		{C5D2A52E-F3BD-3B3B-BEF0-6AEAC3FBCFE9} = {C5D2A52E-F3BD-3B3B-BEF0-6AEAC3FBCFE9}
-	EndProjectSection
-EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "assimp", "thirdpatry\assimp\build_v143\code\assimp.vcxproj", "{C5D2A52E-F3BD-3B3B-BEF0-6AEAC3FBCFE9}"
-	ProjectSection(ProjectDependencies) = postProject
-		{A31FDE90-60D7-37D2-81A0-0364405F0230} = {A31FDE90-60D7-37D2-81A0-0364405F0230}
-	EndProjectSection
-EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zlibstatic", "thirdpatry\assimp\build_v143\contrib\zlib\zlibstatic.vcxproj", "{A31FDE90-60D7-37D2-81A0-0364405F0230}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -31,18 +21,6 @@ Global
 		{F4FD2981-A510-406D-AA7A-2F73C7E2BADF}.Release|x64.Build.0 = Release|x64
 		{F4FD2981-A510-406D-AA7A-2F73C7E2BADF}.Release|x86.ActiveCfg = Release|Win32
 		{F4FD2981-A510-406D-AA7A-2F73C7E2BADF}.Release|x86.Build.0 = Release|Win32
-		{C5D2A52E-F3BD-3B3B-BEF0-6AEAC3FBCFE9}.Debug|x64.ActiveCfg = Debug|x64
-		{C5D2A52E-F3BD-3B3B-BEF0-6AEAC3FBCFE9}.Debug|x64.Build.0 = Debug|x64
-		{C5D2A52E-F3BD-3B3B-BEF0-6AEAC3FBCFE9}.Debug|x86.ActiveCfg = Debug|x64
-		{C5D2A52E-F3BD-3B3B-BEF0-6AEAC3FBCFE9}.Release|x64.ActiveCfg = Release|x64
-		{C5D2A52E-F3BD-3B3B-BEF0-6AEAC3FBCFE9}.Release|x64.Build.0 = Release|x64
-		{C5D2A52E-F3BD-3B3B-BEF0-6AEAC3FBCFE9}.Release|x86.ActiveCfg = Release|x64
-		{A31FDE90-60D7-37D2-81A0-0364405F0230}.Debug|x64.ActiveCfg = Debug|x64
-		{A31FDE90-60D7-37D2-81A0-0364405F0230}.Debug|x64.Build.0 = Debug|x64
-		{A31FDE90-60D7-37D2-81A0-0364405F0230}.Debug|x86.ActiveCfg = Debug|x64
-		{A31FDE90-60D7-37D2-81A0-0364405F0230}.Release|x64.ActiveCfg = Release|x64
-		{A31FDE90-60D7-37D2-81A0-0364405F0230}.Release|x64.Build.0 = Release|x64
-		{A31FDE90-60D7-37D2-81A0-0364405F0230}.Release|x86.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

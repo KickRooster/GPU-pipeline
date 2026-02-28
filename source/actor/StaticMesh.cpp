@@ -68,12 +68,6 @@ void StaticMesh::SetMaterial(std::unique_ptr<Material> InMaterialInstance, std::
 {
     MaterialInstance = std::move(InMaterialInstance);
     MaterialProxyInstance = std::move(InMaterialProxyInstance);
-
-    // Update GPU Scene data with PBR texture indices
-    SceneData.PBRTextureIndices[0].Value = MaterialProxyInstance->AlbedoTextureIndex;
-    SceneData.PBRTextureIndices[1].Value = MaterialProxyInstance->NormalTextureIndex;
-    SceneData.PBRTextureIndices[2].Value = MaterialProxyInstance->MetallicTextureIndex;
-    SceneData.PBRTextureIndices[3].Value = MaterialProxyInstance->RoughnessTextureIndex;
 }
 
 const Material* StaticMesh::GetMaterial() const

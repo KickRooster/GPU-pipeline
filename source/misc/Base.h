@@ -7,7 +7,6 @@
 #include <DirectXMath.h>
 
 inline constexpr int FrameNumInFlight = 2;
-inline constexpr unsigned int MaxMeshInstances = 1024;
 
 enum class ErrorCode : int
 {

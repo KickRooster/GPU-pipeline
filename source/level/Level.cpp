@@ -11,6 +11,9 @@
 using namespace std;
 using namespace DirectX;
 
+// Global material ID counter to avoid conflicts across multiple meshes
+static unsigned int GlobalMaterialIDCounter = 0;
+
 int Level::InstantiateStaticMeshes(const string& Path)
 {
     vector<Mesh> Meshes;
@@ -20,6 +23,7 @@ int Level::InstantiateStaticMeshes(const string& Path)
     // Merge all submesh vertices and indices (transforms already baked by MeshLoader)
     vector<Vertex> MergedVertices;
     vector<unsigned int> MergedIndices;
+    vector<unsigned int> TriangleMaterialIDs;  // Track which submesh each triangle came from
 
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
@@ -35,27 +39,55 @@ int Level::InstantiateStaticMeshes(const string& Path)
         {
             MergedIndices.push_back(Meshes[I].Indices[IdxOffset] + BaseVertex);
         }
+
+        // Assign global material ID for each triangle in this submesh
+        size_t TriangleCount = Meshes[I].Indices.size() / 3;
+        for (size_t TriIdx = 0; TriIdx < TriangleCount; ++TriIdx)
+        {
+            TriangleMaterialIDs.push_back(GlobalMaterialIDCounter + I);  // Global material ID
+        }
     }
 
-    // Run Nanite ONCE on merged data
+    // Update global material ID counter
+    GlobalMaterialIDCounter += static_cast<unsigned int>(Meshes.size());
+
+    // Run Nanite ONCE on merged data with material tracking
     vector<ClusterData> MergedClusters;
     vector<CLODBound> MergedGroupBounds;
+    Mesh MergedMesh;
 
     if (!MergedVertices.empty() && !MergedIndices.empty())
     {
-        Mesh MergedMesh;
         MergedMesh.Vertices = MergedVertices;
         MergedMesh.Indices = MergedIndices;
         MergedMesh.Local2WorldMatrix = Meshes[0].Local2WorldMatrix;
-        MergedMesh.BoundingSphere = Meshes[0].BoundingSphere;
 
-        MeshLoader::GetInstance().Nanite(MergedMesh, MergedClusters, MergedGroupBounds);
+        // Compute bounding sphere for merged mesh (centroid + max distance)
+        XMVECTOR CentroidSum = XMVectorZero();
+        for (const auto& V : MergedVertices)
+            CentroidSum = XMVectorAdd(CentroidSum, XMLoadFloat3(&V.Position));
+        XMVECTOR Centroid = XMVectorScale(CentroidSum, 1.0f / static_cast<float>(MergedVertices.size()));
+        float MaxDistSq = 0.0f;
+        for (const auto& V : MergedVertices)
+        {
+            XMVECTOR Diff = XMVectorSubtract(XMLoadFloat3(&V.Position), Centroid);
+            float DistSq = XMVectorGetX(XMVector3LengthSq(Diff));
+            if (DistSq > MaxDistSq) MaxDistSq = DistSq;
+        }
+        XMFLOAT3 CentroidF;
+        XMStoreFloat3(&CentroidF, Centroid);
+        MergedMesh.BoundingSphere = XMFLOAT4(CentroidF.x, CentroidF.y, CentroidF.z, sqrtf(MaxDistSq));
+
+        MeshLoader::GetInstance().Nanite(MergedMesh, TriangleMaterialIDs, MergedClusters, MergedGroupBounds);
     }
 
     // Create single NaniteData and NaniteClusterProxy for the merged mesh
     unique_ptr<NaniteData> MergedNaniteData = make_unique<NaniteData>();
     MergedNaniteData->Clusters = move(MergedClusters);
     MergedNaniteData->GroupBounds = move(MergedGroupBounds);
+
+    // Verify Nanite hierarchy against Nanite implementation standards
+    //MeshLoader::VerifyNaniteHierarchy(*MergedNaniteData, MergedMesh, Path);
 
     unique_ptr<NaniteClusterProxy> MergedNaniteClusterProxy = make_unique<NaniteClusterProxy>();
 
@@ -116,63 +148,63 @@ int Level::InstantiateStaticMeshes(const string& Path)
     // GPU-Driven: Don't create per-mesh buffers, just upload textures
     // Mesh buffers will be created globally later via CreateGlobalMergedMeshBuffers
 
-    // Create textures for materials (阶段1: use first material only)
-    if (!MaterialInstances.empty())
+    // Create textures for ALL materials (multi-material support)
+    for (unsigned int I = 0; I < MaterialInstances.size(); ++I)
     {
-        if (MaterialInstances[0]->AlbedoTexture)
+        if (MaterialInstances[I]->AlbedoTexture)
         {
             unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
             
             PipelineInterface::GetInstance().CreateTexture(
-                MaterialInstances[0]->AlbedoTexture.get(),
-                MaterialProxyInstances[0]->AlbedoTextureIndex,
+                MaterialInstances[I]->AlbedoTexture.get(),
+                MaterialProxyInstances[I]->AlbedoTextureIndex,
                 TextureProxyInstance.get(),
                 false
             );
 
-            MaterialInstances[0]->AlbedoTextureProxy = move(TextureProxyInstance);
+            MaterialInstances[I]->AlbedoTextureProxy = move(TextureProxyInstance);
         }
 
-        if (MaterialInstances[0]->NormalTexture)
+        if (MaterialInstances[I]->NormalTexture)
         {
             unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
             
             PipelineInterface::GetInstance().CreateTexture(
-                MaterialInstances[0]->NormalTexture.get(),
-                MaterialProxyInstances[0]->NormalTextureIndex,
+                MaterialInstances[I]->NormalTexture.get(),
+                MaterialProxyInstances[I]->NormalTextureIndex,
                 TextureProxyInstance.get(),
                 false
             );
 
-            MaterialInstances[0]->NormalTextureProxy = move(TextureProxyInstance);
+            MaterialInstances[I]->NormalTextureProxy = move(TextureProxyInstance);
         }
 
-        if (MaterialInstances[0]->MetallicTexture)
+        if (MaterialInstances[I]->MetallicTexture)
         {
             unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
             
             PipelineInterface::GetInstance().CreateTexture(
-                MaterialInstances[0]->MetallicTexture.get(),
-                MaterialProxyInstances[0]->MetallicTextureIndex,
+                MaterialInstances[I]->MetallicTexture.get(),
+                MaterialProxyInstances[I]->MetallicTextureIndex,
                 TextureProxyInstance.get(),
                 false
             );
 
-            MaterialInstances[0]->MetallicTextureProxy = move(TextureProxyInstance);
+            MaterialInstances[I]->MetallicTextureProxy = move(TextureProxyInstance);
         }
 
-        if (MaterialInstances[0]->RoughnessTexture)
+        if (MaterialInstances[I]->RoughnessTexture)
         {
             unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
             
             PipelineInterface::GetInstance().CreateTexture(
-                MaterialInstances[0]->RoughnessTexture.get(),
-                MaterialProxyInstances[0]->RoughnessTextureIndex,
+                MaterialInstances[I]->RoughnessTexture.get(),
+                MaterialProxyInstances[I]->RoughnessTextureIndex,
                 TextureProxyInstance.get(),
                 false
             );
 
-            MaterialInstances[0]->RoughnessTextureProxy = move(TextureProxyInstance);
+            MaterialInstances[I]->RoughnessTextureProxy = move(TextureProxyInstance);
         }
     }
 
@@ -188,10 +220,23 @@ int Level::InstantiateStaticMeshes(const string& Path)
 
     PipelineInterface::GetInstance().CreateConstantBuffer(ActorInstance.get());
 
-    // Set material (阶段1: use first material)
-    if (!MaterialInstances.empty())
+    if (!MaterialProxyInstances.empty())
     {
-        ActorInstance->SetMaterial(move(MaterialInstances[0]), move(MaterialProxyInstances[0]));
+        unique_ptr<Material> FirstMat = make_unique<Material>();
+        unique_ptr<MaterialProxy> FirstProxy = make_unique<MaterialProxy>(*MaterialProxyInstances[0]);
+        ActorInstance->SetMaterial(move(FirstMat), move(FirstProxy));
+    }
+
+    // Store all material proxies in global array (indexed by global material ID)
+    for (unsigned int I = 0; I < MaterialProxyInstances.size(); ++I)
+    {
+        AllMaterialProxies.push_back(*MaterialProxyInstances[I]);
+    }
+
+    // Store all materials to keep GPU texture resources alive
+    for (unsigned int I = 0; I < MaterialInstances.size(); ++I)
+    {
+        AllMaterials.push_back(move(MaterialInstances[I]));
     }
 
     ActorInstance->Transform.Position = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
@@ -215,6 +260,7 @@ StaticMesh* Level::InstantiateCullingVisualCamera()
     // Merge all submesh vertices and indices (transforms already baked by MeshLoader)
     vector<Vertex> MergedVertices;
     vector<unsigned int> MergedIndices;
+    vector<unsigned int> TriangleMaterialIDs;
 
     for (unsigned int I = 0; I < Meshes.size(); ++I)
     {
@@ -229,9 +275,19 @@ StaticMesh* Level::InstantiateCullingVisualCamera()
         {
             MergedIndices.push_back(Meshes[I].Indices[IdxOffset] + BaseVertex);
         }
+
+        // Assign global material ID for each triangle
+        size_t TriangleCount = Meshes[I].Indices.size() / 3;
+        for (size_t TriIdx = 0; TriIdx < TriangleCount; ++TriIdx)
+        {
+            TriangleMaterialIDs.push_back(GlobalMaterialIDCounter + I);  // Global material ID
+        }
     }
 
-    // Run Nanite ONCE on merged data
+    // Update global material ID counter
+    GlobalMaterialIDCounter += static_cast<unsigned int>(Meshes.size());
+
+    // Run Nanite ONCE on merged data with material tracking
     vector<ClusterData> MergedClusters;
     vector<CLODBound> MergedGroupBounds;
 
@@ -241,10 +297,28 @@ StaticMesh* Level::InstantiateCullingVisualCamera()
         MergedMesh.Vertices = MergedVertices;
         MergedMesh.Indices = MergedIndices;
         MergedMesh.Local2WorldMatrix = Meshes[0].Local2WorldMatrix;
-        MergedMesh.BoundingSphere = Meshes[0].BoundingSphere;
 
-        MeshLoader::GetInstance().Nanite(MergedMesh, MergedClusters, MergedGroupBounds);
+        // Compute bounding sphere for merged mesh (centroid + max distance)
+        XMVECTOR CentroidSum = XMVectorZero();
+        for (const auto& V : MergedVertices)
+            CentroidSum = XMVectorAdd(CentroidSum, XMLoadFloat3(&V.Position));
+        XMVECTOR Centroid = XMVectorScale(CentroidSum, 1.0f / static_cast<float>(MergedVertices.size()));
+        float MaxDistSq = 0.0f;
+        for (const auto& V : MergedVertices)
+        {
+            XMVECTOR Diff = XMVectorSubtract(XMLoadFloat3(&V.Position), Centroid);
+            float DistSq = XMVectorGetX(XMVector3LengthSq(Diff));
+            if (DistSq > MaxDistSq) MaxDistSq = DistSq;
+        }
+        XMFLOAT3 CentroidF;
+        XMStoreFloat3(&CentroidF, Centroid);
+        MergedMesh.BoundingSphere = XMFLOAT4(CentroidF.x, CentroidF.y, CentroidF.z, sqrtf(MaxDistSq));
+
+        MeshLoader::GetInstance().Nanite(MergedMesh, TriangleMaterialIDs, MergedClusters, MergedGroupBounds);
     }
+
+    // Verify multi-material support
+    //MeshLoader::VerifyNaniteHierarchy(...);
 
     unique_ptr<NaniteData> MergedNaniteData = make_unique<NaniteData>();
     MergedNaniteData->Clusters = move(MergedClusters);
@@ -252,8 +326,102 @@ StaticMesh* Level::InstantiateCullingVisualCamera()
 
     unique_ptr<NaniteClusterProxy> MergedNaniteClusterProxy = make_unique<NaniteClusterProxy>();
 
-    unique_ptr<Material> MaterialInstance = make_unique<Material>();
-    unique_ptr<MaterialProxy> MaterialProxyInstance = make_unique<MaterialProxy>();
+    vector<unique_ptr<Material>> MaterialInstances;
+    vector<unique_ptr<MaterialProxy>> MaterialProxyInstances;
+
+    for (unsigned int I = 0; I < TextureNamesPatches.size(); ++I)
+    {
+        unique_ptr<Material> MatInstance = make_unique<Material>();
+        unique_ptr<MaterialProxy> MatProxyInstance = make_unique<MaterialProxy>();
+
+        if (!TextureNamesPatches[I].AlbedoPath.empty())
+        {
+            Texture TextureInstance;
+            if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[I].AlbedoPath, true, TextureInstance) == ErrorCode::OK)
+            {
+                MatInstance->AlbedoTexture = make_unique<Texture>(std::move(TextureInstance));
+                MatProxyInstance->AlbedoTextureIndex = PipelineInterface::GetInstance().GetTextureBindlessAllocator().AllocateRange(1);
+            }
+        }
+
+        if (!TextureNamesPatches[I].NormalPath.empty())
+        {
+            Texture TextureInstance;
+            if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[I].NormalPath, false, TextureInstance) == ErrorCode::OK)
+            {
+                MatInstance->NormalTexture = make_unique<Texture>(std::move(TextureInstance));
+                MatProxyInstance->NormalTextureIndex = PipelineInterface::GetInstance().GetTextureBindlessAllocator().AllocateRange(1);
+            }
+        }
+
+        if (!TextureNamesPatches[I].MetallicPath.empty())
+        {
+            Texture TextureInstance;
+            if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[I].MetallicPath, false, TextureInstance) == ErrorCode::OK)
+            {
+                MatInstance->MetallicTexture = make_unique<Texture>(std::move(TextureInstance));
+                MatProxyInstance->MetallicTextureIndex = PipelineInterface::GetInstance().GetTextureBindlessAllocator().AllocateRange(1);
+            }
+        }
+
+        if (!TextureNamesPatches[I].RoughnessPath.empty())
+        {
+            Texture TextureInstance;
+            if (TextureLoader::GetInstance().LoadTexture(TextureNamesPatches[I].RoughnessPath, false, TextureInstance) == ErrorCode::OK)
+            {
+                MatInstance->RoughnessTexture = make_unique<Texture>(std::move(TextureInstance));
+                MatProxyInstance->RoughnessTextureIndex = PipelineInterface::GetInstance().GetTextureBindlessAllocator().AllocateRange(1);
+            }
+        }
+
+        MaterialInstances.push_back(move(MatInstance));
+        MaterialProxyInstances.push_back(move(MatProxyInstance));
+    }
+
+    PipelineInterface::GetInstance().ResetUploadCommandList();
+
+    // Upload all materials' textures
+    for (unsigned int I = 0; I < MaterialInstances.size(); ++I)
+    {
+        if (MaterialInstances[I]->AlbedoTexture)
+        {
+            unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
+            PipelineInterface::GetInstance().CreateTexture(
+                MaterialInstances[I]->AlbedoTexture.get(),
+                MaterialProxyInstances[I]->AlbedoTextureIndex,
+                TextureProxyInstance.get(), false);
+            MaterialInstances[I]->AlbedoTextureProxy = move(TextureProxyInstance);
+        }
+        if (MaterialInstances[I]->NormalTexture)
+        {
+            unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
+            PipelineInterface::GetInstance().CreateTexture(
+                MaterialInstances[I]->NormalTexture.get(),
+                MaterialProxyInstances[I]->NormalTextureIndex,
+                TextureProxyInstance.get(), false);
+            MaterialInstances[I]->NormalTextureProxy = move(TextureProxyInstance);
+        }
+        if (MaterialInstances[I]->MetallicTexture)
+        {
+            unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
+            PipelineInterface::GetInstance().CreateTexture(
+                MaterialInstances[I]->MetallicTexture.get(),
+                MaterialProxyInstances[I]->MetallicTextureIndex,
+                TextureProxyInstance.get(), false);
+            MaterialInstances[I]->MetallicTextureProxy = move(TextureProxyInstance);
+        }
+        if (MaterialInstances[I]->RoughnessTexture)
+        {
+            unique_ptr<TextureProxy> TextureProxyInstance = make_unique<TextureProxy>();
+            PipelineInterface::GetInstance().CreateTexture(
+                MaterialInstances[I]->RoughnessTexture.get(),
+                MaterialProxyInstances[I]->RoughnessTextureIndex,
+                TextureProxyInstance.get(), false);
+            MaterialInstances[I]->RoughnessTextureProxy = move(TextureProxyInstance);
+        }
+    }
+
+    PipelineInterface::GetInstance().ExecuteAndWaitUploadCommandList();
 
     unique_ptr<CullingVisualCamera> CullingVisualInstance = make_unique<CullingVisualCamera>(
         &Meshes[0].Local2WorldMatrix,
@@ -261,7 +429,25 @@ StaticMesh* Level::InstantiateCullingVisualCamera()
         move(MergedNaniteData),
         move(MergedNaniteClusterProxy));
 
-    CullingVisualInstance->SetMaterial(move(MaterialInstance), move(MaterialProxyInstance));
+    // Store all material proxies in global array
+    for (unsigned int I = 0; I < MaterialProxyInstances.size(); ++I)
+    {
+        AllMaterialProxies.push_back(*MaterialProxyInstances[I]);
+    }
+
+    // Store all materials to keep GPU texture resources alive
+    for (unsigned int I = 0; I < MaterialInstances.size(); ++I)
+    {
+        AllMaterials.push_back(move(MaterialInstances[I]));
+    }
+
+    if (!MaterialProxyInstances.empty())
+    {
+        unique_ptr<Material> FirstMat = make_unique<Material>();
+        unique_ptr<MaterialProxy> FirstProxy = make_unique<MaterialProxy>(*MaterialProxyInstances[0]);
+        CullingVisualInstance->SetMaterial(move(FirstMat), move(FirstProxy));
+    }
+
     PipelineInterface::GetInstance().CreateConstantBuffer(CullingVisualInstance.get());
     
     CullingVisualInstance->Transform.Position.x = 25;
@@ -295,10 +481,10 @@ Camera* Level::InstantiateCamera()
     ActorInstance->AspectRatio = 1.f;
     ActorInstance->NearPlane = 0.1f;
     ActorInstance->FarPlane = 10000.0f;
-    ActorInstance->Transform.Position.x = 0;
-    ActorInstance->Transform.Position.y = 500.0f;
-    ActorInstance->Transform.Position.z = 0;
-    ActorInstance->LookDirection = XMFLOAT3(1.0f, 0, 0);
+    ActorInstance->Transform.Position.x = 12.7424021f;
+    ActorInstance->Transform.Position.y = 69.4671021f;
+    ActorInstance->Transform.Position.z = 232.522491f;
+    ActorInstance->LookDirection = XMFLOAT3(0.0334060229f, 0.0364667103f, -0.998776376);
     ActorInstance->UpDirection = XMFLOAT3(0, 1.0f, 0);
     Cameras.push_back(move(ActorInstance));
 
@@ -373,59 +559,53 @@ void Level::CreateGlobalMeshBuffers()
     PipelineInterface::GetInstance().ResetUploadCommandList();
     PipelineInterface::GetInstance().CreateGlobalMergedMeshBuffers(this);
     PipelineInterface::GetInstance().ExecuteAndWaitUploadCommandList();
+    PipelineInterface::GetInstance().ReleaseGlobalUploadBuffers();
 }
 
-void Level::Update(float DeletaTime, unsigned int FrameIndex) const
+void Level::Update(float DeltaTime, unsigned int FrameIndex) const
 {
     for (const unique_ptr<Camera>& Actor : Cameras)
     {
-        Actor->Update(DeletaTime, FrameIndex);
+        Actor->Update(DeltaTime, FrameIndex);
     }
     
     for (const unique_ptr<StaticMesh>& Actor : StaticMeshes)
     {
-        Actor->Update(DeletaTime, FrameIndex);
+        Actor->Update(DeltaTime, FrameIndex);
     }
     
     for (const unique_ptr<SkyLight>& Actor : SkyLights)
     {
-        Actor->Update(DeletaTime, FrameIndex);
+        Actor->Update(DeltaTime, FrameIndex);
     }
 }
 
-vector<StaticMesh*> Level::GetStaticMeshes() const
+const vector<unique_ptr<StaticMesh>>& Level::GetStaticMeshes() const
 {
-    vector<StaticMesh*> Result;
-
-    for (int I = 0; I < StaticMeshes.size(); ++I)
-    {
-        Result.push_back(StaticMeshes[I].get());
-    }
-    
-    return Result;    
+    return StaticMeshes;
 }
 
 vector<Camera*> Level::GetCameras() const
 {
     vector<Camera*> Result;
 
-    for (int I = 0; I < Cameras.size(); ++I)
+    for (size_t I = 0; I < Cameras.size(); ++I)
     {
         Result.push_back(Cameras[I].get());
     }
-    
-    return Result;    
+
+    return Result;
 }
 
 vector<SkyLight*> Level::GetSkyLights() const
 {
     vector<SkyLight*> Result;
 
-    for (int I = 0; I < SkyLights.size(); ++I)
+    for (size_t I = 0; I < SkyLights.size(); ++I)
     {
         Result.push_back(SkyLights[I].get());
     }
-    
+
     return Result;
 }
 
@@ -433,12 +613,12 @@ std::vector<Actor*> Level::GetSelectableActors() const
 {
     vector<Actor*> Result;
 
-    for (int I = 0; I < StaticMeshes.size(); ++I)
+    for (size_t I = 0; I < StaticMeshes.size(); ++I)
     {
         Result.push_back(StaticMeshes[I].get());
     }
 
-    for (int I = 0; I < SkyLights.size(); ++I)
+    for (size_t I = 0; I < SkyLights.size(); ++I)
     {
         Result.push_back(SkyLights[I].get());
     }
@@ -446,9 +626,21 @@ std::vector<Actor*> Level::GetSelectableActors() const
     return Result;
 }
 
-Level::~Level()
+const std::vector<MaterialProxy>& Level::GetAllMaterialProxies() const
+{
+    return AllMaterialProxies;
+}
+
+void Level::Clear()
 {
     StaticMeshes.clear();
     Cameras.clear();
     SkyLights.clear();
+    AllMaterials.clear();
+    AllMaterialProxies.clear();
+}
+
+Level::~Level()
+{
+    Clear();
 }

@@ -147,5 +147,11 @@
     <None Include="content\shader\color.hlsl">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="content\shader\material_resolve_cs.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="content\shader\tonemapping_cs.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

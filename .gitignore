@@ -17,7 +17,6 @@
 *.dll
 
 # Exception: Allow required runtime DLLs
-!x64/Debug/assimp-vc143-mtd.dll
 !x64/Debug/dxcompiler.dll
 !x64/Debug/dxil.dll
 !x64/Release/dxcompiler.dll
@@ -57,10 +56,8 @@ x86/
 !x64/Release/
 x64/Debug/*
 x64/Release/*
-!x64/Debug/assimp-vc143-mtd.dll
 !x64/Debug/dxcompiler.dll
 !x64/Debug/dxil.dll
-!x64/Release/assimp-vc143-mt.dll
 !x64/Release/dxcompiler.dll
 !x64/Release/dxil.dll
 
@@ -105,16 +102,8 @@ packages/
 !packages/*.props
 !packages/*.targets
 
-# Assimp build outputs
-thirdpatry/assimp/build_v143/bin/
-thirdpatry/assimp/build_v143/lib/
-thirdpatry/assimp/build_v143/obj/
-thirdpatry/assimp/build_v143/code/assimp.dir/
-thirdpatry/assimp/build_v143/contrib/zlib/Debug/
-thirdpatry/assimp/build_v143/contrib/zlib/Release/
-thirdpatry/assimp/build_v143/contrib/zlib/MinSizeRel/
-thirdpatry/assimp/build_v143/contrib/zlib/RelWithDebInfo/
-thirdpatry/assimp/build_v143/contrib/zlib/zlibstatic.dir/
+# Assimp source repo (local only, not tracked by main project)
+thirdpatry/assimp_src/
 
 # ImGui settings (user preferences)
 imgui.ini

@@ -20,5 +20,6 @@ private:
 
 public:
     ErrorCode LoadMesh(const std::string& Path, std::vector<Mesh>& OutMeshes, std::vector<PBRTextureNamesPatch>& OutTextureNamesPatches);
-    ErrorCode Nanite(const Mesh& Mesh, std::vector<ClusterData>& OutClusters, std::vector<CLODBound>& OutGroupBounds);
+    ErrorCode Nanite(const Mesh& Mesh, const std::vector<unsigned int>& TriangleMaterialIDs, std::vector<ClusterData>& OutClusters, std::vector<CLODBound>& OutGroupBounds);
+    static void VerifyNaniteHierarchy(const NaniteData& Data, const Mesh& SourceMesh, const std::string& MeshName);
 };

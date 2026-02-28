@@ -18,15 +18,6 @@ cbuffer cbClusterCount : register(b1)
 
 #define AS_CLUSTERS_PER_GROUP 32    // Each AS group dispatches 32 mesh shaders
 
-// Nanite structures
-struct NaniteVertex
-{
-    float3 Position;
-    float3 Normal;
-    float3 Tangent;
-    float2 UV0;
-};
-
 struct GPUCluster
 {
     uint PrimitiveId;            // Index to ScenePrimitiveBuffer (GPU Scene)
@@ -36,9 +27,9 @@ struct GPUCluster
     uint LocalIndicesOffset;
     float3 BoundCenter;
     float BoundRadius;
-    int Refined;
+    int Refined;                 // Index to more detailed group (-1 = leaf, for LOD selection)
     int GroupId;
-    uint Padding;                // 16-byte alignment
+    uint TriangleMaterialIDsOffset;     // Offset in TriangleMaterialIDs buffer
 };
 
 struct GPUGroupBound
@@ -48,37 +39,15 @@ struct GPUGroupBound
     float Error;
 };
 
-// Nanite buffers: Vertex -> UniqueVertices -> LocalIndices -> Cluster -> GroupBounds
-// GPU-Driven mesh instance data (matches C++ GPUMeshInstance)
-struct GPUMeshInstance
-{
-    uint UniqueVerticesOffset;
-    uint UniqueVerticesCount;
-    uint LocalIndicesOffset;
-    uint LocalIndicesCount;
-    uint ClusterOffset;
-    uint ClusterCount;
-    uint GroupBoundsOffset;
-    uint GroupBoundsCount;
-    uint4 Padding;  // Padding for 16-byte alignment
-};
-
-// Global merged Nanite buffers (all meshes combined, Root Descriptors t20-t24)
-StructuredBuffer<NaniteVertex> NaniteVertices : register(t20);
-StructuredBuffer<uint> NaniteUniqueVertices : register(t21);
-ByteAddressBuffer NaniteLocalIndices : register(t22);
-StructuredBuffer<GPUCluster> NaniteClusters : register(t23);
+// Nanite buffers
+StructuredBuffer<GPUCluster>    NaniteClusters    : register(t23);
 StructuredBuffer<GPUGroupBound> NaniteGroupBounds : register(t24);
-
-// Mesh instance buffer (Root Descriptor, t25)
-StructuredBuffer<GPUMeshInstance> MeshInstanceBuffer : register(t25);
 
 // GPU Scene: Primitive transform data (Root Descriptor, t26, UE5-style)
 struct FPrimitiveSceneData
 {
     float4x4 LocalToWorld;
     float4x4 WorldInvTranspose;
-    uint4    PBRTextureIndices[4];  // Albedo, Normal, Metallic, Roughness (16 bytes per element)
 };
 StructuredBuffer<FPrimitiveSceneData> ScenePrimitives : register(t26);
 
@@ -88,6 +57,7 @@ struct Payload
 };
 
 groupshared Payload s_Payload;
+groupshared uint s_VisibleCount;
 
 bool IsClusterVisible(float3 worldCenter, float worldRadius, float4 planes[6])
 {
@@ -100,34 +70,69 @@ bool IsClusterVisible(float3 worldCenter, float worldRadius, float4 planes[6])
     return true;
 }
 
-[numthreads(1, 1, 1)]
+float ComputeScreenError(GPUGroupBound groupBound, float3 cameraPos, float recipTanHalfFovy, float nearPlane, float4x4 localToWorld)
+{
+    float3 worldCenter = mul(float4(groupBound.Center, 1.0), localToWorld).xyz;
+    float maxScale = max(max(length(localToWorld[0].xyz), length(localToWorld[1].xyz)), length(localToWorld[2].xyz));
+    float worldRadius = groupBound.Radius * maxScale;
+    float worldDist = length(worldCenter - cameraPos) - worldRadius;
+    float localDist = max(worldDist, nearPlane) / maxScale;
+    return groupBound.Error / localDist * (recipTanHalfFovy * 0.5f);
+}
+
+bool ShouldRenderCluster(GPUCluster cluster, float3 cameraPos, float recipTanHalfFovy, float4x4 localToWorld)
+{
+    const float threshold = gLODErrorThreshold / gScreenHeight;
+
+    GPUGroupBound myGroup = NaniteGroupBounds[cluster.GroupId];
+    float myGroupError = ComputeScreenError(myGroup, cameraPos, recipTanHalfFovy, gNearPlane, localToWorld);
+    if (myGroupError <= threshold)
+        return false;
+
+    if (cluster.Refined == -1)
+        return true;
+
+    GPUGroupBound refinedGroup = NaniteGroupBounds[cluster.Refined];
+    float refinedGroupError = ComputeScreenError(refinedGroup, cameraPos, recipTanHalfFovy, gNearPlane, localToWorld);
+    return refinedGroupError <= threshold;
+}
+
+[numthreads(AS_CLUSTERS_PER_GROUP, 1, 1)]
 void main(
     uint gid : SV_GroupID,
-    uint3 gtid : SV_GroupThreadID,
-    uint dtid : SV_DispatchThreadID)
+    uint gtid : SV_GroupThreadID)
 {
-    uint startCluster = gid * AS_CLUSTERS_PER_GROUP;
-    uint endCluster = min(startCluster + AS_CLUSTERS_PER_GROUP, gNaniteClusterCount);
-    uint visibleCount = 0;
+    if (gtid == 0)
+        s_VisibleCount = 0;
+    GroupMemoryBarrierWithGroupSync();
 
-    for (uint i = 0; i < (endCluster - startCluster); i++)
+    uint clusterIdx = gid * AS_CLUSTERS_PER_GROUP + gtid;
+    bool shouldDispatch = false;
+
+    if (clusterIdx < gNaniteClusterCount)
     {
-        uint clusterIdx = startCluster + i;
         GPUCluster cluster = NaniteClusters[clusterIdx];
         FPrimitiveSceneData primitiveData = ScenePrimitives[cluster.PrimitiveId];
 
-        float4 localCenter = float4(cluster.BoundCenter, 1.0);
-        float3 worldCenter = mul(localCenter, primitiveData.LocalToWorld).xyz;
+        float3 worldCenter = mul(float4(cluster.BoundCenter, 1.0), primitiveData.LocalToWorld).xyz;
         float maxScale = max(max(length(primitiveData.LocalToWorld[0].xyz),
                                  length(primitiveData.LocalToWorld[1].xyz)),
                                  length(primitiveData.LocalToWorld[2].xyz));
         float worldRadius = cluster.BoundRadius * maxScale;
 
-        if (IsClusterVisible(worldCenter, worldRadius, gPlanes))
-        {
-            s_Payload.VisibleClusterIndices[visibleCount] = clusterIdx;
-            visibleCount++;
-        }
+        // Frustum culling + cluster selection
+        if (IsClusterVisible(worldCenter, worldRadius, gPlanes) &&
+            ShouldRenderCluster(cluster, gViewPosition, gRecipTanHalfFovy, primitiveData.LocalToWorld))
+            shouldDispatch = true;
     }
-    DispatchMesh(visibleCount, 1, 1, s_Payload);
+
+    if (shouldDispatch)
+    {
+        uint idx;
+        InterlockedAdd(s_VisibleCount, 1, idx);
+        s_Payload.VisibleClusterIndices[idx] = clusterIdx;
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+    DispatchMesh(s_VisibleCount, 1, 1, s_Payload);
 }

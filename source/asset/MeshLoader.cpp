@@ -3,8 +3,23 @@
 #include "../misc/Math.h"
 #include "DirectXMath.h"
 #include <algorithm>
+#include <map>
+#include <set>
+#include <float.h>
 #include <stdio.h>
+#include <Windows.h>
 #include <assimp/postprocess.h>
+
+// Helper function to output formatted text to IDE output window
+static void DebugPrintf(const char* format, ...)
+{
+    char buffer[4096];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    OutputDebugStringA(buffer);
+}
 
 #define CLUSTERLOD_IMPLEMENTATION
 #include "../../thirdpatry/meshoptimizer/src/meshoptimizer.h"
@@ -257,25 +272,22 @@ ErrorCode MeshLoader::LoadMesh(const string& Path, vector<Mesh>& OutMeshes, std:
     return ErrorCode::OK;
 }
 
-ErrorCode MeshLoader::Nanite(const Mesh& Mesh, std::vector<ClusterData>& OutClusters, std::vector<CLODBound>& OutGroupBounds)
+ErrorCode MeshLoader::Nanite(const Mesh& Mesh, const std::vector<unsigned int>& TriangleMaterialIDs, std::vector<ClusterData>& OutClusters, std::vector<CLODBound>& OutGroupBounds)
 {
+    // Validate input: one material ID per triangle
+    if (TriangleMaterialIDs.size() != Mesh.Indices.size() / 3)
+    {
+        return ErrorCode::Failed;
+    }
+
     // Configure Nanite LOD hierarchy generation
     clodConfig Config = clodDefaultConfig(126);
 
     // Mesh Shader hardware limit: 64 vertices per cluster
     Config.max_vertices = 64;
 
-    // Reduce 50% triangles per level (UE5 Nanite standard)
-    Config.simplify_ratio = 0.5f;
-
-    // Skip level if simplification < 20% effective
-    Config.simplify_threshold = 0.80f;
-
-    // Parent error additive factor for smooth LOD transitions
-    Config.simplify_error_merge_additive = 0.5f;
-
-    // Normal attribute weights (equal importance to position)
-    const float AttributeWeights[3] = {0.5f, 0.5f, 0.5f};
+    // UV soft protection weights
+    const float AttributeWeights[2] = { 0.5f, 0.5f };
 
     // Setup input mesh data
     clodMesh CMesh = {};
@@ -284,14 +296,15 @@ ErrorCode MeshLoader::Nanite(const Mesh& Mesh, std::vector<ClusterData>& OutClus
     CMesh.vertex_count = Mesh.Vertices.size();
     CMesh.vertex_positions = &Mesh.Vertices[0].Position.x;
     CMesh.vertex_positions_stride = sizeof(Vertex);
-    CMesh.vertex_attributes = &Mesh.Vertices[0].Normal.x;
+    CMesh.vertex_attributes = &Mesh.Vertices[0].UV0.x;
     CMesh.vertex_attributes_stride = sizeof(Vertex);
     CMesh.attribute_weights = AttributeWeights;
-    CMesh.attribute_count = 3;
-
-    // Protect UV seams from simplification (bits 6-7 are UV coords)
-    CMesh.attribute_protect_mask = (1 << 6) | (1 << 7);
+    CMesh.attribute_count = 2;
+    CMesh.attribute_protect_mask = 0;
     CMesh.vertex_lock = nullptr;
+
+    // Pass material IDs to enable material-aware simplification
+    CMesh.triangle_materials = const_cast<unsigned int*>(TriangleMaterialIDs.data());
 
     OutClusters.clear();
     OutGroupBounds.clear();
@@ -318,7 +331,26 @@ ErrorCode MeshLoader::Nanite(const Mesh& Mesh, std::vector<ClusterData>& OutClus
 
             Data.UniqueVertices.resize(UniqueCount);
 
-            // Refined: index to finer group (-1 = leaf node)
+            // Extract per-triangle material IDs for this cluster
+            size_t TriangleCount = Cluster.index_count / 3;
+            Data.TriangleMaterialIDs.resize(TriangleCount);
+
+            if (Cluster.materials)
+            {
+                for (size_t TriIdx = 0; TriIdx < TriangleCount; ++TriIdx)
+                {
+                    Data.TriangleMaterialIDs[TriIdx] = Cluster.materials[TriIdx];
+                }
+            }
+            else
+            {
+                for (size_t TriIdx = 0; TriIdx < TriangleCount; ++TriIdx)
+                {
+                    Data.TriangleMaterialIDs[TriIdx] = 0;
+                }
+            }
+
+            // Save Refined value for LOD selection (from meshoptimizer)
             Data.Refined = Cluster.refined;
 
             // Bounds: center/radius for frustum culling, error for LOD selection
@@ -348,4 +380,201 @@ ErrorCode MeshLoader::Nanite(const Mesh& Mesh, std::vector<ClusterData>& OutClus
     });
 
     return ErrorCode::OK;
+}
+
+void MeshLoader::VerifyNaniteHierarchy(const NaniteData& Data, const Mesh& SourceMesh, const std::string& MeshName)
+{
+    const auto& Clusters = Data.Clusters;
+    const auto& GroupBounds = Data.GroupBounds;
+
+    DebugPrintf("\nNanite Verify: %s (%zu clusters, %zu groups)\n", MeshName.c_str(), Clusters.size(), GroupBounds.size());
+
+    if (Clusters.empty())
+    {
+        DebugPrintf("  ERROR: No clusters found!\n");
+        return;
+    }
+
+    size_t TotalErrors = 0;
+
+    // Build group -> clusters mapping (used by multiple checks)
+    std::map<int, std::vector<size_t>> GroupToClusters;
+    for (size_t I = 0; I < Clusters.size(); ++I)
+        GroupToClusters[Clusters[I].GroupId].push_back(I);
+
+    // Collect unique materials per cluster (used by multiple checks)
+    std::vector<std::set<unsigned int>> ClusterMats(Clusters.size());
+    for (size_t I = 0; I < Clusters.size(); ++I)
+        for (unsigned int M : Clusters[I].TriangleMaterialIDs)
+            ClusterMats[I].insert(M);
+
+    // 1. Data Integrity
+    DebugPrintf("  [1] Data Integrity: ");
+    size_t IntegrityErrors = 0;
+    for (size_t I = 0; I < Clusters.size(); ++I)
+    {
+        const ClusterData& C = Clusters[I];
+
+        if (C.TriangleMaterialIDs.size() != C.LocalIndices.size() / 3)
+        {
+            DebugPrintf("\n    Cluster %zu: TriangleMaterialIDs=%zu != TriCount=%zu",
+                I, C.TriangleMaterialIDs.size(), C.LocalIndices.size() / 3);
+            IntegrityErrors++;
+        }
+        if (C.GroupId < 0 || C.GroupId >= (int)GroupBounds.size())
+        {
+            DebugPrintf("\n    Cluster %zu: GroupId=%d out of range [0, %zu)",
+                I, C.GroupId, GroupBounds.size());
+            IntegrityErrors++;
+        }
+        if (C.Refined != -1 && (C.Refined < 0 || C.Refined >= (int)GroupBounds.size()))
+        {
+            DebugPrintf("\n    Cluster %zu: Refined=%d out of range [0, %zu)",
+                I, C.Refined, GroupBounds.size());
+            IntegrityErrors++;
+        }
+        for (unsigned int V : C.UniqueVertices)
+        {
+            if (V >= SourceMesh.Vertices.size())
+            {
+                DebugPrintf("\n    Cluster %zu: vertex %u >= vertex count %zu",
+                    I, V, SourceMesh.Vertices.size());
+                IntegrityErrors++;
+                break;
+            }
+        }
+    }
+    DebugPrintf("%s (%zu)\n", IntegrityErrors == 0 ? "PASS" : "FAIL", IntegrityErrors);
+    TotalErrors += IntegrityErrors;
+
+    // 2. DAG Structure
+    DebugPrintf("  [2] DAG Structure: ");
+    size_t DAGErrors = 0;
+    size_t LeafClusters = 0;
+    for (size_t I = 0; I < Clusters.size(); ++I)
+    {
+        if (Clusters[I].Refined == -1)
+        {
+            LeafClusters++;
+            continue;
+        }
+        if (GroupToClusters.find(Clusters[I].Refined) == GroupToClusters.end())
+        {
+            DebugPrintf("\n    Cluster %zu: Refined=%d references empty group", I, Clusters[I].Refined);
+            DAGErrors++;
+        }
+    }
+    DebugPrintf("%s (%zu) leaf=%zu parent=%zu\n",
+        DAGErrors == 0 ? "PASS" : "FAIL", DAGErrors, LeafClusters, Clusters.size() - LeafClusters);
+    TotalErrors += DAGErrors;
+
+    // 3. Error Monotonicity
+    DebugPrintf("  [3] Error Monotonicity: ");
+    size_t MonotonicityErrors = 0;
+    for (size_t I = 0; I < Clusters.size(); ++I)
+    {
+        const ClusterData& C = Clusters[I];
+        if (C.Refined == -1) continue;
+
+        int PG = C.GroupId, CG = C.Refined;
+        if (PG >= 0 && PG < (int)GroupBounds.size() && CG >= 0 && CG < (int)GroupBounds.size())
+        {
+            float PE = GroupBounds[PG].Error, CE = GroupBounds[CG].Error;
+            if (PE < CE && CE < FLT_MAX && PE < FLT_MAX)
+            {
+                DebugPrintf("\n    Cluster %zu: parent group[%d] error %.6f < child group[%d] error %.6f",
+                    I, PG, PE, CG, CE);
+                MonotonicityErrors++;
+            }
+        }
+    }
+    DebugPrintf("%s (%zu)\n", MonotonicityErrors == 0 ? "PASS" : "FAIL", MonotonicityErrors);
+    TotalErrors += MonotonicityErrors;
+
+    // 4. Material Subset (parent materials must be subset of child materials)
+    DebugPrintf("  [4] Material Subset: ");
+    size_t SubsetErrors = 0;
+    size_t SingleMat = 0, MultiMat = 0, MaxMats = 0;
+    for (size_t I = 0; I < Clusters.size(); ++I)
+    {
+        size_t N = ClusterMats[I].size();
+        if (N <= 1) SingleMat++; else MultiMat++;
+        if (N > MaxMats) MaxMats = N;
+
+        const ClusterData& Parent = Clusters[I];
+        if (Parent.Refined == -1) continue;
+
+        std::set<unsigned int> ChildMats;
+        if (GroupToClusters.find(Parent.Refined) != GroupToClusters.end())
+            for (size_t ChildIdx : GroupToClusters[Parent.Refined])
+                ChildMats.insert(ClusterMats[ChildIdx].begin(), ClusterMats[ChildIdx].end());
+
+        for (unsigned int M : ClusterMats[I])
+        {
+            if (ChildMats.find(M) == ChildMats.end())
+            {
+                DebugPrintf("\n    Cluster %zu: material %u not in child group %d", I, M, Parent.Refined);
+                SubsetErrors++;
+                break;
+            }
+        }
+    }
+    DebugPrintf("%s (%zu) single=%zu multi=%zu maxPerCluster=%zu\n",
+        SubsetErrors == 0 ? "PASS" : "FAIL", SubsetErrors, SingleMat, MultiMat, MaxMats);
+    TotalErrors += SubsetErrors;
+
+    // 5. Terminal Group (must have at least one FLT_MAX group, orphan check)
+    DebugPrintf("  [5] Terminal Group: ");
+    size_t TerminalErrors = 0;
+
+    // Build reverse map: child group -> parent group (for O(depth) upward traversal)
+    std::map<int, int> ChildToParentGroup;
+    for (size_t I = 0; I < Clusters.size(); ++I)
+        if (Clusters[I].Refined != -1)
+            ChildToParentGroup[Clusters[I].Refined] = Clusters[I].GroupId;
+
+    bool HasTerminal = false;
+    for (size_t I = 0; I < GroupBounds.size(); ++I)
+    {
+        float E = GroupBounds[I].Error;
+        if (E >= FLT_MAX) HasTerminal = true;
+        if (E < 0.0f || E != E)
+        {
+            DebugPrintf("\n    Group[%zu]: suspicious Error=%.6f", I, E);
+            TerminalErrors++;
+        }
+    }
+    if (!HasTerminal)
+    {
+        DebugPrintf("\n    No terminal group (FLT_MAX) found!");
+        TerminalErrors++;
+    }
+
+    // Check every cluster can reach a terminal group via upward traversal
+    size_t OrphanClusters = 0;
+    for (size_t I = 0; I < Clusters.size(); ++I)
+    {
+        int CurrentGroup = Clusters[I].GroupId;
+        std::set<int> Visited;
+        bool ReachesTerminal = false;
+        while (CurrentGroup >= 0 && CurrentGroup < (int)GroupBounds.size())
+        {
+            if (Visited.count(CurrentGroup)) break;
+            Visited.insert(CurrentGroup);
+            if (GroupBounds[CurrentGroup].Error >= FLT_MAX) { ReachesTerminal = true; break; }
+            auto It = ChildToParentGroup.find(CurrentGroup);
+            if (It == ChildToParentGroup.end()) break;
+            CurrentGroup = It->second;
+        }
+        if (!ReachesTerminal) OrphanClusters++;
+    }
+    if (OrphanClusters > 0)
+        DebugPrintf("\n    Orphan clusters (no path to terminal): %zu", OrphanClusters);
+
+    DebugPrintf("%s (%zu)\n", TerminalErrors == 0 ? "PASS" : "FAIL", TerminalErrors);
+    TotalErrors += TerminalErrors;
+
+    // Summary
+    DebugPrintf("  RESULT: %s (%zu total errors)\n",
+        TotalErrors == 0 ? "ALL PASSED" : "FAILED", TotalErrors);
 }
