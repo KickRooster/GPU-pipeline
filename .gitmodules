@@ -1,15 +1,15 @@
 [submodule "thirdpatry/imgui"]
 	path = thirdpatry/imgui
-	url = https://github.com/ocornut/imgui.git
+	url = git@github.com:ocornut/imgui.git
 [submodule "thirdpatry/meshoptimizer"]
 	path = thirdpatry/meshoptimizer
-	url = https://github.com/KickRooster/meshoptimizer.git
+	url = git@github.com:KickRooster/meshoptimizer.git
 [submodule "thirdpatry/ImGuizmo"]
 	path = thirdpatry/ImGuizmo
-	url = https://github.com/CedricGuillemet/ImGuizmo.git
+	url = git@github.com:CedricGuillemet/ImGuizmo.git
 [submodule "thirdpatry/imGuIZMO.quat"]
 	path = thirdpatry/imGuIZMO.quat
-	url = https://github.com/BrutPitt/imGuIZMO.quat.git
+	url = git@github.com:BrutPitt/imGuIZMO.quat.git
 [submodule "thirdpatry/stb"]
 	path = thirdpatry/stb
-	url = https://github.com/nothings/stb.git
+	url = git@github.com:nothings/stb.git
