@@ -15,6 +15,7 @@ class FileTool : public Singleton<FileTool>
     std::string MeshShaderPath;
     std::string PixelShaderPath;
     std::string ToneMappingCSPath;
+    std::string MaterialResolveCSPath;
 
 private:
     std::string GetExecutableDirectory() const;
@@ -34,6 +35,7 @@ public:
     std::string GetMeshShaderPath() const;
     std::string GetPixelShaderPath() const;
     std::string GetToneMappingPath() const;
+    std::string GetMaterialResolveCSPath() const;
     std::string GetTextureFolderPath() const;
     std::vector<std::string> GetTextureFiles() const;
     bool IsTextureFile(const std::string& FileName) const;

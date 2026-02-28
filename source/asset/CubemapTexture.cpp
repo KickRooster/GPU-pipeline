@@ -343,7 +343,7 @@ void CubemapTexture::SetFaceData(int MipLevel, ECubeFace Face, void* Data)
 CubemapTexture::CubemapTexture(const Texture& HDRTexture)
 {
     MipArray.resize(1);
-    MipArray[0].Size = HDRTexture.Width / 4;
+    MipArray[0].Size = HDRTexture.GetWidth() / 4;
     IsHDR = HDRTexture.IsHDR;
     ChannelCount = HDRTexture.Channels;
     Format = HDRTexture.Format;
@@ -564,12 +564,18 @@ unique_ptr<Texture> CubemapTexture::GenerateBRDFLUT(int Resolution, int SampleCo
     }
     
     unique_ptr<Texture> BrdfLut = make_unique<Texture>();
-    BrdfLut->Width = Resolution;
-    BrdfLut->Height = Resolution;
     BrdfLut->Channels = 4;
-    BrdfLut->Data = LutData;
     BrdfLut->IsHDR = true;
     BrdfLut->Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+
+    MipLevel BaseMip;
+    BaseMip.Width = Resolution;
+    BaseMip.Height = Resolution;
+    size_t ByteSize = Resolution * Resolution * 4 * sizeof(float);
+    BaseMip.Data.resize(ByteSize);
+    memcpy(BaseMip.Data.data(), LutData, ByteSize);
+    free(LutData);
+    BrdfLut->Mips.push_back(std::move(BaseMip));
     
     return BrdfLut;
 }

@@ -90,8 +90,12 @@ int main(int, char**)
 
 	//	Culling Visual Camera Actor.
 	StaticMesh* CullingCameraInstance = Level::GetInstance().InstantiateCullingVisualCamera();
-	Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("sponza.obj"));
+
+	//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("ABeautifulGame.gltf"));
+	//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("sponza.obj"));
 	//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("Cerberus_LP.FBX"));
+	//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("duck.fbx"));
+	Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("StainedGlassLamp.gltf"));
 	
 	// GPU-Driven: Create global merged mesh buffers after all meshes are loaded
 	Level::GetInstance().CreateGlobalMeshBuffers();
@@ -217,7 +221,6 @@ int main(int, char**)
 				{
 					if (ImGui::MenuItem("Mesh"))
 					{
-						//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("duck.fbx"));
 					}
 					ImGui::EndMenu();
 				}
@@ -378,6 +381,14 @@ int main(int, char**)
 						}
 					}
 					
+					static int FillModeIndex = 0;
+					const char* FillModeItems[] = { "SOLID", "WIREFRAME" };
+					if (ImGui::Combo("Fill Mode", &FillModeIndex, FillModeItems, IM_ARRAYSIZE(FillModeItems)))
+					{
+						D3D12_FILL_MODE NewFillMode = (FillModeIndex == 0) ? D3D12_FILL_MODE_SOLID : D3D12_FILL_MODE_WIREFRAME;
+						PipelineInterface::GetInstance().SetFillMode(NewFillMode);
+					}
+
 					ImGui::EndTabItem();
 				}
 				
@@ -496,8 +507,9 @@ int main(int, char**)
 
 			// Update GPU Scene primitive transforms (for Gizmo and runtime changes)
 			PipelineInterface::GetInstance().UpdateScenePrimitiveBuffer(&Level::GetInstance());
-			PipelineInterface::GetInstance().RenderLevel(FrameContextIndex, &Level::GetInstance());
-			
+			PipelineInterface::GetInstance().RenderVisibilityPass(FrameContextIndex, &Level::GetInstance());
+			PipelineInterface::GetInstance().RenderMaterialResolve(FrameContextIndex, &Level::GetInstance());
+
 			// Post-processing pass: ACES tone mapping (RenderTarget → TransitionTexture → RenderTarget)
 			PipelineInterface::GetInstance().RenderPostProcessCompute(FrameContextIndex);
 			
@@ -616,6 +628,7 @@ int main(int, char**)
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
 
+	Level::GetInstance().Clear();
 	PipelineInterface::GetInstance().CleanUp();
 	::DestroyWindow(hwnd);
 	::UnregisterClassW(WC.lpszClassName, WC.hInstance);
@@ -639,7 +652,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	switch (msg)
 	{
 	case WM_SIZE:
-		if (/*PipelineInterface::GetInstance().g_pd3dDevice != nullptr &&*/ wParam != SIZE_MINIMIZED)
+		if (PipelineInterface::GetInstance().GetSwapChain() != nullptr && wParam != SIZE_MINIMIZED)
 		{
 			PipelineInterface::GetInstance().WaitForLastSubmittedFrame();
 			PipelineInterface::GetInstance().CleanupIMGUIRenderTarget();

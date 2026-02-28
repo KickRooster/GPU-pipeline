@@ -62,6 +62,7 @@ void FileTool::InitializePaths()
     MeshShaderPath = ShaderPath + "\\meshlet_ms.hlsl";
     PixelShaderPath = ShaderPath + "\\meshlet_ps.hlsl";
     ToneMappingCSPath = ShaderPath + "\\tonemapping_cs.hlsl";
+    MaterialResolveCSPath = ShaderPath + "\\material_resolve_cs.hlsl";
 }
 
 FileTool::FileTool()
@@ -151,6 +152,11 @@ string FileTool::GetPixelShaderPath() const
 string FileTool::GetToneMappingPath() const
 {
     return ToneMappingCSPath;
+}
+
+string FileTool::GetMaterialResolveCSPath() const
+{
+    return MaterialResolveCSPath;
 }
 
 string FileTool::GetTextureFolderPath() const

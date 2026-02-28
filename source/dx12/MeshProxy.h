@@ -30,9 +30,9 @@ struct GPUCluster
     unsigned int LocalIndicesOffset;    // Offset in LocalIndicesBuffer
     float BoundCenter[3];               // Bounding sphere center (frustum culling)
     float BoundRadius;                  // Bounding sphere radius (frustum culling)
-    int Refined;                        // Index to finer group (-1 = original geometry)
+    int Refined;                        // Index to more detailed group (-1 = leaf, for LOD selection)
     int GroupId;                        // Index to group this cluster belongs to
-    unsigned int Padding;               // Padding for 16-byte alignment (48 bytes total)
+    unsigned int TriangleMaterialIDsOffset; // Offset in GlobalTriangleMaterialIDsBuffer
 };
 
 struct GPUGroupBound
@@ -42,17 +42,13 @@ struct GPUGroupBound
     float Error;        // Simplification error (monotonic: parent > child)
 };
 
-struct GPUMeshInstance
+// GPU material table entry (indexed by global material ID)
+struct GPUMaterial
 {
-    unsigned int UniqueVerticesOffset;   // Offset in GlobalUniqueVerticesBuffer
-    unsigned int UniqueVerticesCount;    // Number of unique vertices
-    unsigned int LocalIndicesOffset;     // Offset in GlobalLocalIndicesBuffer
-    unsigned int LocalIndicesCount;      // Number of local indices
-    unsigned int ClusterOffset;          // Offset in GlobalClusterBuffer
-    unsigned int ClusterCount;           // Number of clusters
-    unsigned int GroupBoundsOffset;      // Offset in GlobalGroupBoundsBuffer
-    unsigned int GroupBoundsCount;       // Number of group bounds
-    unsigned int Padding[4];             // Padding for 16-byte alignment
+    unsigned int AlbedoTextureIndex;
+    unsigned int NormalTextureIndex;
+    unsigned int MetallicTextureIndex;
+    unsigned int RoughnessTextureIndex;
 };
 
 // GPU Scene: Primitive transform data (UE5-style naming)
@@ -60,10 +56,4 @@ struct FPrimitiveSceneData
 {
     DirectX::XMFLOAT4X4 LocalToWorld;       // Object-to-world transform
     DirectX::XMFLOAT4X4 WorldInvTranspose;  // For normal transformation
-
-    struct
-    {
-        unsigned int Value;
-        unsigned int Padding[3];  // 16-byte alignment per element
-    } PBRTextureIndices[4];  // Albedo, Normal, Metallic, Roughness
 };
