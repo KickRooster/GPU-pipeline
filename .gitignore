@@ -107,6 +107,8 @@ packages/
 !packages/repositories.config
 !packages/*.props
 !packages/*.targets
+!packages/Microsoft.Direct3D.D3D12.1.615.1/
+!packages/Microsoft.Direct3D.D3D12.1.615.1/**
 
 # Assimp source repo (local only, not tracked by main project)
 thirdpatry/assimp_src/
