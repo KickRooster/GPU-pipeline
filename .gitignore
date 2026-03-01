@@ -32,6 +32,10 @@
 *.a
 *.lib
 
+# Exception: Allow assimp precompiled libraries
+!thirdpatry/assimp_lib/lib/Debug/*.lib
+!thirdpatry/assimp_lib/lib/Release/*.lib
+
 # Debug symbols
 *.pdb
 
