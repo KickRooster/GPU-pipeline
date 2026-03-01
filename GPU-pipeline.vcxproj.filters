@@ -37,7 +37,7 @@
     <ClCompile Include="source\level\Level.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="source\Log.cpp">
+    <ClCompile Include="source\Log.cpp" Condition="Exists('source\Log.cpp')">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="source\actor\StaticMeshActor.cpp">
