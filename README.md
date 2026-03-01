@@ -24,6 +24,8 @@ git clone --recurse-submodules git@github.com:KickRooster/GPU-pipeline.git
 
 Build and run in Visual Studio.
 
+**Note**: This project uses Git LFS for large binary files. Make sure you have [Git LFS](https://git-lfs.github.com/) installed before cloning.
+
 ## Third-party Libraries
 
 - [imgui](https://github.com/ocornut/imgui)
