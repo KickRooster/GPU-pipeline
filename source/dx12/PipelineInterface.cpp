@@ -1254,7 +1254,7 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
 
         HRESULT hResult = D3DDevice->CreateCommittedResource(
             &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            D3D12_RESOURCE_STATE_COMMON, nullptr,
             IID_PPV_ARGS(&GlobalVertexBuffer));
 
         if (FAILED(hResult))
@@ -1280,7 +1280,7 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
 
         HRESULT hResult = D3DDevice->CreateCommittedResource(
             &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            D3D12_RESOURCE_STATE_COMMON, nullptr,
             IID_PPV_ARGS(&GlobalUniqueVerticesBuffer));
 
         if (FAILED(hResult))
@@ -1306,7 +1306,7 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
 
         HRESULT hResult = D3DDevice->CreateCommittedResource(
             &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            D3D12_RESOURCE_STATE_COMMON, nullptr,
             IID_PPV_ARGS(&GlobalLocalIndicesBuffer));
 
         if (FAILED(hResult))
@@ -1332,7 +1332,7 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
 
         HRESULT hResult = D3DDevice->CreateCommittedResource(
             &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            D3D12_RESOURCE_STATE_COMMON, nullptr,
             IID_PPV_ARGS(&GlobalClusterBuffer));
 
         if (FAILED(hResult))
@@ -1358,7 +1358,7 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
 
         HRESULT hResult = D3DDevice->CreateCommittedResource(
             &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            D3D12_RESOURCE_STATE_COMMON, nullptr,
             IID_PPV_ARGS(&GlobalGroupBoundsBuffer));
 
         if (FAILED(hResult))
@@ -1384,7 +1384,7 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
 
         HRESULT hResult = D3DDevice->CreateCommittedResource(
             &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            D3D12_RESOURCE_STATE_COMMON, nullptr,
             IID_PPV_ARGS(&GlobalTriangleMaterialIDsBuffer));
 
         if (FAILED(hResult))
@@ -1533,7 +1533,16 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
     GlobalGroupBoundsBufferUpload->Unmap(0, nullptr);
     GlobalTriangleMaterialIDsBufferUpload->Unmap(0, nullptr);
 
-    // Step 4: Copy from upload to default heap and transition states
+    // Step 4: Transition COMMON -> COPY_DEST, copy from upload to default heap, then transition to SRV
+    D3D12_RESOURCE_BARRIER PreCopyBarriers[6];
+    PreCopyBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(GlobalVertexBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+    PreCopyBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(GlobalUniqueVerticesBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+    PreCopyBarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(GlobalLocalIndicesBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+    PreCopyBarriers[3] = CD3DX12_RESOURCE_BARRIER::Transition(GlobalClusterBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+    PreCopyBarriers[4] = CD3DX12_RESOURCE_BARRIER::Transition(GlobalGroupBoundsBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+    PreCopyBarriers[5] = CD3DX12_RESOURCE_BARRIER::Transition(GlobalTriangleMaterialIDsBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+    UploadCommandList->ResourceBarrier(6, PreCopyBarriers);
+
     UploadCommandList->CopyBufferRegion(GlobalVertexBuffer.Get(), 0, GlobalVertexBufferUpload.Get(), 0, sizeof(Vertex) * TotalVertexCount);
     UploadCommandList->CopyBufferRegion(GlobalUniqueVerticesBuffer.Get(), 0, GlobalUniqueVerticesBufferUpload.Get(), 0, sizeof(unsigned int) * TotalUniqueVerticesCount);
     UploadCommandList->CopyBufferRegion(GlobalLocalIndicesBuffer.Get(), 0, GlobalLocalIndicesBufferUpload.Get(), 0, TotalLocalIndicesBytes);
@@ -1576,7 +1585,7 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
             &DefaultHeapProps,
             D3D12_HEAP_FLAG_NONE,
             &BufferDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_COMMON,
             nullptr,
             IID_PPV_ARGS(&ScenePrimitiveBuffer));
 
@@ -1604,10 +1613,16 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
         memcpy(PrimitiveDataMapped, PrimitiveSceneDataArray.data(), BufferSize);
         ScenePrimitiveBufferUpload->Unmap(0, nullptr);
 
-        // Copy to default heap
+        // Transition COMMON -> COPY_DEST, then copy to default heap
+        CD3DX12_RESOURCE_BARRIER PrimitiveToCopyDest = CD3DX12_RESOURCE_BARRIER::Transition(
+            ScenePrimitiveBuffer.Get(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_COPY_DEST);
+        UploadCommandList->ResourceBarrier(1, &PrimitiveToCopyDest);
+
         UploadCommandList->CopyBufferRegion(ScenePrimitiveBuffer.Get(), 0, ScenePrimitiveBufferUpload.Get(), 0, BufferSize);
 
-        // Transition to shader resource (both pixel and non-pixel for root descriptor compatibility)
+        // Transition COPY_DEST -> SRV
         CD3DX12_RESOURCE_BARRIER PrimitiveBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
             ScenePrimitiveBuffer.Get(),
             D3D12_RESOURCE_STATE_COPY_DEST,
@@ -1630,7 +1645,7 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
 
             HRESULT hResult = D3DDevice->CreateCommittedResource(
                 &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BufferDesc,
-                D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                D3D12_RESOURCE_STATE_COMMON, nullptr,
                 IID_PPV_ARGS(&GlobalMaterialTableBuffer));
 
             if (FAILED(hResult))
@@ -1662,8 +1677,16 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
 
             GlobalMaterialTableBufferUpload->Unmap(0, nullptr);
 
+            // Transition COMMON -> COPY_DEST
+            CD3DX12_RESOURCE_BARRIER MaterialToCopyDest = CD3DX12_RESOURCE_BARRIER::Transition(
+                GlobalMaterialTableBuffer.Get(),
+                D3D12_RESOURCE_STATE_COMMON,
+                D3D12_RESOURCE_STATE_COPY_DEST);
+            UploadCommandList->ResourceBarrier(1, &MaterialToCopyDest);
+
             UploadCommandList->CopyBufferRegion(GlobalMaterialTableBuffer.Get(), 0, GlobalMaterialTableBufferUpload.Get(), 0, BufferSize);
 
+            // Transition COPY_DEST -> SRV
             CD3DX12_RESOURCE_BARRIER MaterialBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
                 GlobalMaterialTableBuffer.Get(),
                 D3D12_RESOURCE_STATE_COPY_DEST,
