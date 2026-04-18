@@ -25,6 +25,7 @@ struct Texture
     int OriginalChannels = 0;
     int Channels = 0;
     bool IsHDR = false;
+    bool Is16Bit = false;
     bool IsSRGB = false;
     DXGI_FORMAT Format = DXGI_FORMAT_UNKNOWN;
 

@@ -45,6 +45,8 @@ enum class ErrorCode : int
     TextureNotExist,
     TextureLoadFailed,
     AllocateTextureMemoryFailed,
+    //  Terrain begin
+    ExceedMaxLODLevels,
     //  Others
     ErrorCode_Num
 };

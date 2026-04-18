@@ -10,7 +10,7 @@
 
 using namespace std;
 
-DXGI_FORMAT TextureLoader::GetDXGIFormat(int Channels, bool IsHDR, bool IsSRGB)
+DXGI_FORMAT TextureLoader::GetDXGIFormat(int Channels, bool IsHDR, bool Is16Bit, bool IsSRGB)
 {
     if (IsHDR)
     {
@@ -24,6 +24,20 @@ DXGI_FORMAT TextureLoader::GetDXGIFormat(int Channels, bool IsHDR, bool IsSRGB)
             return DXGI_FORMAT_R32G32B32_FLOAT;
         case 4:
             return DXGI_FORMAT_R32G32B32A32_FLOAT;
+        default:
+            return DXGI_FORMAT_UNKNOWN;
+        }
+    }
+    else if (Is16Bit)
+    {
+        switch (Channels)
+        {
+        case 1:
+            return DXGI_FORMAT_R16_UNORM;
+        case 2:
+            return DXGI_FORMAT_R16G16_UNORM;
+        case 4:
+            return DXGI_FORMAT_R16G16B16A16_UNORM;
         default:
             return DXGI_FORMAT_UNKNOWN;
         }
@@ -45,7 +59,7 @@ DXGI_FORMAT TextureLoader::GetDXGIFormat(int Channels, bool IsHDR, bool IsSRGB)
             }
             else
             {
-                return DXGI_FORMAT_R8G8B8A8_UNORM; 
+                return DXGI_FORMAT_R8G8B8A8_UNORM;
             }
         default:
             return DXGI_FORMAT_UNKNOWN;
@@ -65,8 +79,10 @@ ErrorCode TextureLoader::LoadTexture(const std::string& FilePath, bool IsSRGB, T
     File.close();
     
     OutTextureInstance.IsHDR = stbi_is_hdr(TextureFullPath.c_str());
-    
-    int LoadWidth = 0, LoadHeight = 0;
+    OutTextureInstance.Is16Bit = stbi_is_16_bit(TextureFullPath.c_str());
+
+    int LoadWidth = 0;
+    int LoadHeight = 0;
 
     if (OutTextureInstance.IsHDR)
     {
@@ -83,6 +99,45 @@ ErrorCode TextureLoader::LoadTexture(const std::string& FilePath, bool IsSRGB, T
         BaseMip.Data.resize(ByteSize);
         memcpy(BaseMip.Data.data(), Data, ByteSize);
         stbi_image_free(Data);
+
+        OutTextureInstance.Mips.push_back(std::move(BaseMip));
+    }
+    else if (OutTextureInstance.Is16Bit)
+    {
+        stbi_us* Data = stbi_load_16(TextureFullPath.c_str(), &LoadWidth, &LoadHeight, &OutTextureInstance.Channels, 0);
+        if (Data == nullptr)
+        {
+            return ErrorCode::TextureLoadFailed;
+        }
+
+        OutTextureInstance.OriginalChannels = OutTextureInstance.Channels;
+
+        MipLevel BaseMip;
+        BaseMip.Width = LoadWidth;
+        BaseMip.Height = LoadHeight;
+
+        if (OutTextureInstance.Channels == 3)
+        {
+            const int PixelCount = LoadWidth * LoadHeight;
+            BaseMip.Data.resize(PixelCount * 4 * sizeof(uint16_t));
+            uint16_t* Dst = reinterpret_cast<uint16_t*>(BaseMip.Data.data());
+            for (int i = 0; i < PixelCount; ++i)
+            {
+                Dst[i * 4 + 0] = Data[i * 3 + 0];
+                Dst[i * 4 + 1] = Data[i * 3 + 1];
+                Dst[i * 4 + 2] = Data[i * 3 + 2];
+                Dst[i * 4 + 3] = 65535;
+            }
+            stbi_image_free(Data);
+            OutTextureInstance.Channels = 4;
+        }
+        else
+        {
+            size_t ByteSize = LoadWidth * LoadHeight * OutTextureInstance.Channels * sizeof(uint16_t);
+            BaseMip.Data.resize(ByteSize);
+            memcpy(BaseMip.Data.data(), Data, ByteSize);
+            stbi_image_free(Data);
+        }
 
         OutTextureInstance.Mips.push_back(std::move(BaseMip));
     }
@@ -126,7 +181,7 @@ ErrorCode TextureLoader::LoadTexture(const std::string& FilePath, bool IsSRGB, T
     }
     
     OutTextureInstance.IsSRGB = IsSRGB;
-    OutTextureInstance.Format = GetDXGIFormat(OutTextureInstance.Channels, OutTextureInstance.IsHDR, IsSRGB);
+    OutTextureInstance.Format = GetDXGIFormat(OutTextureInstance.Channels, OutTextureInstance.IsHDR, OutTextureInstance.Is16Bit, IsSRGB);
 
     // Generate mipmap chain (box filter downsampling)
     OutTextureInstance.GenerateMipmaps();

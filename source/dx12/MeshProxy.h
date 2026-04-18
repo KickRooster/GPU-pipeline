@@ -24,9 +24,9 @@ struct NaniteClusterProxy
 struct GPUCluster
 {
     unsigned int PrimitiveId;           // Index to ScenePrimitiveBuffer (GPU Scene)
-    unsigned int IndexCount;            // Triangle count × 3
+    unsigned int IndexCount;            // Triangle count x 3
     unsigned int UniqueVerticesOffset;  // Offset in UniqueVerticesBuffer
-    unsigned int UniqueVerticesCount;   // Unique vertex count (≤64 for Mesh Shader limit, limited by outside logic)
+    unsigned int UniqueVerticesCount;   // Unique vertex count (<=64 for Mesh Shader limit)
     unsigned int LocalIndicesOffset;    // Offset in LocalIndicesBuffer
     float BoundCenter[3];               // Bounding sphere center (frustum culling)
     float BoundRadius;                  // Bounding sphere radius (frustum culling)
@@ -56,4 +56,66 @@ struct FPrimitiveSceneData
 {
     DirectX::XMFLOAT4X4 LocalToWorld;       // Object-to-world transform
     DirectX::XMFLOAT4X4 WorldInvTranspose;  // For normal transformation
+};
+
+// Terrain patch data (matches HLSL TerrainPatchData)
+struct TerrainPatchData
+{
+    float WorldOffsetX;
+    float WorldOffsetZ;
+    float PatchSize;
+    unsigned int PatchIndex;
+    unsigned int LodLevel;
+    unsigned int NeighborLodPacked;     // [7:0]=Top [15:8]=Bottom [23:16]=Left [31:24]=Right, 0xFF=no snap
+};
+
+// Terrain per-patch AABB (matches HLSL TerrainPatchBound)
+struct TerrainPatchBound
+{
+    float Center[3];
+    float HalfExtent[3];
+};
+
+// Terrain constant buffer (matches HLSL cbTerrainParams at b1)
+struct TerrainParams
+{
+    unsigned int ActivePatchCount;
+    unsigned int ClusterBase;           // Offset to separate terrain from Nanite in VB encoding
+    float PatchSize;
+    float HeightScale;
+    float WorldSize;
+    unsigned int TotalPatchCount;
+    unsigned int EdgeStitchingEnabled;
+    float DebugScale;
+};
+
+// Material resolve constant buffer (matches HLSL cbTerrainInfo at b2)
+// Layout designed for HLSL cbuffer uint4 packing
+struct TerrainResolveConstants
+{
+    unsigned int NaniteClusterCount;    // float4.x
+    unsigned int HeightmapIndex;        // float4.y
+    float WorldSize;                    // float4.z
+    float HeightScale;                  // float4.w
+    unsigned int SplatmapAndLayerInfo[4]; // .xyz=splatmap indices, .w=layerCount
+    unsigned int AlbedoIndices[12];     // uint4[3]
+    unsigned int NormalIndices[12];     // uint4[3]
+    unsigned int RoughnessIndices[12];  // uint4[3]
+    float DebugScale;                   // float4.x
+    unsigned int DebugLODColors;        // float4.y
+    unsigned int Pad[2];                // float4.zw
+};
+
+// Terrain GPU resource proxy
+struct TerrainProxy
+{
+    // GPU Default Heap buffers
+    Microsoft::WRL::ComPtr<ID3D12Resource> PatchBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> BoundBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> Heightmap;
+    Microsoft::WRL::ComPtr<ID3D12Resource> ActiveIndicesBuffer;
+
+    // Per-frame upload buffers (triple buffered)
+    Microsoft::WRL::ComPtr<ID3D12Resource> ActiveIndicesUpload[FrameNumInFlight];
+    Microsoft::WRL::ComPtr<ID3D12Resource> NeighborLodUpload[FrameNumInFlight]; // Indexed by patch index, CPU-writable GPU-readable
 };

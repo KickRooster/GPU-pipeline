@@ -63,6 +63,9 @@ void FileTool::InitializePaths()
     PixelShaderPath = ShaderPath + "\\meshlet_ps.hlsl";
     ToneMappingCSPath = ShaderPath + "\\tonemapping_cs.hlsl";
     MaterialResolveCSPath = ShaderPath + "\\material_resolve_cs.hlsl";
+    TerrainASPath = ShaderPath + "\\terrain_as.hlsl";
+    TerrainMSPath = ShaderPath + "\\terrain_ms.hlsl";
+    TerrainPSPath = ShaderPath + "\\terrain_ps.hlsl";
 }
 
 FileTool::FileTool()
@@ -157,6 +160,21 @@ string FileTool::GetToneMappingPath() const
 string FileTool::GetMaterialResolveCSPath() const
 {
     return MaterialResolveCSPath;
+}
+
+string FileTool::GetTerrainASPath() const
+{
+    return TerrainASPath;
+}
+
+string FileTool::GetTerrainMSPath() const
+{
+    return TerrainMSPath;
+}
+
+string FileTool::GetTerrainPSPath() const
+{
+    return TerrainPSPath;
 }
 
 string FileTool::GetTextureFolderPath() const

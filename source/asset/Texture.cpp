@@ -8,6 +8,7 @@ Texture::Texture(Texture&& InTexture) noexcept
     OriginalChannels = InTexture.OriginalChannels;
     Channels = InTexture.Channels;
     IsHDR = InTexture.IsHDR;
+    Is16Bit = InTexture.Is16Bit;
     IsSRGB = InTexture.IsSRGB;
     Format = InTexture.Format;
     Mips = std::move(InTexture.Mips);
@@ -49,7 +50,7 @@ void Texture::GenerateMipmaps()
         return;
     }
 
-    int BytesPerPixel = Channels * (IsHDR ? 4 : 1);
+    int BytesPerPixel = Channels * (IsHDR ? 4 : (Is16Bit ? 2 : 1));
     int MipWidth = GetWidth();
     int MipHeight = GetHeight();
 
@@ -89,6 +90,30 @@ void Texture::GenerateMipmaps()
                         float V01 = Src[(SY1 * MipWidth + SX)  * Channels + C];
                         float V11 = Src[(SY1 * MipWidth + SX1) * Channels + C];
                         Dst[(Y * NewWidth + X) * Channels + C] = (V00 + V10 + V01 + V11) * 0.25f;
+                    }
+                }
+            }
+        }
+        else if (Is16Bit)
+        {
+            const uint16_t* Src = reinterpret_cast<const uint16_t*>(PrevData);
+            uint16_t* Dst = reinterpret_cast<uint16_t*>(Mip.Data.data());
+            for (int Y = 0; Y < NewHeight; Y++)
+            {
+                for (int X = 0; X < NewWidth; X++)
+                {
+                    int SX = static_cast<int>(X * ScaleX);
+                    int SY = static_cast<int>(Y * ScaleY);
+                    int SX1 = (SX + 1 < MipWidth) ? SX + 1 : SX;
+                    int SY1 = (SY + 1 < MipHeight) ? SY + 1 : SY;
+
+                    for (int C = 0; C < Channels; C++)
+                    {
+                        int V00 = Src[(SY  * MipWidth + SX)  * Channels + C];
+                        int V10 = Src[(SY  * MipWidth + SX1) * Channels + C];
+                        int V01 = Src[(SY1 * MipWidth + SX)  * Channels + C];
+                        int V11 = Src[(SY1 * MipWidth + SX1) * Channels + C];
+                        Dst[(Y * NewWidth + X) * Channels + C] = static_cast<uint16_t>((V00 + V10 + V01 + V11 + 2) / 4);
                     }
                 }
             }

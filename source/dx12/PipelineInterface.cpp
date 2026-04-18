@@ -4,6 +4,7 @@
 #include "../actor/Camera.h"
 #include "../actor/StaticMesh.h"
 #include "../actor/SkyLight.h"
+#include "../actor/TerrainActor.h"
 #include "../asset/Mesh.h"
 #include "../asset/MeshLoader.h"
 #include "../asset/CubemapTexture.h"
@@ -259,15 +260,18 @@ ErrorCode PipelineInterface::RecompileShaders()
     
     const ComPtr<ID3D12PipelineState> OldMeshPSO = MeshShaderPipelineState;
     const ComPtr<ID3D12PipelineState> OldResolvePSO = MaterialResolvePipelineState;
+    const ComPtr<ID3D12PipelineState> OldTerrainPSO = TerrainPipelineState;
 
     MeshShaderPipelineState.Reset();
     MaterialResolvePipelineState.Reset();
+    TerrainPipelineState.Reset();
 
     ErrorCode Result = CreateMeshShaderPipelineState();
     if (Result != ErrorCode::OK)
     {
         MeshShaderPipelineState = OldMeshPSO;
         MaterialResolvePipelineState = OldResolvePSO;
+        TerrainPipelineState = OldTerrainPSO;
         return Result;
     }
     
@@ -276,6 +280,16 @@ ErrorCode PipelineInterface::RecompileShaders()
     {
         MeshShaderPipelineState = OldMeshPSO;
         MaterialResolvePipelineState = OldResolvePSO;
+        TerrainPipelineState = OldTerrainPSO;
+        return Result;
+    }
+
+    Result = CreateTerrainPipelineState();
+    if (Result != ErrorCode::OK)
+    {
+        MeshShaderPipelineState = OldMeshPSO;
+        MaterialResolvePipelineState = OldResolvePSO;
+        TerrainPipelineState = OldTerrainPSO;
         return Result;
     }
 
@@ -350,9 +364,9 @@ ErrorCode PipelineInterface::CreateMeshShaderPipelineState()
     HRESULT hResult = D3DDevice->CreatePipelineState(&StreamDesc, IID_PPV_ARGS(&MeshShaderPipelineState));
     if (FAILED(hResult))
     {
-        char buffer[256];
-        sprintf_s(buffer, "Failed to create mesh shader pipeline state. HRESULT: 0x%08X\n", hResult);
-        OutputDebugStringA(buffer);
+        char Buffer[256];
+        sprintf_s(Buffer, "Failed to create mesh shader pipeline state. HRESULT: 0x%08X\n", hResult);
+        OutputDebugStringA(Buffer);
         return ErrorCode::MeshShaderPipelineStateCreateFailed;
     }
 
@@ -376,7 +390,7 @@ ErrorCode PipelineInterface::CreateMaterialResolveComputePipelineState()
         FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
     }
     
-    CD3DX12_ROOT_PARAMETER1 RootParameters[13] = {};
+    CD3DX12_ROOT_PARAMETER1 RootParameters[8] = {};
 
     // 0: Camera CBV (b0)
     RootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
@@ -423,18 +437,22 @@ ErrorCode PipelineInterface::CreateMaterialResolveComputePipelineState()
     UAVRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
     RootParameters[5].InitAsDescriptorTable(1, &UAVRange, D3D12_SHADER_VISIBILITY_ALL);
 
-    // 6-12: Nanite buffers as root descriptors
-    RootParameters[6].InitAsShaderResourceView(20, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);  // NaniteVertices
-    RootParameters[7].InitAsShaderResourceView(21, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);  // NaniteUniqueVertices
-    RootParameters[8].InitAsShaderResourceView(22, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);  // NaniteLocalIndices
-    RootParameters[9].InitAsShaderResourceView(23, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);  // NaniteClusters
-    RootParameters[10].InitAsShaderResourceView(26, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // ScenePrimitives
-    RootParameters[11].InitAsShaderResourceView(27, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // TriangleMaterialIDs
-    RootParameters[12].InitAsShaderResourceView(28, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL); // MaterialTable
+    CD3DX12_DESCRIPTOR_RANGE1 BufferRange = {};
+    BufferRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    BufferRange.NumDescriptors = 9;
+    BufferRange.BaseShaderRegister = 20;
+    BufferRange.RegisterSpace = 0;
+    BufferRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
+    BufferRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+    RootParameters[6].InitAsDescriptorTable(1, &BufferRange, D3D12_SHADER_VISIBILITY_ALL);
+
+    // 7: Terrain resolve CBV (b2)
+    RootParameters[7].InitAsConstantBufferView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
 
     // Static sampler
     CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1] = {};
-    StaticSamplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    StaticSamplers[0].Filter = D3D12_FILTER_ANISOTROPIC;
     StaticSamplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     StaticSamplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     StaticSamplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -631,109 +649,115 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
         return ErrorCode::CommandListCloseFailed;
     }
 
-    //  RTV(imgui & level rendering)
+    D3D12_DESCRIPTOR_HEAP_DESC RTVHeapDesc = {};
+    RTVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    RTVHeapDesc.NumDescriptors = BackBufferCount + FrameNumInFlight * 2;
+    RTVHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    RTVHeapDesc.NodeMask = 0;
+    if (D3DDevice->CreateDescriptorHeap(&RTVHeapDesc, IID_PPV_ARGS(&D3DRTVDescHeap)) != S_OK)
     {
-        D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
-        DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        //  BackBufferCount(imgui) + FrameNumInFlight(render target) + FrameNumInFlight(VB RTV)
-        DescriptorHeapDesc.NumDescriptors = BackBufferCount + FrameNumInFlight * 2;
-        DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-        //  XXX:    NodeMask?
-        DescriptorHeapDesc.NodeMask = 0;
-        if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DRTVDescHeap)) != S_OK)
-        {
-            return ErrorCode::DescriptorHeapCreateFailed;
-        }
-
-        SIZE_T DescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-        D3D12_CPU_DESCRIPTOR_HANDLE RTVHandle = D3DRTVDescHeap->GetCPUDescriptorHandleForHeapStart();
-        for (int I = 0; I < BackBufferCount; ++I)
-        {
-            IMGUIRenderTargetDescriptorHandles.push_back(RTVHandle);
-            RTVHandle.ptr += DescriptorSize;
-        }
-
-        for (int I = 0; I < FrameNumInFlight; ++I)
-        {
-            FrameContexts[I].RenderTargetCPUDescriptorHandle = RTVHandle;
-            RTVHandle.ptr += DescriptorSize;
-        }
-
-        for (int I = 0; I < FrameNumInFlight; ++I)
-        {
-            FrameContexts[I].VisibilityBufferRTVHandle = RTVHandle;
-            RTVHandle.ptr += DescriptorSize;
-        }
+        return ErrorCode::DescriptorHeapCreateFailed;
     }
 
-    //  DSV
+    SIZE_T RTVDescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    D3D12_CPU_DESCRIPTOR_HANDLE RTVHandle = D3DRTVDescHeap->GetCPUDescriptorHandleForHeapStart();
+    for (int I = 0; I < BackBufferCount; ++I)
     {
-        D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc;
-        DescriptorHeapDesc.NumDescriptors = FrameNumInFlight;
-        DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-        DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-        DescriptorHeapDesc.NodeMask = 0;
+        IMGUIRenderTargetDescriptorHandles.push_back(RTVHandle);
+        RTVHandle.ptr += RTVDescriptorSize;
+    }
+
+    for (int I = 0; I < FrameNumInFlight; ++I)
+    {
+        FrameContexts[I].RenderTargetCPUDescriptorHandle = RTVHandle;
+        RTVHandle.ptr += RTVDescriptorSize;
+    }
+
+    for (int I = 0; I < FrameNumInFlight; ++I)
+    {
+        FrameContexts[I].VisibilityBufferRTVHandle = RTVHandle;
+        RTVHandle.ptr += RTVDescriptorSize;
+    }
+
+    D3D12_DESCRIPTOR_HEAP_DESC DSVHeapDesc = {};
+    DSVHeapDesc.NumDescriptors = FrameNumInFlight;
+    DSVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    DSVHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    DSVHeapDesc.NodeMask = 0;
+
+    if (D3DDevice->CreateDescriptorHeap(&DSVHeapDesc, IID_PPV_ARGS(&D3DDSDescHeap)) != S_OK)
+    {
+        return ErrorCode::DescriptorHeapCreateFailed;
+    }
+
+    SIZE_T DSVDescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    D3D12_CPU_DESCRIPTOR_HANDLE DSVHandle = D3DDSDescHeap->GetCPUDescriptorHandleForHeapStart();
+
+    for (int I = 0; I < FrameNumInFlight; ++I)
+    {
+        FrameContexts[I].DepthStencilCPUDescriptorHandle = DSVHandle;
+        DSVHandle.ptr += DSVDescriptorSize;
+    }
+
+    D3D12_DESCRIPTOR_HEAP_DESC SRVHeapDesc = {};
+    SRVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    SRVHeapDesc.NumDescriptors = SRVHeapSize;
+    SRVHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    if (D3DDevice->CreateDescriptorHeap(&SRVHeapDesc, IID_PPV_ARGS(&D3DSRVCBVDescHeap)) != S_OK)
+    {
+        return ErrorCode::DescriptorHeapCreateFailed;
+    }
+
+    D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
+    D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle = D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart();
+    unsigned int IncrementSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    for (int I = 0; I < FrameNumInFlight; ++I)
+    {
+        FrameContexts[I].RenderTargetSRVCPUDescriptorHandle = CPUHandle;
+        FrameContexts[I].RenderTargetSRVGPUDescriptorHandle = GPUHandle;
+        CPUHandle.ptr += IncrementSize;
+        GPUHandle.ptr += IncrementSize;
+
+        FrameContexts[I].TransitionUAVCPUDescriptorHandle = CPUHandle;
+        FrameContexts[I].TransitionUAVGPUDescriptorHandle = GPUHandle;
+        CPUHandle.ptr += IncrementSize;
+        GPUHandle.ptr += IncrementSize;
+
+        FrameContexts[I].VisibilityBufferSRVCPUHandle = CPUHandle;
+        FrameContexts[I].VisibilityBufferSRVGPUHandle = GPUHandle;
+        CPUHandle.ptr += IncrementSize;
+        GPUHandle.ptr += IncrementSize;
+
+        FrameContexts[I].RenderTargetUAVCPUHandle = CPUHandle;
+        FrameContexts[I].RenderTargetUAVGPUHandle = GPUHandle;
+        CPUHandle.ptr += IncrementSize;
+        GPUHandle.ptr += IncrementSize;
+    }
+
+    D3DSRVDescriptorHeapAllocator.Create(D3DDevice.Get(), D3DSRVCBVDescHeap.Get(), FrameNumInFlight * 4);
+    D3DSRVDescriptorHeapAllocator.AllocRange(MaterialResolveBufferDescCount, &MaterialResolveBufferTableCPU, &MaterialResolveBufferTableGPU);
+
+    const unsigned int ResolveBufferSize = MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(TerrainResolveConstants));
+    CD3DX12_HEAP_PROPERTIES ResolveUploadHeapProps(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC ResolveDesc = CD3DX12_RESOURCE_DESC::Buffer(ResolveBufferSize);
+    for (int I = 0; I < FrameNumInFlight; ++I)
+    {
+        HRESULT hResult = D3DDevice->CreateCommittedResource(
+            &ResolveUploadHeapProps, D3D12_HEAP_FLAG_NONE, &ResolveDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(&TerrainResolveBuffer[I]));
         
-        if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DDSDescHeap)) != S_OK)
+        if (FAILED(hResult))
         {
-            return ErrorCode::DescriptorHeapCreateFailed;
+            return ErrorCode::CommittedResourceCreateFailed;
         }
-
-        SIZE_T DescriptorSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-        D3D12_CPU_DESCRIPTOR_HANDLE DSVHandle = D3DDSDescHeap->GetCPUDescriptorHandleForHeapStart();
-
-        for (int I = 0; I < FrameNumInFlight; ++I)
-        {
-            FrameContexts[I].DepthStencilCPUDescriptorHandle = DSVHandle;
-            DSVHandle.ptr += DescriptorSize;
-        }
-    }
-
-    //  SRV & CBV
-    {
-        D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {};
-        DescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        DescriptorHeapDesc.NumDescriptors = SRVHeapSize;
-        DescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        if (D3DDevice->CreateDescriptorHeap(&DescriptorHeapDesc, IID_PPV_ARGS(&D3DSRVCBVDescHeap)) != S_OK)
-        {
-            return ErrorCode::DescriptorHeapCreateFailed;
-        }
-
-        D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle = D3DSRVCBVDescHeap->GetCPUDescriptorHandleForHeapStart();
-        D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle = D3DSRVCBVDescHeap->GetGPUDescriptorHandleForHeapStart();
-        unsigned int IncrementSize = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        //  First FrameNumInFlight*4 D3D12_CPU_DESCRIPTOR_HANDLE of D3DSRVDescHeap is reserved for level's render target (SRV+TransitionUAV+VB_SRV+RT_UAV).
-        for (int I = 0; I < FrameNumInFlight; ++I)
-        {
-            FrameContexts[I].RenderTargetSRVCPUDescriptorHandle = CPUHandle;
-            FrameContexts[I].RenderTargetSRVGPUDescriptorHandle = GPUHandle;
-            CPUHandle.ptr += IncrementSize;
-            GPUHandle.ptr += IncrementSize;
-            
-            FrameContexts[I].TransitionUAVCPUDescriptorHandle = CPUHandle;
-            FrameContexts[I].TransitionUAVGPUDescriptorHandle = GPUHandle;
-            CPUHandle.ptr += IncrementSize;
-            GPUHandle.ptr += IncrementSize;
-
-            FrameContexts[I].VisibilityBufferSRVCPUHandle = CPUHandle;
-            FrameContexts[I].VisibilityBufferSRVGPUHandle = GPUHandle;
-            CPUHandle.ptr += IncrementSize;
-            GPUHandle.ptr += IncrementSize;
-
-            FrameContexts[I].RenderTargetUAVCPUHandle = CPUHandle;
-            FrameContexts[I].RenderTargetUAVGPUHandle = GPUHandle;
-            CPUHandle.ptr += IncrementSize;
-            GPUHandle.ptr += IncrementSize;
-        }
-
-        D3DSRVDescriptorHeapAllocator.Create(D3DDevice.Get(), D3DSRVCBVDescHeap.Get(), FrameNumInFlight * 4);
     }
 
     D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
     CommandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
     CommandQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
     CommandQueueDesc.NodeMask = 0;
+    
     if (D3DDevice->CreateCommandQueue(&CommandQueueDesc, IID_PPV_ARGS(&D3DCommandQueue)) != S_OK)
     {
         return ErrorCode::Failed;
@@ -838,6 +862,12 @@ ErrorCode PipelineInterface::Initialize(HWND hWnd)
     }
 
     Result = CreateMaterialResolveComputePipelineState();
+    if (Result != ErrorCode::OK)
+    {
+        return Result;
+    }
+
+    Result = CreateTerrainPipelineState();
     if (Result != ErrorCode::OK)
     {
         return Result;
@@ -1457,9 +1487,9 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
             // Copy unique vertices (adjust indices to global vertex buffer)
             const unsigned int UniqueVertCount = static_cast<unsigned int>(Cluster.UniqueVertices.size());
             // Each UniqueVertex index needs to be offset by this mesh's vertex base
-            for (unsigned int j = 0; j < UniqueVertCount; ++j)
+            for (unsigned int J = 0; J < UniqueVertCount; ++J)
             {
-                UniqueVerticesData[CurrentUniqueVerticesOffset + j] = Cluster.UniqueVertices[j] + MeshVertexOffset;
+                UniqueVerticesData[CurrentUniqueVerticesOffset + J] = Cluster.UniqueVertices[J] + MeshVertexOffset;
             }
             CurrentUniqueVerticesOffset += UniqueVertCount;
 
@@ -1475,27 +1505,24 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
         unsigned int LocalUniqueVerticesOffset = MeshUniqueVerticesOffset;
         unsigned int LocalLocalIndicesOffset = MeshLocalIndicesOffset;
 
-        for (size_t i = 0; i < Data->Clusters.size(); ++i)
+        for (size_t I = 0; I < Data->Clusters.size(); ++I)
         {
-            const ClusterData& Cluster = Data->Clusters[i];
+            const ClusterData& Cluster = Data->Clusters[I];
 
-            // GPU Scene: Set PrimitiveId for this cluster (all clusters of a mesh share the same primitive)
-            GPUClusterData[CurrentClusterOffset + i].PrimitiveId = static_cast<unsigned int>(MeshIdx);
-            GPUClusterData[CurrentClusterOffset + i].IndexCount = static_cast<unsigned int>(Cluster.LocalIndices.size());
-            GPUClusterData[CurrentClusterOffset + i].UniqueVerticesOffset = LocalUniqueVerticesOffset;
-            GPUClusterData[CurrentClusterOffset + i].UniqueVerticesCount = static_cast<unsigned int>(Cluster.UniqueVertices.size());
-            GPUClusterData[CurrentClusterOffset + i].LocalIndicesOffset = LocalLocalIndicesOffset;
-            GPUClusterData[CurrentClusterOffset + i].BoundCenter[0] = Cluster.Bound.Center[0];
-            GPUClusterData[CurrentClusterOffset + i].BoundCenter[1] = Cluster.Bound.Center[1];
-            GPUClusterData[CurrentClusterOffset + i].BoundCenter[2] = Cluster.Bound.Center[2];
-            GPUClusterData[CurrentClusterOffset + i].BoundRadius = Cluster.Bound.Radius;
+            GPUClusterData[CurrentClusterOffset + I].PrimitiveId = static_cast<unsigned int>(MeshIdx);
+            GPUClusterData[CurrentClusterOffset + I].IndexCount = static_cast<unsigned int>(Cluster.LocalIndices.size());
+            GPUClusterData[CurrentClusterOffset + I].UniqueVerticesOffset = LocalUniqueVerticesOffset;
+            GPUClusterData[CurrentClusterOffset + I].UniqueVerticesCount = static_cast<unsigned int>(Cluster.UniqueVertices.size());
+            GPUClusterData[CurrentClusterOffset + I].LocalIndicesOffset = LocalLocalIndicesOffset;
+            GPUClusterData[CurrentClusterOffset + I].BoundCenter[0] = Cluster.Bound.Center[0];
+            GPUClusterData[CurrentClusterOffset + I].BoundCenter[1] = Cluster.Bound.Center[1];
+            GPUClusterData[CurrentClusterOffset + I].BoundCenter[2] = Cluster.Bound.Center[2];
+            GPUClusterData[CurrentClusterOffset + I].BoundRadius = Cluster.Bound.Radius;
 
-            // Adjust Refined index to global GroupBounds offset (if not -1)
-            GPUClusterData[CurrentClusterOffset + i].Refined = (Cluster.Refined == -1) ? -1 : (Cluster.Refined + static_cast<int>(MeshGroupBoundsOffset));
+            GPUClusterData[CurrentClusterOffset + I].Refined = (Cluster.Refined == -1) ? -1 : (Cluster.Refined + static_cast<int>(MeshGroupBoundsOffset));
 
-            // Adjust GroupId to global GroupBounds offset
-            GPUClusterData[CurrentClusterOffset + i].GroupId = Cluster.GroupId + static_cast<int>(MeshGroupBoundsOffset);
-            GPUClusterData[CurrentClusterOffset + i].TriangleMaterialIDsOffset = CurrentTriangleMaterialIDsOffset;
+            GPUClusterData[CurrentClusterOffset + I].GroupId = Cluster.GroupId + static_cast<int>(MeshGroupBoundsOffset);
+            GPUClusterData[CurrentClusterOffset + I].TriangleMaterialIDsOffset = CurrentTriangleMaterialIDsOffset;
 
             // Copy per-triangle material IDs
             const unsigned int TriMatCount = static_cast<unsigned int>(Cluster.TriangleMaterialIDs.size());
@@ -1509,13 +1536,13 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
         }
 
         // Copy group bounds
-        for (size_t i = 0; i < Data->GroupBounds.size(); ++i)
+        for (size_t I = 0; I < Data->GroupBounds.size(); ++I)
         {
-            GroupBoundsData[CurrentGroupBoundsOffset + i].Center[0] = Data->GroupBounds[i].Center[0];
-            GroupBoundsData[CurrentGroupBoundsOffset + i].Center[1] = Data->GroupBounds[i].Center[1];
-            GroupBoundsData[CurrentGroupBoundsOffset + i].Center[2] = Data->GroupBounds[i].Center[2];
-            GroupBoundsData[CurrentGroupBoundsOffset + i].Radius = Data->GroupBounds[i].Radius;
-            GroupBoundsData[CurrentGroupBoundsOffset + i].Error = Data->GroupBounds[i].Error;
+            GroupBoundsData[CurrentGroupBoundsOffset + I].Center[0] = Data->GroupBounds[I].Center[0];
+            GroupBoundsData[CurrentGroupBoundsOffset + I].Center[1] = Data->GroupBounds[I].Center[1];
+            GroupBoundsData[CurrentGroupBoundsOffset + I].Center[2] = Data->GroupBounds[I].Center[2];
+            GroupBoundsData[CurrentGroupBoundsOffset + I].Radius = Data->GroupBounds[I].Radius;
+            GroupBoundsData[CurrentGroupBoundsOffset + I].Error = Data->GroupBounds[I].Error;
         }
 
         // Update offsets
@@ -1667,12 +1694,12 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
             GPUMaterial* MaterialData = nullptr;
             GlobalMaterialTableBufferUpload->Map(0, &ReadRange, reinterpret_cast<void**>(&MaterialData));
 
-            for (unsigned int i = 0; i < MaterialCount; ++i)
+            for (unsigned int I = 0; I < MaterialCount; ++I)
             {
-                MaterialData[i].AlbedoTextureIndex = MaterialProxies[i].AlbedoTextureIndex;
-                MaterialData[i].NormalTextureIndex = MaterialProxies[i].NormalTextureIndex;
-                MaterialData[i].MetallicTextureIndex = MaterialProxies[i].MetallicTextureIndex;
-                MaterialData[i].RoughnessTextureIndex = MaterialProxies[i].RoughnessTextureIndex;
+                MaterialData[I].AlbedoTextureIndex = MaterialProxies[I].AlbedoTextureIndex;
+                MaterialData[I].NormalTextureIndex = MaterialProxies[I].NormalTextureIndex;
+                MaterialData[I].MetallicTextureIndex = MaterialProxies[I].MetallicTextureIndex;
+                MaterialData[I].RoughnessTextureIndex = MaterialProxies[I].RoughnessTextureIndex;
             }
 
             GlobalMaterialTableBufferUpload->Unmap(0, nullptr);
@@ -1725,6 +1752,62 @@ ErrorCode PipelineInterface::CreateGlobalMergedMeshBuffers(const Level* LevelIns
         
         // Initialize to 0
         *static_cast<unsigned int*>(ClusterCountBufferMapped) = 0;
+    }
+
+    // Create SRV descriptors for material resolve buffer table (slots 0-7, Nanite + ScenePrimitive + Material)
+    // Slot 4 (t25, TerrainPatches) and slot 8 (t29, NeighborLod) are filled by CreateTerrainResources
+    {
+        const unsigned int DescriptorIncrement = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle = MaterialResolveBufferTableCPU;
+
+        for (unsigned int S = 0; S < MaterialResolveBufferDescCount; ++S)
+        {
+            D3D12_SHADER_RESOURCE_VIEW_DESC NullDesc = {};
+            NullDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            NullDesc.Format = DXGI_FORMAT_R32_UINT;
+            NullDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            D3D12_CPU_DESCRIPTOR_HANDLE Handle = CPUHandle;
+            Handle.ptr += S * DescriptorIncrement;
+            D3DDevice->CreateShaderResourceView(nullptr, &NullDesc, Handle);
+        }
+
+        auto CreateStructuredSRV = [&](ID3D12Resource* Buffer, unsigned int Stride, unsigned int Count, unsigned int Slot)
+        {
+            D3D12_SHADER_RESOURCE_VIEW_DESC Desc = {};
+            Desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            Desc.Format = DXGI_FORMAT_UNKNOWN;
+            Desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            Desc.Buffer.NumElements = Count;
+            Desc.Buffer.StructureByteStride = Stride;
+            D3D12_CPU_DESCRIPTOR_HANDLE Handle = CPUHandle;
+            Handle.ptr += Slot * DescriptorIncrement;
+            D3DDevice->CreateShaderResourceView(Buffer, &Desc, Handle);
+        };
+
+        CreateStructuredSRV(GlobalVertexBuffer.Get(), sizeof(Vertex), TotalVertexCount, 0);
+        CreateStructuredSRV(GlobalUniqueVerticesBuffer.Get(), sizeof(unsigned int), TotalUniqueVerticesCount, 1);
+        {
+            D3D12_SHADER_RESOURCE_VIEW_DESC Desc = {};
+            Desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            Desc.Format = DXGI_FORMAT_R32_TYPELESS;
+            Desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            Desc.Buffer.NumElements = static_cast<unsigned int>(TotalLocalIndicesBytes / 4);
+            Desc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+            D3D12_CPU_DESCRIPTOR_HANDLE Handle = CPUHandle;
+            Handle.ptr += 2 * DescriptorIncrement;
+            D3DDevice->CreateShaderResourceView(GlobalLocalIndicesBuffer.Get(), &Desc, Handle);
+        }
+        CreateStructuredSRV(GlobalClusterBuffer.Get(), sizeof(GPUCluster), TotalClusterCount, 3);
+        if (ScenePrimitiveBuffer)
+        {
+            CreateStructuredSRV(ScenePrimitiveBuffer.Get(), sizeof(FPrimitiveSceneData), static_cast<unsigned int>(PrimitiveSceneDataArray.size()), 5);
+        }
+        CreateStructuredSRV(GlobalTriangleMaterialIDsBuffer.Get(), sizeof(unsigned int), TotalTriangleMaterialIDsCount, 6);
+        if (GlobalMaterialTableBuffer)
+        {
+            CreateStructuredSRV(GlobalMaterialTableBuffer.Get(), sizeof(GPUMaterial),
+                static_cast<unsigned int>(LevelInstance->GetAllMaterialProxies().size()), 7);
+        }
     }
 
     return ErrorCode::OK;
@@ -1861,7 +1944,7 @@ ErrorCode PipelineInterface::CreateTexture(const Texture* TextureInstance, unsig
     hResult = TextureProxyInstance->UploadBuffer->Map(0, nullptr, &MappedData);
     if (SUCCEEDED(hResult))
     {
-        const int BytesPerPixel = TextureInstance->Channels * (TextureInstance->IsHDR ? 4 : 1);
+        const int BytesPerPixel = TextureInstance->Channels * (TextureInstance->IsHDR ? 4 : (TextureInstance->Is16Bit ? 2 : 1));
 
         for (int Mip = 0; Mip < MipCount; ++Mip)
         {
@@ -2047,10 +2130,10 @@ ErrorCode PipelineInterface::CreateCubemap(const CubemapTexture* CubemapInstance
     {
         unsigned char* pData = static_cast<unsigned char*>(MappedData);
 
-        for (const auto& mapping : PhysicalToLogical)
+        for (const auto& Mapping : PhysicalToLogical)
         {
-            int PhysicalIndex = mapping.first;
-            int LogicalIndex = mapping.second;
+            int PhysicalIndex = Mapping.first;
+            int LogicalIndex = Mapping.second;
             
             // Extract MipLevel and FaceIndex from LogicalIndex
             int MipLevel = LogicalIndex / 6;
@@ -2443,17 +2526,14 @@ void PipelineInterface::RenderVisibilityPass(unsigned int FrameContextIndex, con
     CommandList->SetGraphicsRootShaderResourceView(6, GlobalGroupBoundsBuffer->GetGPUVirtualAddress());
 
     if (ScenePrimitiveBuffer)
+    {
         CommandList->SetGraphicsRootShaderResourceView(7, ScenePrimitiveBuffer->GetGPUVirtualAddress());
+    }
 
     const unsigned int ASGroupCount = (TotalClusterCount + 32 - 1) / 32;
     CommandList->DispatchMesh(ASGroupCount, 1, 1);
 
-    // Transition VB to SRV for material resolve
-    VBBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        FrameContexts[FrameContextIndex].VisibilityBuffer.Get(),
-        D3D12_RESOURCE_STATE_RENDER_TARGET,
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    CommandList->ResourceBarrier(1, &VBBarrier);
+    // VB stays in RENDER_TARGET state for terrain pass (transition to SRV happens after terrain)
 }
 
 void PipelineInterface::RenderMaterialResolve(unsigned int FrameContextIndex, const Level* LevelInstance) const
@@ -2503,24 +2583,60 @@ void PipelineInterface::RenderMaterialResolve(unsigned int FrameContextIndex, co
     // Bind RT UAV (parameter 5)
     CommandList->SetComputeRootDescriptorTable(5, FrameContexts[FrameContextIndex].RenderTargetUAVGPUHandle);
 
-    // Bind Nanite buffers (parameters 6-12)
-    CommandList->SetComputeRootShaderResourceView(6, GlobalVertexBuffer->GetGPUVirtualAddress());
-    CommandList->SetComputeRootShaderResourceView(7, GlobalUniqueVerticesBuffer->GetGPUVirtualAddress());
-    CommandList->SetComputeRootShaderResourceView(8, GlobalLocalIndicesBuffer->GetGPUVirtualAddress());
-    CommandList->SetComputeRootShaderResourceView(9, GlobalClusterBuffer->GetGPUVirtualAddress());
+    // Bind buffer SRVs descriptor table (parameter 6: t20-t23, t25-t29)
+    CommandList->SetComputeRootDescriptorTable(6, MaterialResolveBufferTableGPU);
 
-    if (ScenePrimitiveBuffer)
+    const unsigned int NaniteClusterCount = ClusterCountBufferMapped
+        ? *static_cast<unsigned int*>(ClusterCountBufferMapped) : 0;
+    const TerrainActor* Terrain = LevelInstance->GetTerrain();
+    TerrainResolveConstants ResolveConstants = {};
+    ResolveConstants.NaniteClusterCount = NaniteClusterCount;
+    ResolveConstants.HeightmapIndex = 0xFFFFFFFF;
+    ResolveConstants.DebugScale = 1.0f;
+    
+    for (unsigned int Index = 0; Index < 4; ++Index)
     {
-        CommandList->SetComputeRootShaderResourceView(10, ScenePrimitiveBuffer->GetGPUVirtualAddress());
+        ResolveConstants.SplatmapAndLayerInfo[Index] = 0xFFFFFFFF;
     }
     
-    CommandList->SetComputeRootShaderResourceView(11, GlobalTriangleMaterialIDsBuffer->GetGPUVirtualAddress());
-
-    if (GlobalMaterialTableBuffer)
+    ResolveConstants.SplatmapAndLayerInfo[3] = 0;
+    for (unsigned int Index = 0; Index < 12; ++Index)
     {
-        CommandList->SetComputeRootShaderResourceView(12, GlobalMaterialTableBuffer->GetGPUVirtualAddress());
+        ResolveConstants.AlbedoIndices[Index] = 0xFFFFFFFF;
+        ResolveConstants.NormalIndices[Index] = 0xFFFFFFFF;
+        ResolveConstants.RoughnessIndices[Index] = 0xFFFFFFFF;
     }
     
+    if (Terrain)
+    {
+        const TerrainMaterialTextures& MaterialTextures = Terrain->MaterialTextures;
+        ResolveConstants.HeightmapIndex = MaterialTextures.HeightmapIndex;
+        ResolveConstants.WorldSize = Terrain->TerrainSize;
+        ResolveConstants.HeightScale = Terrain->HeightScale;
+        
+        for (unsigned int Index = 0; Index < 3; ++Index)
+        {
+            ResolveConstants.SplatmapAndLayerInfo[Index] = MaterialTextures.SplatmapIndices[Index];
+        }
+        
+        ResolveConstants.SplatmapAndLayerInfo[3] = MaterialTextures.LayerCount;
+        for (unsigned int Index = 0; Index < 12; ++Index)
+        {
+            ResolveConstants.AlbedoIndices[Index] = MaterialTextures.AlbedoIndices[Index];
+            ResolveConstants.NormalIndices[Index] = MaterialTextures.NormalIndices[Index];
+            ResolveConstants.RoughnessIndices[Index] = MaterialTextures.RoughnessIndices[Index];
+        }
+        
+        ResolveConstants.DebugScale = Terrain->DebugScale;
+        ResolveConstants.DebugLODColors = Terrain->DebugLODColors ? 1u : 0u;
+    }
+
+    void* ResolveMapped = nullptr;
+    TerrainResolveBuffer[FrameContextIndex]->Map(0, nullptr, &ResolveMapped);
+    memcpy(ResolveMapped, &ResolveConstants, sizeof(TerrainResolveConstants));
+    TerrainResolveBuffer[FrameContextIndex]->Unmap(0, nullptr);
+    CommandList->SetComputeRootConstantBufferView(7, TerrainResolveBuffer[FrameContextIndex]->GetGPUVirtualAddress());
+
     // Dispatch
     D3D12_RESOURCE_DESC RTDesc = FrameContexts[FrameContextIndex].RenderTarget->GetDesc();
     const unsigned int GroupsX = (static_cast<unsigned int>(RTDesc.Width) + 7) / 8;
@@ -2619,4 +2735,565 @@ void PipelineInterface::RenderPostProcessCompute(unsigned int FrameContextIndex)
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     
     CommandList->ResourceBarrier(1, &FinalBarrier);
+}
+
+ErrorCode PipelineInterface::CreateTerrainPipelineState()
+{
+    ComPtr<IDxcBlob> AmplificationShader;
+    ComPtr<IDxcBlob> MeshShader;
+    ComPtr<IDxcBlob> PixelShader;
+
+    ErrorCode Result = CompileShaderDXC(FileTool::GetInstance().GetTerrainASPath(), L"main", L"as_6_5", AmplificationShader);
+    if (Result != ErrorCode::OK)
+    {
+        return Result;
+    }
+
+    Result = CompileShaderDXC(FileTool::GetInstance().GetTerrainMSPath(), L"main", L"ms_6_5", MeshShader);
+    if (Result != ErrorCode::OK)
+    {
+        return Result;
+    }
+
+    // Terrain-specific pixel shader — outputs WorldXZ to Visibility Buffer
+    Result = CompileShaderDXC(FileTool::GetInstance().GetTerrainPSPath(), L"main", L"ps_6_5", PixelShader);
+    if (Result != ErrorCode::OK)
+    {
+        return Result;
+    }
+
+    // Terrain Root Signature:
+    //   0: Terrain Camera CBV (b0)
+    //   1: Terrain Params CBV (b1)
+    //   2: Terrain Patches SRV (t0) - root descriptor
+    //   3: Terrain Bounds SRV (t1) - root descriptor
+    //   4: Active Indices SRV (t3) - root descriptor
+    //   5: Heightmap SRV (t2) - descriptor table
+    D3D12_FEATURE_DATA_ROOT_SIGNATURE FeatureData = {};
+    FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+    if (FAILED(D3DDevice->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &FeatureData, sizeof(FeatureData))))
+    {
+        FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+    }
+
+    CD3DX12_DESCRIPTOR_RANGE1 HeightmapRange = {};
+    HeightmapRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    HeightmapRange.NumDescriptors = 1;
+    HeightmapRange.BaseShaderRegister = 2;  // t2
+    HeightmapRange.RegisterSpace = 0;
+    HeightmapRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC;
+    HeightmapRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+    CD3DX12_ROOT_PARAMETER1 RootParameters[7] = {};
+    // Camera CB: used by both AS (frustum planes) and MS (ViewProj)
+    RootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+    // Terrain Params CB: used by both AS (PatchCount) and MS (ClusterBase, WorldSize, etc)
+    RootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+    // Patch data: MS only (reads patch WorldOffset, PatchSize, LodLevel)
+    RootParameters[2].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_MESH);
+    // Bounds: AS only (frustum culling)
+    RootParameters[3].InitAsShaderResourceView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_AMPLIFICATION);
+    // Active indices: AS only (LOD selection result)
+    RootParameters[4].InitAsShaderResourceView(3, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_AMPLIFICATION);
+    // Heightmap: MS only (vertex height sampling)
+    RootParameters[5].InitAsDescriptorTable(1, &HeightmapRange, D3D12_SHADER_VISIBILITY_MESH);
+    // Neighbor LOD buffer: MS only (edge stitching, indexed by active patch index)
+    RootParameters[6].InitAsShaderResourceView(4, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_MESH);
+
+    // Static sampler for heightmap (linear clamp)
+    D3D12_STATIC_SAMPLER_DESC HeightmapSampler = {};
+    HeightmapSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    HeightmapSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    HeightmapSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    HeightmapSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    HeightmapSampler.MipLODBias = 0.0f;
+    HeightmapSampler.MaxAnisotropy = 1;
+    HeightmapSampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+    HeightmapSampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+    HeightmapSampler.MinLOD = 0.0f;
+    HeightmapSampler.MaxLOD = D3D12_FLOAT32_MAX;
+    HeightmapSampler.ShaderRegister = 0;  // s0
+    HeightmapSampler.RegisterSpace = 0;
+    HeightmapSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+    D3D12_ROOT_SIGNATURE_FLAGS RootSignatureFlags =
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_VERTEX_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC RootSignatureDesc;
+    RootSignatureDesc.Init_1_1(_countof(RootParameters), RootParameters, 1, &HeightmapSampler, RootSignatureFlags);
+
+    ComPtr<ID3DBlob> Signature;
+    ComPtr<ID3DBlob> Error;
+    HRESULT hResult = D3DX12SerializeVersionedRootSignature(&RootSignatureDesc, FeatureData.HighestVersion, &Signature, &Error);
+    if (FAILED(hResult))
+    {
+        return ErrorCode::SerializeVersionedRootSignatureFailed;
+    }
+
+    hResult = D3DDevice->CreateRootSignature(0, Signature->GetBufferPointer(), Signature->GetBufferSize(),
+        IID_PPV_ARGS(&TerrainRootSignature));
+    if (FAILED(hResult))
+    {
+        return ErrorCode::RootSignatureCreationFailed;
+    }
+
+    // Create terrain mesh shader PSO
+    D3DX12_MESH_SHADER_PIPELINE_STATE_DESC PSODesc = {};
+    PSODesc.pRootSignature = TerrainRootSignature.Get();
+    PSODesc.AS = CD3DX12_SHADER_BYTECODE(AmplificationShader->GetBufferPointer(), AmplificationShader->GetBufferSize());
+    PSODesc.MS = CD3DX12_SHADER_BYTECODE(MeshShader->GetBufferPointer(), MeshShader->GetBufferSize());
+    PSODesc.PS = CD3DX12_SHADER_BYTECODE(PixelShader->GetBufferPointer(), PixelShader->GetBufferSize());
+
+    PSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    PSODesc.RasterizerState.FillMode = CurrentFillMode;
+    PSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+
+    PSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    PSODesc.DepthStencilState.DepthEnable = TRUE;
+    PSODesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+    PSODesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+    PSODesc.DepthStencilState.StencilEnable = FALSE;
+
+    PSODesc.SampleMask = UINT_MAX;
+    PSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    PSODesc.NumRenderTargets = 1;
+    PSODesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_UINT;
+    PSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    PSODesc.SampleDesc.Count = 1;
+
+    CD3DX12_PIPELINE_MESH_STATE_STREAM PipelineStream(PSODesc);
+    D3D12_PIPELINE_STATE_STREAM_DESC StreamDesc;
+    StreamDesc.pPipelineStateSubobjectStream = &PipelineStream;
+    StreamDesc.SizeInBytes = sizeof(PipelineStream);
+
+    hResult = D3DDevice->CreatePipelineState(&StreamDesc, IID_PPV_ARGS(&TerrainPipelineState));
+    if (FAILED(hResult))
+    {
+        char Buffer[256];
+        sprintf_s(Buffer, "Failed to create terrain pipeline state. HRESULT: 0x%08X\n", hResult);
+        OutputDebugStringA(Buffer);
+        return ErrorCode::MeshShaderPipelineStateCreateFailed;
+    }
+
+    return ErrorCode::OK;
+}
+
+ErrorCode PipelineInterface::CreateTerrainResources(TerrainActor* Terrain)
+{
+    if (!Terrain || Terrain->PatchCount == 0)
+    {
+        return ErrorCode::OK;
+    }
+
+    // Load heightmap
+    const Texture& HeightmapTexture = *Terrain->HeightmapTexture;
+
+    Terrain->ProxyInstance = std::make_unique<TerrainProxy>();
+    TerrainProxy* Proxy = Terrain->GetProxy();
+
+    const unsigned int PatchCount = Terrain->PatchCount;
+    const unsigned int TotalNodeCount = Terrain->TotalNodeCount;
+
+    // Read Nanite cluster count from the already-mapped ClusterCountBuffer
+    const unsigned int NaniteClusterCount = ClusterCountBufferMapped
+        ? *static_cast<unsigned int*>(ClusterCountBufferMapped) : 0;
+
+    CD3DX12_HEAP_PROPERTIES DefaultHeapProps(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_HEAP_PROPERTIES UploadHeapProps(D3D12_HEAP_TYPE_UPLOAD);
+
+    // --- Upload patch buffer from TerrainActor data ---
+    const unsigned int PatchBufferSize = sizeof(TerrainPatchData) * TotalNodeCount;
+    CD3DX12_RESOURCE_DESC PatchBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(PatchBufferSize);
+
+    HRESULT hResult = D3DDevice->CreateCommittedResource(
+        &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &PatchBufferDesc,
+        D3D12_RESOURCE_STATE_COMMON, nullptr,
+        IID_PPV_ARGS(&Proxy->PatchBuffer));
+    
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+
+    ComPtr<ID3D12Resource> PatchUpload;
+    hResult = D3DDevice->CreateCommittedResource(
+        &UploadHeapProps, D3D12_HEAP_FLAG_NONE, &PatchBufferDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+        IID_PPV_ARGS(&PatchUpload));
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+
+    void* PatchMapped = nullptr;
+    PatchUpload->Map(0, nullptr, &PatchMapped);
+    memcpy(PatchMapped, Terrain->Patches.data(), PatchBufferSize);
+    PatchUpload->Unmap(0, nullptr);
+
+    ResetUploadCommandAllocator();
+    ResetUploadCommandList();
+
+    CD3DX12_RESOURCE_BARRIER PatchToCopy = CD3DX12_RESOURCE_BARRIER::Transition(
+        Proxy->PatchBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+    UploadCommandList->ResourceBarrier(1, &PatchToCopy);
+    UploadCommandList->CopyBufferRegion(Proxy->PatchBuffer.Get(), 0, PatchUpload.Get(), 0, PatchBufferSize);
+    CD3DX12_RESOURCE_BARRIER PatchToSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+        Proxy->PatchBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    UploadCommandList->ResourceBarrier(1, &PatchToSRV);
+    ExecuteAndWaitUploadCommandList();
+
+    // --- Create triple-buffered NeighborLod upload heap buffers ---
+    // Upload heap: CPU-writable, GPU-readable directly (no copy needed)
+    // Indexed by patch index so both MS and material resolve can use it
+    const unsigned int NeighborLodBufferSize = sizeof(unsigned int) * TotalNodeCount;
+    CD3DX12_RESOURCE_DESC NeighborLodDesc = CD3DX12_RESOURCE_DESC::Buffer(NeighborLodBufferSize);
+
+    for (int I = 0; I < FrameNumInFlight; ++I)
+    {
+        hResult = D3DDevice->CreateCommittedResource(
+            &UploadHeapProps, D3D12_HEAP_FLAG_NONE, &NeighborLodDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(&Proxy->NeighborLodUpload[I]));
+        
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+    }
+
+    // --- Upload bound buffer from TerrainActor data ---
+    const unsigned int BoundBufferSize = sizeof(TerrainPatchBound) * TotalNodeCount;
+    CD3DX12_RESOURCE_DESC BoundBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(BoundBufferSize);
+
+    hResult = D3DDevice->CreateCommittedResource(
+        &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &BoundBufferDesc,
+        D3D12_RESOURCE_STATE_COMMON, nullptr,
+        IID_PPV_ARGS(&Proxy->BoundBuffer));
+    
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+
+    ComPtr<ID3D12Resource> BoundUpload;
+    hResult = D3DDevice->CreateCommittedResource(
+        &UploadHeapProps, D3D12_HEAP_FLAG_NONE, &BoundBufferDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+        IID_PPV_ARGS(&BoundUpload));
+    
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+
+    void* BoundMapped = nullptr;
+    BoundUpload->Map(0, nullptr, &BoundMapped);
+    memcpy(BoundMapped, Terrain->Bounds.data(), BoundBufferSize);
+    BoundUpload->Unmap(0, nullptr);
+
+    ResetUploadCommandAllocator();
+    ResetUploadCommandList();
+
+    CD3DX12_RESOURCE_BARRIER BoundToCopy = CD3DX12_RESOURCE_BARRIER::Transition(
+        Proxy->BoundBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+    UploadCommandList->ResourceBarrier(1, &BoundToCopy);
+    UploadCommandList->CopyBufferRegion(Proxy->BoundBuffer.Get(), 0, BoundUpload.Get(), 0, BoundBufferSize);
+    CD3DX12_RESOURCE_BARRIER BoundToSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+        Proxy->BoundBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    UploadCommandList->ResourceBarrier(1, &BoundToSRV);
+    ExecuteAndWaitUploadCommandList();
+
+    // --- Create terrain params CB ---
+    const unsigned int ParamsBufferSize = MathTool::GetInstance().CalcConstantBufferByteSize(sizeof(TerrainParams));
+    CD3DX12_RESOURCE_DESC ParamsDesc = CD3DX12_RESOURCE_DESC::Buffer(ParamsBufferSize);
+
+    for (int I = 0; I < FrameNumInFlight; ++I)
+    {
+        hResult = D3DDevice->CreateCommittedResource(
+            &UploadHeapProps, D3D12_HEAP_FLAG_NONE, &ParamsDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(&TerrainParamsBuffer[I]));
+        
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+    }
+
+    TerrainParams Params = {};
+    Params.ActivePatchCount = PatchCount;
+    Params.ClusterBase = NaniteClusterCount;
+    Params.PatchSize = Terrain->PatchSize;
+    Params.HeightScale = Terrain->HeightScale;
+    Params.WorldSize = Terrain->TerrainSize;
+    Params.TotalPatchCount = TotalNodeCount;
+    Params.EdgeStitchingEnabled = 1u;
+    Params.DebugScale = Terrain->DebugScale;
+    
+    for (int I = 0; I < FrameNumInFlight; ++I)
+    {
+        void* ParamsMapped = nullptr;
+        TerrainParamsBuffer[I]->Map(0, nullptr, &ParamsMapped);
+        memcpy(ParamsMapped, &Params, sizeof(TerrainParams));
+        TerrainParamsBuffer[I]->Unmap(0, nullptr);
+    }
+
+    // --- Load heightmap to GPU texture ---
+    const unsigned int HeightmapWidth = static_cast<unsigned int>(HeightmapTexture.GetWidth());
+    const unsigned int HeightmapHeight = static_cast<unsigned int>(HeightmapTexture.GetHeight());
+
+    D3D12_RESOURCE_DESC TexDesc = {};
+    TexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    TexDesc.Width = HeightmapWidth;
+    TexDesc.Height = HeightmapHeight;
+    TexDesc.DepthOrArraySize = 1;
+    TexDesc.MipLevels = 1;
+    TexDesc.Format = HeightmapTexture.Format;
+    TexDesc.SampleDesc.Count = 1;
+    TexDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    TexDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    hResult = D3DDevice->CreateCommittedResource(
+        &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &TexDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+        IID_PPV_ARGS(&Proxy->Heightmap));
+    
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+
+    const UINT64 TexUploadSize = GetRequiredIntermediateSize(Proxy->Heightmap.Get(), 0, 1);
+
+    CD3DX12_RESOURCE_DESC TexUploadDesc = CD3DX12_RESOURCE_DESC::Buffer(TexUploadSize);
+    ComPtr<ID3D12Resource> HeightmapUpload;
+    hResult = D3DDevice->CreateCommittedResource(
+        &UploadHeapProps, D3D12_HEAP_FLAG_NONE, &TexUploadDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+        IID_PPV_ARGS(&HeightmapUpload));
+    
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+
+    ResetUploadCommandAllocator();
+    ResetUploadCommandList();
+
+    const unsigned int BytesPerPixel = HeightmapTexture.Channels * (HeightmapTexture.IsHDR ? 4 : (HeightmapTexture.Is16Bit ? 2 : 1));
+    D3D12_SUBRESOURCE_DATA SubresourceData = {};
+    SubresourceData.pData = HeightmapTexture.GetData();
+    SubresourceData.RowPitch = HeightmapWidth * BytesPerPixel;
+    SubresourceData.SlicePitch = SubresourceData.RowPitch * HeightmapHeight;
+
+    UpdateSubresources(UploadCommandList.Get(), Proxy->Heightmap.Get(), HeightmapUpload.Get(), 0, 0, 1, &SubresourceData);
+
+    CD3DX12_RESOURCE_BARRIER HeightmapBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        Proxy->Heightmap.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    UploadCommandList->ResourceBarrier(1, &HeightmapBarrier);
+
+    ExecuteAndWaitUploadCommandList();
+    HeightmapUpload.Reset();
+
+    // Create SRV for heightmap
+    D3D12_CPU_DESCRIPTOR_HANDLE HeightmapSRVCPU = {};
+    D3DSRVDescriptorHeapAllocator.Alloc(&HeightmapSRVCPU, &TerrainHeightmapSRVGPU);
+    D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc = {};
+    SRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    SRVDesc.Format = HeightmapTexture.Format;
+    SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    SRVDesc.Texture2D.MipLevels = 1;
+    D3DDevice->CreateShaderResourceView(Proxy->Heightmap.Get(), &SRVDesc, HeightmapSRVCPU);
+
+    // --- Create ActiveIndices buffer (triple buffered for per-frame updates) ---
+    const unsigned int MaxActiveIndices = PatchCount; // Worst case: all patches active
+    const unsigned int IndicesBufferSize = sizeof(unsigned int) * MaxActiveIndices;
+    CD3DX12_RESOURCE_DESC IndicesBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(IndicesBufferSize);
+
+    // Default heap buffer
+    hResult = D3DDevice->CreateCommittedResource(
+        &DefaultHeapProps, D3D12_HEAP_FLAG_NONE, &IndicesBufferDesc,
+        D3D12_RESOURCE_STATE_COMMON, nullptr,
+        IID_PPV_ARGS(&Proxy->ActiveIndicesBuffer));
+    
+    if (FAILED(hResult))
+    {
+        return ErrorCode::CommittedResourceCreateFailed;
+    }
+
+    ResetUploadCommandAllocator();
+    ResetUploadCommandList();
+    CD3DX12_RESOURCE_BARRIER InitBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        Proxy->ActiveIndicesBuffer.Get(), D3D12_RESOURCE_STATE_COMMON,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    UploadCommandList->ResourceBarrier(1, &InitBarrier);
+    ExecuteAndWaitUploadCommandList();
+
+    // Upload heap buffers (triple buffered)
+    for (int I = 0; I < FrameNumInFlight; ++I)
+    {
+        hResult = D3DDevice->CreateCommittedResource(
+            &UploadHeapProps, D3D12_HEAP_FLAG_NONE, &IndicesBufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(&Proxy->ActiveIndicesUpload[I]));
+        
+        if (FAILED(hResult))
+        {
+            return ErrorCode::CommittedResourceCreateFailed;
+        }
+    }
+
+    // CPU-side heightmap data no longer needed after GPU upload
+    Terrain->HeightmapTexture.reset();
+
+    // Fill material resolve descriptor table slots for terrain buffers
+    {
+        const unsigned int DescriptorIncrement = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle = MaterialResolveBufferTableCPU;
+
+        {
+            D3D12_SHADER_RESOURCE_VIEW_DESC Desc = {};
+            Desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            Desc.Format = DXGI_FORMAT_UNKNOWN;
+            Desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            Desc.Buffer.NumElements = TotalNodeCount;
+            Desc.Buffer.StructureByteStride = sizeof(TerrainPatchData);
+            D3D12_CPU_DESCRIPTOR_HANDLE Handle = CPUHandle;
+            Handle.ptr += 4 * DescriptorIncrement;
+            D3DDevice->CreateShaderResourceView(Proxy->PatchBuffer.Get(), &Desc, Handle);
+        }
+        
+        {
+            D3D12_SHADER_RESOURCE_VIEW_DESC Desc = {};
+            Desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            Desc.Format = DXGI_FORMAT_UNKNOWN;
+            Desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            Desc.Buffer.NumElements = TotalNodeCount;
+            Desc.Buffer.StructureByteStride = sizeof(unsigned int);
+            D3D12_CPU_DESCRIPTOR_HANDLE Handle = CPUHandle;
+            Handle.ptr += 8 * DescriptorIncrement;
+            D3DDevice->CreateShaderResourceView(Proxy->NeighborLodUpload[0].Get(), &Desc, Handle);
+        }
+    }
+
+    return ErrorCode::OK;
+}
+
+void PipelineInterface::RenderTerrainVisibilityPass(unsigned int FrameContextIndex, const Level* LevelInstance) const
+{
+    TerrainActor* Terrain = LevelInstance->GetTerrain();
+    const TerrainProxy* Proxy = Terrain ? Terrain->GetProxy() : nullptr;
+
+    // Render terrain patches if available
+    if (Proxy && !Terrain->ActivePatchIndices.empty() && Proxy->PatchBuffer && TerrainPipelineState && Proxy->BoundBuffer)
+    {
+        const unsigned int ActivePatchCount = static_cast<unsigned int>(Terrain->ActivePatchIndices.size());
+
+        // Update TerrainParams CB with actual active patch count
+        void* ParamsMapped = nullptr;
+        TerrainParamsBuffer[FrameContextIndex]->Map(0, nullptr, &ParamsMapped);
+        TerrainParams Params = {};
+        Params.ActivePatchCount = ActivePatchCount;
+        Params.ClusterBase = *static_cast<unsigned int*>(ClusterCountBufferMapped);
+        Params.PatchSize = Terrain->PatchSize;
+        Params.HeightScale = Terrain->HeightScale;
+        Params.WorldSize = Terrain->TerrainSize;
+        Params.TotalPatchCount = Terrain->TotalNodeCount;
+        Params.EdgeStitchingEnabled = Terrain->EdgeStitchingEnabled ? 1u : 0u;
+        Params.DebugScale = Terrain->DebugScale;
+        memcpy(ParamsMapped, &Params, sizeof(TerrainParams));
+        TerrainParamsBuffer[FrameContextIndex]->Unmap(0, nullptr);
+
+        // Upload active indices to GPU only when changed
+        if (Terrain->ActivePatchIndicesDirty)
+        {
+            void* MappedData = nullptr;
+            Proxy->ActiveIndicesUpload[FrameContextIndex]->Map(0, nullptr, &MappedData);
+            memcpy(MappedData, Terrain->ActivePatchIndices.data(), ActivePatchCount * sizeof(unsigned int));
+            Proxy->ActiveIndicesUpload[FrameContextIndex]->Unmap(0, nullptr);
+
+            CD3DX12_RESOURCE_BARRIER IndicesToCopy = CD3DX12_RESOURCE_BARRIER::Transition(
+                Proxy->ActiveIndicesBuffer.Get(),
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                D3D12_RESOURCE_STATE_COPY_DEST);
+            CommandList->ResourceBarrier(1, &IndicesToCopy);
+            CommandList->CopyBufferRegion(Proxy->ActiveIndicesBuffer.Get(), 0,
+                Proxy->ActiveIndicesUpload[FrameContextIndex].Get(), 0, ActivePatchCount * sizeof(unsigned int));
+            CD3DX12_RESOURCE_BARRIER IndicesToSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+                Proxy->ActiveIndicesBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            CommandList->ResourceBarrier(1, &IndicesToSRV);
+
+            Terrain->ActivePatchIndicesDirty = false;
+        }
+
+        void* MappedData = nullptr;
+        Proxy->NeighborLodUpload[FrameContextIndex]->Map(0, nullptr, &MappedData);
+        unsigned int* DstData = static_cast<unsigned int*>(MappedData);
+        memset(DstData, 0xFF, sizeof(unsigned int) * Terrain->TotalNodeCount);
+        
+        for (unsigned int I = 0; I < ActivePatchCount; ++I)
+        {
+            const unsigned int PatchIdx = Terrain->ActivePatchIndices[I];
+            DstData[PatchIdx] = Terrain->Patches[PatchIdx].NeighborLodPacked;
+        }
+        
+        Proxy->NeighborLodUpload[FrameContextIndex]->Unmap(0, nullptr);
+
+        const unsigned int DescriptorIncrement = D3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        D3D12_SHADER_RESOURCE_VIEW_DESC NLDesc = {};
+        NLDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        NLDesc.Format = DXGI_FORMAT_UNKNOWN;
+        NLDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        NLDesc.Buffer.NumElements = Terrain->TotalNodeCount;
+        NLDesc.Buffer.StructureByteStride = sizeof(unsigned int);
+        D3D12_CPU_DESCRIPTOR_HANDLE NLHandle = MaterialResolveBufferTableCPU;
+        NLHandle.ptr += 8 * DescriptorIncrement;
+        D3DDevice->CreateShaderResourceView(Proxy->NeighborLodUpload[FrameContextIndex].Get(), &NLDesc, NLHandle);
+
+        CommandList->SetGraphicsRootSignature(TerrainRootSignature.Get());
+        CommandList->SetPipelineState(TerrainPipelineState.Get());
+
+        // Parameter 0: Camera CBV (shared with Nanite — same Camera::Update data)
+        if (LevelInstance->GetCameras().size() > 0)
+        {
+            const Camera* CameraInstance = LevelInstance->GetCameras()[0];
+            const D3D12_GPU_VIRTUAL_ADDRESS CameraCBAddress = CameraInstance->GetConstantBufferProxy()->UploadBuffer[FrameContextIndex]->GetGPUVirtualAddress();
+            CommandList->SetGraphicsRootConstantBufferView(0, CameraCBAddress);
+        }
+
+        // Parameter 1: Terrain Params CBV
+        CommandList->SetGraphicsRootConstantBufferView(1, TerrainParamsBuffer[FrameContextIndex]->GetGPUVirtualAddress());
+
+        // Parameter 2: Terrain Patches SRV (t0)
+        CommandList->SetGraphicsRootShaderResourceView(2, Proxy->PatchBuffer->GetGPUVirtualAddress());
+
+        // Parameter 3: Terrain Bounds SRV (t1)
+        CommandList->SetGraphicsRootShaderResourceView(3, Proxy->BoundBuffer->GetGPUVirtualAddress());
+
+        // Parameter 4: Active Indices SRV (t3)
+        CommandList->SetGraphicsRootShaderResourceView(4, Proxy->ActiveIndicesBuffer->GetGPUVirtualAddress());
+
+        // Parameter 5: Heightmap SRV descriptor table (t2)
+        CommandList->SetGraphicsRootDescriptorTable(5, TerrainHeightmapSRVGPU);
+
+        // Parameter 6: Neighbor LOD SRV (t4) — upload heap, GPU reads directly
+        CommandList->SetGraphicsRootShaderResourceView(6, Proxy->NeighborLodUpload[FrameContextIndex]->GetGPUVirtualAddress());
+
+        // Dispatch: use ActivePatchIndices count
+        // AS group size is 64, so divide by 64
+        const unsigned int ASGroupCount = (ActivePatchCount + 63) / 64;
+        CommandList->DispatchMesh(ASGroupCount, 1, 1);
+    }
+
+    // Transition VB to SRV for material resolve (after all VB writes are done)
+    D3D12_RESOURCE_BARRIER VBBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        FrameContexts[FrameContextIndex].VisibilityBuffer.Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    
+    CommandList->ResourceBarrier(1, &VBBarrier);
 }

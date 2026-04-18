@@ -9,7 +9,6 @@
 #include "MeshProxy.h"
 #include "../level/Level.h"
 
-// Simple free list based allocator
 struct ImGUIDescriptorHeapAllocator
 {
     ID3D12DescriptorHeap* Heap = nullptr;
@@ -55,6 +54,66 @@ struct ImGUIDescriptorHeapAllocator
         OutGPUDescHandle->ptr = HeapStartGpu.ptr + (Index * HeapHandleIncrement);
     }
         
+    void AllocRange(UINT Count, D3D12_CPU_DESCRIPTOR_HANDLE* OutFirstCPU, D3D12_GPU_DESCRIPTOR_HANDLE* OutFirstGPU)
+    {
+        if (Count == 0)
+        {
+            return;
+        }
+        
+        ImVector<int> Sorted;
+        Sorted.resize(FreeIndices.Size);
+        memcpy(Sorted.Data, FreeIndices.Data, FreeIndices.Size * sizeof(int));
+        for (int I = 1; I < Sorted.Size; ++I)
+        {
+            int Key = Sorted[I];
+            int J = I - 1;
+            while (J >= 0 && Sorted[J] > Key)
+            {
+                Sorted[J + 1] = Sorted[J];
+                --J;
+            }
+            Sorted[J + 1] = Key;
+        }
+        
+        int RunStart = -1;
+        for (int I = 0; I <= Sorted.Size - (int)Count; ++I)
+        {
+            bool Found = true;
+            for (UINT K = 1; K < Count; ++K)
+            {
+                if (Sorted[I + K] != Sorted[I] + (int)K)
+                {
+                    Found = false;
+                    break;
+                }
+            }
+            if (Found)
+            {
+                RunStart = I;
+                break;
+            }
+        }
+        
+        IM_ASSERT(RunStart >= 0);
+        int FirstIndex = Sorted[RunStart];
+        for (UINT K = 0; K < Count; ++K)
+        {
+            int Target = FirstIndex + (int)K;
+            for (int I = 0; I < FreeIndices.Size; ++I)
+            {
+                if (FreeIndices[I] == Target)
+                {
+                    FreeIndices.erase(FreeIndices.Data + I);
+                    break;
+                }
+            }
+        }
+        
+        OutFirstCPU->ptr = HeapStartCpu.ptr + (FirstIndex * HeapHandleIncrement);
+        OutFirstGPU->ptr = HeapStartGpu.ptr + (FirstIndex * HeapHandleIncrement);
+    }
+
     void Free(D3D12_CPU_DESCRIPTOR_HANDLE CPUDescHandle, D3D12_GPU_DESCRIPTOR_HANDLE GPUDescHandle)
     {
         int CpuIndex = (int)((CPUDescHandle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
@@ -64,7 +123,6 @@ struct ImGUIDescriptorHeapAllocator
     }
 };
 
-// General bindless descriptor allocator (non-singleton)
 class BindlessAllocator
 {
 public:
@@ -97,18 +155,17 @@ struct FrameContext
     Microsoft::WRL::ComPtr<ID3D12Resource> TransitionTexture = nullptr;
     Microsoft::WRL::ComPtr<ID3D12Resource> DepthStencilBuffer = nullptr;
 
-    // Visibility Buffer 资源
     Microsoft::WRL::ComPtr<ID3D12Resource> VisibilityBuffer = nullptr;
     D3D12_CPU_DESCRIPTOR_HANDLE VisibilityBufferRTVHandle;
     D3D12_CPU_DESCRIPTOR_HANDLE VisibilityBufferSRVCPUHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE VisibilityBufferSRVGPUHandle;
 
-    // RenderTarget UAV (供 Material Resolve compute shader 写入)
     D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetUAVCPUHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE RenderTargetUAVGPUHandle;
 };
 
 struct IDxcBlob;
+struct Texture;
 
 class PipelineInterface : public Singleton<PipelineInterface>
 {
@@ -119,7 +176,6 @@ class PipelineInterface : public Singleton<PipelineInterface>
     const int BackBufferCount = 2;
     const unsigned int BindlessTextureStartIndex = 32;
     const int SRVHeapSize = 32768;
-    //  Less than SRVHeapSize - BindlessTextureStartIndex - FrameNumInFlight*4(SRV+TransitionUAV+VB_SRV+RT_UAV)
     const unsigned int MaxTextureDescriptors = 16384;
     const unsigned int MaxCubemapDescriptors = 1024;
     
@@ -154,6 +210,17 @@ class PipelineInterface : public Singleton<PipelineInterface>
     Microsoft::WRL::ComPtr<ID3D12RootSignature> MaterialResolveRootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> MaterialResolvePipelineState;
 
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> TerrainRootSignature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> TerrainPipelineState;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> TerrainParamsBuffer[FrameNumInFlight];
+    Microsoft::WRL::ComPtr<ID3D12Resource> TerrainResolveBuffer[FrameNumInFlight];
+
+    D3D12_GPU_DESCRIPTOR_HANDLE TerrainHeightmapSRVGPU = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE MaterialResolveBufferTableCPU = {};
+    D3D12_GPU_DESCRIPTOR_HANDLE MaterialResolveBufferTableGPU = {};
+    static constexpr unsigned int MaterialResolveBufferDescCount = 9;
+
     BindlessAllocator TextureAllocator;
     BindlessAllocator CubemapAllocator;
     
@@ -178,11 +245,9 @@ class PipelineInterface : public Singleton<PipelineInterface>
     Microsoft::WRL::ComPtr<ID3D12Resource> GlobalMaterialTableBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> GlobalMaterialTableBufferUpload;
     
-    // GPU Scene: Primitive transform buffer (UE5-style)
     Microsoft::WRL::ComPtr<ID3D12Resource> ScenePrimitiveBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> ScenePrimitiveBufferUpload;
 
-    // Cluster count buffer for GPU-Driven rendering
     Microsoft::WRL::ComPtr<ID3D12Resource> ClusterCountBuffer;
     void* ClusterCountBufferMapped = nullptr;
 
@@ -231,8 +296,11 @@ public:
     ErrorCode CreateConstantBuffer(const Actor* ActorInstance) const;
     ErrorCode UpdateViewport(unsigned int FrameContextIndex, ImVec2 NewViewportSize);
     void RenderVisibilityPass(unsigned int FrameContextIndex, const Level* LevelInstance) const;
+    void RenderTerrainVisibilityPass(unsigned int FrameContextIndex, const Level* LevelInstance) const;
     void RenderMaterialResolve(unsigned int FrameContextIndex, const Level* LevelInstance) const;
     void RenderPostProcessCompute(unsigned int FrameContextIndex) const;
+    ErrorCode CreateTerrainPipelineState();
+    ErrorCode CreateTerrainResources(class TerrainActor* Terrain);
     D3D12_FILL_MODE GetFillMode() const { return CurrentFillMode; }
     ErrorCode SetFillMode(D3D12_FILL_MODE FillMode);
 };
