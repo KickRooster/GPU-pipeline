@@ -480,12 +480,12 @@ Camera* Level::InstantiateCamera()
     ActorInstance->FovY = 90.f;
     ActorInstance->AspectRatio = 1.f;
     ActorInstance->NearPlane = 0.1f;
-    ActorInstance->FarPlane = 10000.0f;
-    ActorInstance->Transform.Position.x = 12.7424021f;
-    ActorInstance->Transform.Position.y = 69.4671021f;
-    ActorInstance->Transform.Position.z = 232.522491f;
-    ActorInstance->LookDirection = XMFLOAT3(0.0334060229f, 0.0364667103f, -0.998776376);
-    ActorInstance->UpDirection = XMFLOAT3(0, 1.0f, 0);
+    ActorInstance->FarPlane = 262144.0f;
+    ActorInstance->Transform.Position.x = 0;
+    ActorInstance->Transform.Position.y = 2080.0f;
+    ActorInstance->Transform.Position.z = 0;
+    ActorInstance->LookDirection = XMFLOAT3(0, -1.0f, 0);
+    ActorInstance->UpDirection = XMFLOAT3(0, -0.05f, -1.0f);
     Cameras.push_back(move(ActorInstance));
 
     return Cameras.back().get();
@@ -578,6 +578,23 @@ void Level::Update(float DeltaTime, unsigned int FrameIndex) const
     {
         Actor->Update(DeltaTime, FrameIndex);
     }
+
+    if (Terrain)
+    {
+        Terrain->Update(DeltaTime, FrameIndex);
+        
+        const Camera* CameraInstance = Cameras[0].get();
+        const CullingVisualCamera* CullingCamera = CameraInstance->GetCullingCamera();
+        const DirectX::XMFLOAT3& CameraPosition = CullingCamera ? CullingCamera->Transform.Position : CameraInstance->Transform.Position;
+        Terrain->UpdateLOD(CameraPosition);
+    }
+}
+
+TerrainActor* Level::InstantiateTerrain()
+{
+    Terrain = make_unique<TerrainActor>();
+    Terrain->Name = "Terrain";
+    return Terrain.get();
 }
 
 const vector<unique_ptr<StaticMesh>>& Level::GetStaticMeshes() const
@@ -609,6 +626,11 @@ vector<SkyLight*> Level::GetSkyLights() const
     return Result;
 }
 
+TerrainActor* Level::GetTerrain() const
+{
+    return Terrain.get();
+}
+
 std::vector<Actor*> Level::GetSelectableActors() const
 {
     vector<Actor*> Result;
@@ -623,6 +645,11 @@ std::vector<Actor*> Level::GetSelectableActors() const
         Result.push_back(SkyLights[I].get());
     }
     
+    if (Terrain)
+    {
+        Result.push_back(Terrain.get());
+    }
+
     return Result;
 }
 
@@ -638,6 +665,7 @@ void Level::Clear()
     SkyLights.clear();
     AllMaterials.clear();
     AllMaterialProxies.clear();
+    Terrain.reset();
 }
 
 Level::~Level()

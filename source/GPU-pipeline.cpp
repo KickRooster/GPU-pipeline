@@ -16,6 +16,9 @@
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <tchar.h>
+#include <map>
+#include <set>
+#include <string>
 #include "dx12/PipelineInterface.h"
 #include "level/Level.h"
 #include "actor/Camera.h"
@@ -24,6 +27,9 @@
 #include "misc/FileTool.h"
 #include "../thirdpatry/ImGuizmo/ImGuizmo.h"
 #include "../thirdpatry/imGuIZMO.quat/imguizmo_quat/imGuIZMOquat.h"
+#include "actor/TerrainActor.h"
+#include "asset/Texture.h"
+#include "asset/TextureLoader.h"
 
 using namespace std;
 using namespace DirectX;
@@ -95,10 +101,16 @@ int main(int, char**)
 	//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("sponza.obj"));
 	//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("Cerberus_LP.FBX"));
 	//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("duck.fbx"));
-	Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("StainedGlassLamp.gltf"));
+	//Level::GetInstance().InstantiateStaticMeshes(FileTool::GetInstance().GetMeshFullPath("StainedGlassLamp.gltf"));
 	
 	// GPU-Driven: Create global merged mesh buffers after all meshes are loaded
 	Level::GetInstance().CreateGlobalMeshBuffers();
+
+	// Terrain: initialize TerrainActor on CPU, then create GPU resources
+	TerrainActor* TerrainInstance = Level::GetInstance().InstantiateTerrain();
+	TerrainInstance->Initialize("heightmap_4k.png");
+	PipelineInterface::GetInstance().CreateTerrainResources(TerrainInstance);
+	TerrainInstance->LoadTerrainTextures();
 
 	// Camera Actor.
 	Camera* CameraInstance = Level::GetInstance().InstantiateCamera();
@@ -392,10 +404,15 @@ int main(int, char**)
 					ImGui::EndTabItem();
 				}
 				
-				if (ImGui::BeginTabItem("X"))
+				if (ImGui::BeginTabItem("Terrain"))
 				{
-					ImGui::Text("X tab content goes here");
-					
+					TerrainActor* InstantiatedTerrain = Level::GetInstance().GetTerrain();
+					if (InstantiatedTerrain)
+					{
+						ImGui::Checkbox("Edge Stitching", &InstantiatedTerrain->EdgeStitchingEnabled);
+						ImGui::Checkbox("LOD Colors", &InstantiatedTerrain->DebugLODColors);
+						ImGui::SliderFloat("LOD Distance", &InstantiatedTerrain->DebugScale, 0.000001f, 1.0f);
+					}
 					ImGui::EndTabItem();
 				}
 				
@@ -508,6 +525,7 @@ int main(int, char**)
 			// Update GPU Scene primitive transforms (for Gizmo and runtime changes)
 			PipelineInterface::GetInstance().UpdateScenePrimitiveBuffer(&Level::GetInstance());
 			PipelineInterface::GetInstance().RenderVisibilityPass(FrameContextIndex, &Level::GetInstance());
+			PipelineInterface::GetInstance().RenderTerrainVisibilityPass(FrameContextIndex, &Level::GetInstance());
 			PipelineInterface::GetInstance().RenderMaterialResolve(FrameContextIndex, &Level::GetInstance());
 
 			// Post-processing pass: ACES tone mapping (RenderTarget → TransitionTexture → RenderTarget)
