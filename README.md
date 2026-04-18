@@ -1,7 +1,3 @@
-
-
-https://github.com/user-attachments/assets/2091994f-fc86-48e4-a55e-83a13107410a
-
 # GPU Pipeline
 
 A DirectX 12 renderer with Nanite-like virtualized geometry and PBR lighting.
@@ -12,7 +8,8 @@ A DirectX 12 renderer with Nanite-like virtualized geometry and PBR lighting.
 - **Nanite Geometry**: Continuous LOD with automatic level selection
 - **PBR Rendering**: Image-based lighting with physically-based materials
 - **Bindless Textures**: Efficient texture management using descriptor arrays
-
+- **CDLOD Terrain**: CDLOD terrain supports
+- 
 ## Build Requirements
 
 - Windows 10 (20H1 or later) / Windows 11
@@ -46,4 +43,4 @@ https://github.com/user-attachments/assets/6dbd3177-da90-4a61-ba38-8367357bdd58
 
 https://github.com/user-attachments/assets/308836f3-46cd-46bf-98df-ee9ea0a24ea9
 
-
+https://github.com/user-attachments/assets/2091994f-fc86-48e4-a55e-83a13107410a
