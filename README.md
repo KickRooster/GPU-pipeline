@@ -9,7 +9,7 @@ A DirectX 12 renderer with Nanite-like virtualized geometry and PBR lighting.
 - **PBR Rendering**: Image-based lighting with physically-based materials
 - **Bindless Textures**: Efficient texture management using descriptor arrays
 - **CDLOD Terrain**: CDLOD terrain supports
-- 
+  
 ## Build Requirements
 
 - Windows 10 (20H1 or later) / Windows 11
