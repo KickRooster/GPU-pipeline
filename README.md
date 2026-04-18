@@ -1,3 +1,7 @@
+
+
+https://github.com/user-attachments/assets/2091994f-fc86-48e4-a55e-83a13107410a
+
 # GPU Pipeline
 
 A DirectX 12 renderer with Nanite-like virtualized geometry and PBR lighting.
