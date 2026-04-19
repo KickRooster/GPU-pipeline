@@ -190,16 +190,11 @@ void TerrainActor::SelectActivePatches(const DirectX::XMFLOAT3& CameraPos)
         }
 
         const TerrainPatchBound& B = Bounds[Node.BoundIndex];
-        const float BMinX = B.Center[0] - B.HalfExtent[0];
-        const float BMaxX = B.Center[0] + B.HalfExtent[0];
-        const float BMinZ = B.Center[2] - B.HalfExtent[2];
-        const float BMaxZ = B.Center[2] + B.HalfExtent[2];
+        const float CenterX = B.Center[0];
+        const float CenterZ = B.Center[2];
 
-        const float ClosestX = (ScaledCamPos.x < BMinX) ? BMinX : ((ScaledCamPos.x > BMaxX) ? BMaxX : ScaledCamPos.x);
-        const float ClosestZ = (ScaledCamPos.z < BMinZ) ? BMinZ : ((ScaledCamPos.z > BMaxZ) ? BMaxZ : ScaledCamPos.z);
-
-        const float DX = ClosestX - ScaledCamPos.x;
-        const float DZ = ClosestZ - ScaledCamPos.z;
+        const float DX = CenterX - ScaledCamPos.x;
+        const float DZ = CenterZ - ScaledCamPos.z;
         const float DistSq = DX * DX + DZ * DZ;
 
         if (DistSq < LODRangesSq[LodLevel])
@@ -420,7 +415,7 @@ ErrorCode TerrainActor::Initialize(const std::string& HeightmapPath)
     }
 
     BuildQuadTree();
-    
+
     const float BaseDist = PatchSize * 2.0f;
     for (unsigned int K = 0; K < MAX_LOD_LEVELS; ++K)
     {
