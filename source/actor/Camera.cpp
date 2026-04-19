@@ -5,7 +5,7 @@ using namespace std;
 using namespace DirectX;
 
 Camera::Camera()
-    :CullingCamera(nullptr)
+    :CullingCamera(nullptr), UseOrthographic(false), OrthoWidth(2000.0f), OrthoHeight(2000.0f)
 {
     ConstantBufferInstance = make_unique<CameraConstantBuffer>();
     ConstantBufferInstance->LODErrorThreshold = 1.0f;
@@ -109,7 +109,14 @@ void Camera::Update(float DeltaTime, unsigned int FrameIndex)
         XMLoadFloat3(&LookDirection),
         XMLoadFloat3(&UpDirection));
 
-    ProjectionMatrix = MathTool::GetInstance().XMMatrixPerspectiveFovLHReverseZ(FovY * XM_PI / 180.f, AspectRatio, NearPlane, FarPlane);
+    if (UseOrthographic)
+    {
+        ProjectionMatrix = XMMatrixOrthographicLH(OrthoWidth, OrthoHeight, NearPlane, FarPlane);
+    }
+    else
+    {
+        ProjectionMatrix = MathTool::GetInstance().XMMatrixPerspectiveFovLHReverseZ(FovY * XM_PI / 180.f, AspectRatio, NearPlane, FarPlane);
+    }
     const XMMATRIX ViewProjectionMatrix = ViewMatrix * ProjectionMatrix;
 
     XMStoreFloat4x4(&ConstantBufferInstance->ViewProj, XMMatrixTranspose(ViewProjectionMatrix));

@@ -413,6 +413,25 @@ int main(int, char**)
 						ImGui::Checkbox("LOD Colors", &InstantiatedTerrain->DebugLODColors);
 						ImGui::SliderFloat("LOD Distance", &InstantiatedTerrain->DebugScale, 0.000001f, 1.0f);
 					}
+
+					ImGui::Separator();
+					ImGui::Text("Camera Projection");
+
+					if (Level::GetInstance().GetCameras().size() > 0)
+					{
+						Camera* CameraInstance = Level::GetInstance().GetCameras()[0];
+						if (ImGui::Checkbox("Use Orthographic", &CameraInstance->UseOrthographic))
+						{
+							// Projection changed
+						}
+
+						if (CameraInstance->UseOrthographic)
+						{
+							ImGui::DragFloat("Ortho Width", &CameraInstance->OrthoWidth, 10.0f, 100.0f, 30000.0f);
+							ImGui::DragFloat("Ortho Height", &CameraInstance->OrthoHeight, 10.0f, 100.0f, 30000.0f);
+						}
+					}
+
 					ImGui::EndTabItem();
 				}
 				
