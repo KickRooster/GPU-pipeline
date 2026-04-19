@@ -23,7 +23,10 @@ public:
     float AspectRatio;
     float NearPlane;
     float FarPlane;
-    
+    bool UseOrthographic;
+    float OrthoWidth;
+    float OrthoHeight;
+
     Camera();
     void ResponseToUI(const UIState& State, float DeltaTime);
     void SetCullingCamera(CullingVisualCamera* CullingCamera);
